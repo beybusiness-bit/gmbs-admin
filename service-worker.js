@@ -1,8 +1,8 @@
 const CACHE_NAME = 'gmbs-admin-v1';
 const STATIC_ASSETS = [
-  '/gmbs-admin/',
-  '/gmbs-admin/index.html',
-  '/gmbs-admin/manifest.json',
+  '/',
+  '/index.html',
+  '/manifest.json',
 ];
 
 self.addEventListener('install', (event) => {
