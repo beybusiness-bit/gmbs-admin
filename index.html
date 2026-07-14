@@ -227,37 +227,23 @@
   <nav id="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-brand">GMBS 관리</div>
-      <div class="sidebar-brand-sub">상품 등록 · 바코드 관리</div>
     </div>
     <div class="sidebar-nav">
       <div class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
         <span class="icon">📊</span> 대시보드
       </div>
-      <div class="nav-section-label">상품 관리</div>
       <div class="nav-item" data-page="product-list" onclick="navigate('product-list')">
-        <span class="icon">📦</span> 상품 목록
-      </div>
-      <div class="nav-item" data-page="product-new" onclick="navigate('product-new')">
-        <span class="icon">➕</span> 새 상품 등록
+        <span class="icon">📦</span> 상품
       </div>
       <div class="nav-item" data-page="unit-manage" onclick="navigate('unit-manage')">
         <span class="icon">🏷️</span> 개체 관리
       </div>
-      <div class="nav-section-label">바코드</div>
-      <div class="nav-item" data-page="barcode-search" onclick="navigate('barcode-search')">
-        <span class="icon">🔍</span> 검색 · 출력
+      <div class="nav-item" data-page="barcode" onclick="navigate('barcode')">
+        <span class="icon">🔍</span> 바코드
       </div>
-      <div class="nav-item" data-page="barcode-recent" onclick="navigate('barcode-recent')">
-        <span class="icon">🕐</span> 최근 생성
-      </div>
-      <div class="nav-section-label">브랜드</div>
       <div class="nav-item" data-page="brand-list" onclick="navigate('brand-list')">
-        <span class="icon">🏬</span> 브랜드 목록
+        <span class="icon">🏬</span> 브랜드
       </div>
-      <div class="nav-item" data-page="brand-new" onclick="navigate('brand-new')">
-        <span class="icon">➕</span> 새 브랜드 등록
-      </div>
-      <div class="nav-section-label">시스템</div>
       <div class="nav-item" data-page="settings" onclick="navigate('settings')">
         <span class="icon">⚙️</span> 설정
       </div>
@@ -370,9 +356,9 @@
   /* ── 라우터 ── */
   const PAGE_TITLES = {
     dashboard: '대시보드',
-    'product-list': '상품 목록', 'product-new': '새 상품 등록', 'unit-manage': '개체 관리',
-    'barcode-search': '바코드 검색 · 출력', 'barcode-recent': '최근 생성 바코드',
-    'brand-list': '브랜드 목록', 'brand-new': '새 브랜드 등록',
+    'product-list': '상품', 'unit-manage': '개체 관리',
+    barcode: '바코드',
+    'brand-list': '브랜드', 'brand-new': '새 브랜드 등록', 'brand-edit': '브랜드 수정',
     settings: '설정'
   };
 
@@ -387,9 +373,11 @@
     content.innerHTML = '';
 
     if (page === 'dashboard') await renderDashboard(content);
+    else if (page === 'product-list') renderComingSoon(content, '상품');
     else if (page === 'brand-list') await renderBrandList(content);
     else if (page === 'brand-new') await renderBrandForm(content, null);
     else if (page === 'brand-edit' && params) await renderBrandForm(content, params.id);
+    else if (page === 'barcode') renderBarcodePage(content);
     else renderComingSoon(content, PAGE_TITLES[page] || page);
   };
 
@@ -426,6 +414,40 @@
   /* ════════════════════════════════
      브랜드 목록
   ════════════════════════════════ */
+  /* ════════════════════════════════
+     바코드 통합 페이지
+  ════════════════════════════════ */
+  function renderBarcodePage(container) {
+    const tabs = [
+      { id: 'search', label: '🔍 검색 · 출력' },
+      { id: 'recent', label: '🕐 최근 생성' }
+    ];
+    container.innerHTML =
+      '<div style="display:flex;gap:4px;margin-bottom:20px;background:#fff;padding:6px;border-radius:10px;border:1px solid var(--gray-200);width:fit-content;">' +
+      tabs.map((t, i) =>
+        '<button id="barcode-tab-' + t.id + '" onclick="switchBarcodeTab(\'' + t.id + '\')" style="padding:7px 18px;border-radius:7px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.12s;' + (i === 0 ? 'background:var(--blue);color:#fff;' : 'background:transparent;color:var(--gray-500);') + '">' + t.label + '</button>'
+      ).join('') +
+      '</div>' +
+      '<div id="barcode-tab-content"></div>';
+    switchBarcodeTab('search');
+  }
+
+  window.switchBarcodeTab = function(tab) {
+    document.querySelectorAll('[id^="barcode-tab-"]').forEach(el => {
+      if (el.id === 'barcode-tab-' + tab) {
+        el.style.background = 'var(--blue)'; el.style.color = '#fff';
+      } else {
+        el.style.background = 'transparent'; el.style.color = 'var(--gray-500)';
+      }
+    });
+    const content = document.getElementById('barcode-tab-content');
+    if (tab === 'search') {
+      content.innerHTML = '<div class="coming-soon"><div class="coming-soon-icon">🔍</div><div class="coming-soon-label">바코드 검색 · 출력</div><div class="coming-soon-sub">다음 단계에서 구현됩니다.</div></div>';
+    } else {
+      content.innerHTML = '<div class="coming-soon"><div class="coming-soon-icon">🕐</div><div class="coming-soon-label">최근 생성 바코드</div><div class="coming-soon-sub">다음 단계에서 구현됩니다.</div></div>';
+    }
+  };
+
   async function renderBrandList(container) {
     document.getElementById('page-header-actions').innerHTML =
       '<button class="btn btn-primary" onclick="navigate(\'brand-new\')">➕ 새 브랜드 등록</button>';
