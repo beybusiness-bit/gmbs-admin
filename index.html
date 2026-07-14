@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GMBS 상품 관리</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#2563eb" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="GMBS" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue: #2563eb;
+      --blue-dark: #1d4ed8;
+      --blue-light: #eff6ff;
+      --gray-50: #f9fafb;
+      --gray-100: #f3f4f6;
+      --gray-200: #e5e7eb;
+      --gray-400: #9ca3af;
+      --gray-500: #6b7280;
+      --gray-700: #374151;
+      --gray-900: #111827;
+      --red: #dc2626;
+      --green: #16a34a;
+      --sidebar-w: 220px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      color: var(--gray-900);
+      background: var(--gray-50);
+    }
+
+    /* ── 로그인 화면 ── */
+    #login-screen {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    }
+    .login-card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 48px 40px;
+      text-align: center;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      max-width: 360px;
+      width: 100%;
+    }
+    .login-logo {
+      width: 64px;
+      height: 64px;
+      background: var(--blue);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      font-size: 28px;
+      color: #fff;
+      font-weight: 800;
+    }
+    .login-title { font-size: 22px; font-weight: 700; color: var(--gray-900); margin-bottom: 6px; }
+    .login-sub { font-size: 13px; color: var(--gray-500); margin-bottom: 32px; line-height: 1.5; }
+    .btn-google {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 12px 20px;
+      border: 2px solid var(--gray-200);
+      border-radius: 10px;
+      background: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--gray-700);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-google:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-light); }
+    .btn-google svg { flex-shrink: 0; }
+    .login-notice {
+      margin-top: 20px;
+      font-size: 12px;
+      color: var(--gray-400);
+      line-height: 1.6;
+    }
+
+    /* ── 앱 레이아웃 ── */
+    #app { display: none; min-height: 100vh; }
+    #app.visible { display: flex; }
+
+    /* ── 사이드바 ── */
+    #sidebar {
+      width: var(--sidebar-w);
+      min-height: 100vh;
+      background: #1e293b;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      z-index: 100;
+    }
+    .sidebar-header {
+      padding: 20px 16px 16px;
+      border-bottom: 1px solid #334155;
+    }
+    .sidebar-brand {
+      font-size: 16px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.3px;
+    }
+    .sidebar-brand-sub {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+    .sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; }
+    .nav-section-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      padding: 10px 16px 4px;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 16px;
+      color: #94a3b8;
+      cursor: pointer;
+      border-radius: 0;
+      transition: all 0.12s;
+      font-size: 13.5px;
+      font-weight: 500;
+      border-left: 3px solid transparent;
+      margin: 1px 0;
+    }
+    .nav-item:hover { color: #e2e8f0; background: #334155; }
+    .nav-item.active { color: #fff; background: #2563eb22; border-left-color: var(--blue); }
+    .nav-item .icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+    .nav-sub {
+      padding-left: 16px;
+    }
+    .nav-sub .nav-item {
+      font-size: 13px;
+      color: #64748b;
+      padding: 7px 16px 7px 46px;
+      border-left: none;
+    }
+    .nav-sub .nav-item:hover { color: #cbd5e1; background: #1e3a5f22; }
+    .nav-sub .nav-item.active { color: #93c5fd; background: transparent; }
+    .sidebar-footer {
+      padding: 12px 16px;
+      border-top: 1px solid #334155;
+    }
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .user-info:hover { background: #334155; }
+    .user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--blue);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .user-name { font-size: 12px; color: #cbd5e1; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .user-email { font-size: 11px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .btn-logout {
+      margin-top: 8px;
+      width: 100%;
+      padding: 7px;
+      border: 1px solid #334155;
+      border-radius: 7px;
+      background: transparent;
+      color: #94a3b8;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .btn-logout:hover { background: #334155; color: #e2e8f0; }
+
+    /* ── 모바일 사이드바 토글 ── */
+    #sidebar-toggle {
+      display: none;
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 200;
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: #1e293b;
+      border: none;
+      color: #fff;
+      font-size: 20px;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+    }
+    #sidebar-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 99;
+    }
+
+    /* ── 메인 콘텐츠 ── */
+    #main {
+      margin-left: var(--sidebar-w);
+      flex: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .page-header {
+      background: #fff;
+      border-bottom: 1px solid var(--gray-200);
+      padding: 0 28px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .page-header-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--gray-900);
+    }
+    .page-content { padding: 28px; flex: 1; }
+
+    /* ── 대시보드 카드 ── */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid var(--gray-200);
+    }
+    .stat-card-label { font-size: 12px; color: var(--gray-500); margin-bottom: 8px; }
+    .stat-card-value { font-size: 28px; font-weight: 800; color: var(--gray-900); }
+    .stat-card-sub { font-size: 11px; color: var(--gray-400); margin-top: 4px; }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--gray-900);
+      margin-bottom: 16px;
+    }
+
+    /* ── 빈 상태 ── */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--gray-400);
+    }
+    .empty-state-icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state-text { font-size: 14px; line-height: 1.6; }
+
+    /* ── 준비중 페이지 ── */
+    .coming-soon {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 60vh;
+      gap: 12px;
+      color: var(--gray-400);
+    }
+    .coming-soon-icon { font-size: 56px; }
+    .coming-soon-label { font-size: 18px; font-weight: 700; color: var(--gray-700); }
+    .coming-soon-sub { font-size: 13px; }
+
+    /* ── 로딩 ── */
+    #loading-screen {
+      position: fixed;
+      inset: 0;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+      z-index: 9999;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--gray-200);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-size: 14px; color: var(--gray-500); }
+
+    /* ── 토스트 알림 ── */
+    #toast-container {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .toast {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      animation: toast-in 0.2s ease;
+    }
+    .toast.success { background: var(--green); }
+    .toast.error { background: var(--red); }
+    .toast.info { background: var(--blue); }
+    @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ── 반응형 ── */
+    @media (max-width: 768px) {
+      #sidebar { transform: translateX(-100%); transition: transform 0.25s ease; }
+      #sidebar.open { transform: translateX(0); }
+      #sidebar-backdrop.open { display: block; }
+      #sidebar-toggle { display: flex; }
+      #main { margin-left: 0; }
+      .page-header { padding: 0 16px 0 60px; }
+      .page-content { padding: 16px; }
+      .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- 로딩 화면 -->
+<div id="loading-screen">
+  <div class="spinner"></div>
+  <div class="loading-text">불러오는 중...</div>
+</div>
+
+<!-- 로그인 화면 -->
+<div id="login-screen" style="display:none;">
+  <div class="login-card">
+    <div class="login-logo">G</div>
+    <div class="login-title">GMBS 상품 관리</div>
+    <div class="login-sub">바코드 생성 · 상품 등록<br>관리자 전용 도구</div>
+    <button class="btn-google" id="btn-google-login">
+      <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+        <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+        <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.909-2.259c-.806.54-1.837.86-3.047.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z" fill="#34A853"/>
+        <path d="M3.964 10.71c-.18-.54-.282-1.117-.282-1.71s.102-1.17.282-1.71V4.958H.957C.347 6.173 0 7.548 0 9s.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+        <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+      </svg>
+      Google 계정으로 로그인
+    </button>
+    <div class="login-notice">허가된 관리자 계정만 접속할 수 있습니다.<br>다른 계정으로 로그인하면 자동으로 로그아웃됩니다.</div>
+  </div>
+</div>
+
+<!-- 모바일 사이드바 토글 -->
+<button id="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+<div id="sidebar-backdrop" onclick="closeSidebar()"></div>
+
+<!-- 앱 -->
+<div id="app">
+  <!-- 사이드바 -->
+  <nav id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-brand">GMBS 관리</div>
+      <div class="sidebar-brand-sub">상품 등록 · 바코드 관리</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
+        <span class="icon">📊</span> 대시보드
+      </div>
+
+      <div class="nav-section-label">상품 관리</div>
+      <div class="nav-item" data-page="product-list" onclick="navigate('product-list')">
+        <span class="icon">📦</span> 상품 목록
+      </div>
+      <div class="nav-item" data-page="product-new" onclick="navigate('product-new')">
+        <span class="icon">➕</span> 새 상품 등록
+      </div>
+      <div class="nav-item" data-page="unit-manage" onclick="navigate('unit-manage')">
+        <span class="icon">🏷️</span> 개체 관리
+      </div>
+
+      <div class="nav-section-label">바코드</div>
+      <div class="nav-item" data-page="barcode-search" onclick="navigate('barcode-search')">
+        <span class="icon">🔍</span> 검색 · 출력
+      </div>
+      <div class="nav-item" data-page="barcode-recent" onclick="navigate('barcode-recent')">
+        <span class="icon">🕐</span> 최근 생성
+      </div>
+
+      <div class="nav-section-label">브랜드</div>
+      <div class="nav-item" data-page="brand-list" onclick="navigate('brand-list')">
+        <span class="icon">🏬</span> 브랜드 목록
+      </div>
+      <div class="nav-item" data-page="brand-new" onclick="navigate('brand-new')">
+        <span class="icon">➕</span> 새 브랜드 등록
+      </div>
+
+      <div class="nav-section-label">시스템</div>
+      <div class="nav-item" data-page="settings" onclick="navigate('settings')">
+        <span class="icon">⚙️</span> 설정
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="user-info" id="user-info-block">
+        <div class="user-avatar" id="user-avatar">?</div>
+        <div>
+          <div class="user-name" id="user-display-name">-</div>
+          <div class="user-email" id="user-email-display">-</div>
+        </div>
+      </div>
+      <button class="btn-logout" onclick="signOut()">로그아웃</button>
+    </div>
+  </nav>
+
+  <!-- 메인 -->
+  <main id="main">
+    <div class="page-header">
+      <div class="page-header-title" id="page-header-title">대시보드</div>
+    </div>
+    <div class="page-content" id="page-content">
+      <!-- 페이지 콘텐츠가 여기에 렌더링됩니다 -->
+    </div>
+  </main>
+</div>
+
+<!-- 토스트 -->
+<div id="toast-container"></div>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+  import {
+    getAuth,
+    GoogleAuthProvider,
+    signInWithPopup,
+    onAuthStateChanged,
+    signOut as fbSignOut
+  } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+  import {
+    getFirestore,
+    doc,
+    getDoc,
+    setDoc,
+    collection,
+    getDocs
+  } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+  /* ── Firebase 초기화 ── */
+  const firebaseConfig = {
+    apiKey: 'AIzaSyC8uy09XOeEYIs1m3Rga5BMqd7gS7o3roI',
+    authDomain: 'beyhome-admin.firebaseapp.com',
+    projectId: 'beyhome-admin',
+    storageBucket: 'beyhome-admin.firebasestorage.app',
+    messagingSenderId: '849320781553',
+    appId: '1:849320781553:web:5363f137447f791aaa2b50'
+  };
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  /* ── 허용 이메일 ── */
+  const ALLOWED_EMAILS = ['itsbeybusiness@gmail.com', 'baekeun0@gmail.com'];
+
+  /* ── 전역 상태 ── */
+  window._db = db;
+  window._auth = auth;
+  window._currentUser = null;
+
+  /* ── 로그인 버튼 ── */
+  document.getElementById('btn-google-login').addEventListener('click', async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (e) {
+      showToast('로그인 중 오류가 발생했습니다: ' + e.message, 'error');
+    }
+  });
+
+  /* ── 로그아웃 ── */
+  window.signOut = async () => {
+    await fbSignOut(auth);
+  };
+
+  /* ── 인증 상태 감지 ── */
+  onAuthStateChanged(auth, async (user) => {
+    const loading = document.getElementById('loading-screen');
+    const loginScreen = document.getElementById('login-screen');
+    const appEl = document.getElementById('app');
+
+    if (user) {
+      if (!ALLOWED_EMAILS.includes(user.email)) {
+        await fbSignOut(auth);
+        loading.style.display = 'none';
+        loginScreen.style.display = 'flex';
+        showToast('접근 권한이 없는 계정입니다.', 'error');
+        return;
+      }
+
+      window._currentUser = user;
+
+      /* 사용자 정보 사이드바 표시 */
+      document.getElementById('user-display-name').textContent = user.displayName || '관리자';
+      document.getElementById('user-email-display').textContent = user.email;
+      const avatarEl = document.getElementById('user-avatar');
+      if (user.photoURL) {
+        avatarEl.innerHTML = '<img src="' + user.photoURL + '" alt="프로필" />';
+      } else {
+        avatarEl.textContent = (user.displayName || 'A')[0].toUpperCase();
+      }
+
+      loading.style.display = 'none';
+      loginScreen.style.display = 'none';
+      appEl.classList.add('visible');
+
+      /* settings/config 문서 초기화 (없으면 생성) */
+      const configRef = doc(db, 'settings', 'config');
+      const configSnap = await getDoc(configRef);
+      if (!configSnap.exists()) {
+        await setDoc(configRef, {
+          product_number_digits: 3,
+          option_number_digits: 2,
+          unit_number_digits: 3,
+          no_option_code: '00',
+          barcode_format: 'CODE128',
+          default_label_width: 60,
+          default_label_height: 40
+        });
+      }
+
+      navigate('dashboard');
+    } else {
+      window._currentUser = null;
+      loading.style.display = 'none';
+      loginScreen.style.display = 'flex';
+      appEl.classList.remove('visible');
+    }
+  });
+
+  /* ── 페이지 라우터 ── */
+  const PAGE_TITLES = {
+    dashboard: '대시보드',
+    'product-list': '상품 목록',
+    'product-new': '새 상품 등록',
+    'unit-manage': '개체 관리',
+    'barcode-search': '바코드 검색 · 출력',
+    'barcode-recent': '최근 생성 바코드',
+    'brand-list': '브랜드 목록',
+    'brand-new': '새 브랜드 등록',
+    settings: '설정'
+  };
+
+  window.navigate = async (page) => {
+    closeSidebar();
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    const activeEl = document.querySelector('.nav-item[data-page="' + page + '"]');
+    if (activeEl) activeEl.classList.add('active');
+    document.getElementById('page-header-title').textContent = PAGE_TITLES[page] || page;
+
+    const content = document.getElementById('page-content');
+    content.innerHTML = '';
+
+    if (page === 'dashboard') {
+      await renderDashboard(content);
+    } else {
+      renderComingSoon(content, PAGE_TITLES[page] || page);
+    }
+  };
+
+  /* ── 대시보드 ── */
+  async function renderDashboard(container) {
+    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+    try {
+      const [brandsSnap, productsSnap] = await Promise.all([
+        getDocs(collection(db, 'brands')),
+        getDocs(collection(db, 'products'))
+      ]);
+      const brandCount = brandsSnap.size;
+      const productCount = productsSnap.size;
+      const activeBrands = brandsSnap.docs.filter(d => d.data().active !== false).length;
+
+      container.innerHTML = [
+        '<div class="dashboard-grid">',
+        statCard('등록된 브랜드', brandCount, activeBrands + '개 활성'),
+        statCard('등록된 상품', productCount, ''),
+        statCard('SKU (옵션 조합)', '—', '준비 중'),
+        statCard('오늘 생성된 바코드', '—', '준비 중'),
+        '</div>',
+        '<div class="section-title">빠른 시작</div>',
+        '<div style="display:flex;gap:12px;flex-wrap:wrap;">',
+        quickBtn('➕', '새 브랜드 등록', 'brand-new'),
+        quickBtn('📦', '새 상품 등록', 'product-new'),
+        quickBtn('🔍', '바코드 검색', 'barcode-search'),
+        '</div>'
+      ].join('');
+    } catch (e) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">데이터를 불러오지 못했습니다.<br>' + e.message + '</div></div>';
+    }
+  }
+
+  function statCard(label, value, sub) {
+    return '<div class="stat-card"><div class="stat-card-label">' + label + '</div><div class="stat-card-value">' + value + '</div>' + (sub ? '<div class="stat-card-sub">' + sub + '</div>' : '') + '</div>';
+  }
+
+  function quickBtn(icon, label, page) {
+    return '<button onclick="navigate(\'' + page + '\')" style="display:flex;align-items:center;gap:8px;padding:12px 20px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;font-size:14px;font-weight:600;color:#374151;cursor:pointer;transition:all 0.12s;" onmouseover="this.style.borderColor=\'#2563eb\';this.style.color=\'#2563eb\'" onmouseout="this.style.borderColor=\'#e5e7eb\';this.style.color=\'#374151\'">' + icon + ' ' + label + '</button>';
+  }
+
+  /* ── 준비중 페이지 ── */
+  function renderComingSoon(container, pageName) {
+    container.innerHTML = '<div class="coming-soon"><div class="coming-soon-icon">🔧</div><div class="coming-soon-label">' + pageName + '</div><div class="coming-soon-sub">다음 단계에서 구현됩니다.</div></div>';
+  }
+</script>
+
+<script>
+  /* ── 사이드바 토글 (모바일) ── */
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebar-backdrop').classList.toggle('open');
+  }
+  function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-backdrop').classList.remove('open');
+  }
+
+  /* ── 토스트 ── */
+  function showToast(msg, type) {
+    type = type || 'info';
+    const el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.textContent = msg;
+    document.getElementById('toast-container').appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+  }
+  window.showToast = showToast;
+
+  /* ── PWA 서비스 워커 등록 ── */
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/gmbs-admin/service-worker.js').catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>
