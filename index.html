@@ -353,7 +353,7 @@
   /* ── 라우터 ── */
   const PAGE_TITLES = {
     dashboard: '대시보드',
-    'product-list': '상품', 'unit-manage': '개체 관리',
+    'product-list': '상품', 'product-new': '새 상품 등록',
     barcode: '바코드',
     'brand-list': '브랜드', 'brand-new': '새 브랜드 등록', 'brand-edit': '브랜드 수정',
     settings: '설정'
@@ -370,7 +370,8 @@
     content.innerHTML = '';
 
     if (page === 'dashboard') await renderDashboard(content);
-    else if (page === 'product-list') renderComingSoon(content, '상품');
+    else if (page === 'product-list') await renderProductList(content);
+    else if (page === 'product-new') await renderProductNew(content);
     else if (page === 'brand-list') await renderBrandList(content);
     else if (page === 'brand-new') await renderBrandForm(content, null);
     else if (page === 'brand-edit' && params) await renderBrandForm(content, params.id);
@@ -741,6 +742,312 @@
       }
     });
   }
+
+  /* ════════════════════════════════
+     상품 목록
+  ════════════════════════════════ */
+  async function renderProductList(container) {
+    document.getElementById('page-header-actions').innerHTML =
+      '<button class="btn btn-primary" onclick="navigate(\'product-new\')">➕ 새 상품 등록</button>';
+    container.innerHTML = '<div class="coming-soon"><div class="coming-soon-icon">📦</div><div class="coming-soon-label">상품 목록</div><div class="coming-soon-sub">4단계에서 구현됩니다.</div></div>';
+  }
+
+  /* ════════════════════════════════
+     새 상품 등록
+  ════════════════════════════════ */
+  async function renderProductNew(container) {
+    document.getElementById('page-header-title').textContent = '새 상품 등록';
+    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+
+    /* 브랜드 목록 로드 */
+    const brandsSnap = await getDocs(query(collection(db, 'brands'), where('active', '!=', false), orderBy('active'), orderBy('brand_name')));
+    const brands = brandsSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(b => b.active !== false);
+
+    if (brands.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">먼저 브랜드를 등록해주세요.<br><button class="btn btn-primary" style="margin-top:16px;" onclick="navigate(\'brand-new\')">브랜드 등록하러 가기</button></div></div>';
+      return;
+    }
+
+    container.innerHTML = buildProductNewHTML(brands);
+    initProductNewForm(brands);
+  }
+
+  function buildProductNewHTML(brands) {
+    const brandOptions = brands.map(b =>
+      '<option value="' + b.id + '" data-code="' + esc(b.brand_code) + '" data-last="' + esc(b.last_product_number || '000') + '">' + esc(b.brand_name) + ' (' + esc(b.brand_code) + ')</option>'
+    ).join('');
+
+    return [
+      '<div class="card" style="max-width:720px;">',
+      '<div class="card-body">',
+
+      /* ── Step 1: 기본 정보 ── */
+      '<div class="form-section">',
+      '<div class="form-section-title">기본 정보</div>',
+      '<div class="form-row">',
+      '<div class="form-group">',
+      '<label class="form-label" for="p-brand">브랜드 <span class="required">*</span></label>',
+      '<select class="form-select" id="p-brand"><option value="">브랜드 선택...</option>' + brandOptions + '</select>',
+      '</div>',
+      '<div class="form-group">',
+      '<label class="form-label">예정 상품 ID</label>',
+      '<div id="p-product-id-preview" style="padding:9px 12px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;font-family:monospace;font-size:14px;font-weight:700;color:var(--gray-400);">브랜드 선택 후 표시</div>',
+      '</div>',
+      '</div>',
+      '<div class="form-group">',
+      '<label class="form-label" for="p-name">상품명 <span class="required">*</span></label>',
+      '<input class="form-input" id="p-name" type="text" placeholder="예: 체크 파우치" />',
+      '</div>',
+      '<div class="form-row">',
+      '<div class="form-group">',
+      '<label class="form-label" for="p-price">기본 판매가 <span class="required">*</span></label>',
+      '<input class="form-input" id="p-price" type="number" min="0" step="100" placeholder="0" />',
+      '</div>',
+      '<div class="form-group">',
+      '<label class="form-label">관리 방식 <span class="required">*</span></label>',
+      '<div style="display:flex;gap:10px;margin-top:2px;">',
+      '<label style="display:flex;align-items:center;gap:8px;padding:9px 16px;border:1px solid var(--gray-300);border-radius:8px;cursor:pointer;flex:1;transition:all 0.12s;" id="lbl-qty">',
+      '<input type="radio" name="tracking" id="p-track-qty" value="quantity" checked style="accent-color:var(--blue);" />',
+      '<div><div style="font-weight:600;font-size:13px;">수량 관리</div><div style="font-size:11px;color:var(--gray-400);">일반 상품</div></div>',
+      '</label>',
+      '<label style="display:flex;align-items:center;gap:8px;padding:9px 16px;border:1px solid var(--gray-300);border-radius:8px;cursor:pointer;flex:1;transition:all 0.12s;" id="lbl-ind">',
+      '<input type="radio" name="tracking" id="p-track-ind" value="individual" style="accent-color:var(--blue);" />',
+      '<div><div style="font-weight:600;font-size:13px;">개체 관리</div><div style="font-size:11px;color:var(--gray-400);">수공예·빈티지 등</div></div>',
+      '</label>',
+      '</div>',
+      '</div>',
+      '</div>',
+      '<div class="form-group">',
+      '<label class="form-label" for="p-memo">메모 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택</span></label>',
+      '<input class="form-input" id="p-memo" type="text" placeholder="내부 메모 (선택)" />',
+      '</div>',
+      '</div>',
+
+      /* ── Step 2: 옵션 설정 ── */
+      '<div class="form-section">',
+      '<div class="form-section-title">옵션 설정</div>',
+      '<div style="display:flex;gap:10px;margin-bottom:20px;">',
+      '<label style="display:flex;align-items:center;gap:8px;padding:10px 20px;border:1px solid var(--gray-300);border-radius:8px;cursor:pointer;transition:all 0.12s;" id="lbl-no-opt">',
+      '<input type="radio" name="opt-mode" id="p-opt-none" value="none" checked style="accent-color:var(--blue);" />',
+      '<div><div style="font-weight:600;font-size:13px;">옵션 없음</div><div style="font-size:11px;color:var(--gray-400);">바코드: 상품코드-00</div></div>',
+      '</label>',
+      '<label style="display:flex;align-items:center;gap:8px;padding:10px 20px;border:1px solid var(--gray-300);border-radius:8px;cursor:pointer;transition:all 0.12s;" id="lbl-has-opt">',
+      '<input type="radio" name="opt-mode" id="p-opt-has" value="has" style="accent-color:var(--blue);" />',
+      '<div><div style="font-weight:600;font-size:13px;">옵션 있음</div><div style="font-size:11px;color:var(--gray-400);">색상, 크기 등 조합</div></div>',
+      '</label>',
+      '</div>',
+      '<div id="opt-builder" style="display:none;">',
+      buildOptionAxesHTML(),
+      '</div>',
+      '</div>',
+
+      /* ── Step 3: 조합 미리보기 ── */
+      '<div id="combo-section" style="display:none;">',
+      '<div class="form-section-title" style="margin-bottom:16px;">옵션 조합 확인</div>',
+      '<div id="combo-table-wrap"></div>',
+      '</div>',
+
+      /* ── 버튼 ── */
+      '<div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--gray-100);margin-top:8px;">',
+      '<button class="btn btn-secondary" onclick="navigate(\'product-list\')">취소</button>',
+      '<button class="btn btn-primary" id="btn-save-product" style="display:none;" onclick="saveProduct()">다음 단계에서 저장</button>',
+      '</div>',
+
+      '</div></div>'
+    ].join('');
+  }
+
+  function buildOptionAxesHTML() {
+    let html = '';
+    for (let i = 1; i <= 3; i++) {
+      html += [
+        '<div class="opt-axis" id="opt-axis-' + i + '" style="' + (i > 1 ? 'display:none;' : '') + 'margin-bottom:16px;padding:16px;background:var(--gray-50);border-radius:10px;border:1px solid var(--gray-200);">',
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">',
+        '<div style="font-size:13px;font-weight:700;color:var(--gray-700);">옵션 ' + i + '</div>',
+        (i > 1 ? '<button onclick="removeAxis(' + i + ')" style="font-size:11px;color:var(--gray-400);background:none;border:none;cursor:pointer;">✕ 제거</button>' : ''),
+        '</div>',
+        '<div class="form-row" style="margin-bottom:10px;">',
+        '<div class="form-group" style="margin-bottom:0;">',
+        '<input class="form-input" id="opt-axis-name-' + i + '" type="text" placeholder="옵션명 (예: 색상)" oninput="rebuildCombos()" />',
+        '</div>',
+        '</div>',
+        '<div>',
+        '<label class="form-label" style="font-size:12px;">옵션값 <span style="color:var(--gray-400);font-weight:400;">엔터로 추가</span></label>',
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;min-height:36px;padding:6px;border:1px solid var(--gray-300);border-radius:8px;background:#fff;align-items:center;" id="opt-tags-' + i + '" onclick="document.getElementById(\'opt-input-' + i + '\').focus()">',
+        '</div>',
+        '<input type="text" id="opt-input-' + i + '" placeholder="값 입력 후 엔터" style="border:none;outline:none;font-size:13px;padding:4px 8px;width:100%;margin-top:4px;" onkeydown="handleTagInput(event,' + i + ')" />',
+        '</div>',
+        '</div>'
+      ].join('');
+    }
+    html += '<div id="add-axis-btn-wrap" style="margin-top:8px;"><button class="btn btn-secondary" onclick="addAxis()" id="btn-add-axis" style="font-size:12px;padding:6px 14px;">+ 옵션 추가 (최대 3개)</button></div>';
+    return html;
+  }
+
+  /* ── 상품 등록 폼 초기화 ── */
+  function initProductNewForm(brands) {
+    window._pBrands = brands;
+    window._optTags = { 1: [], 2: [], 3: [] };
+    window._activeAxes = 1;
+
+    /* 브랜드 선택 → 상품ID 미리보기 */
+    document.getElementById('p-brand').addEventListener('change', function() {
+      const opt = this.options[this.selectedIndex];
+      const code = opt.dataset.code;
+      const last = opt.dataset.last || '000';
+      const preview = document.getElementById('p-product-id-preview');
+      if (!code) { preview.textContent = '브랜드 선택 후 표시'; preview.style.color = 'var(--gray-400)'; return; }
+      const next = String(parseInt(last, 10) + 1).padStart(3, '0');
+      preview.textContent = code + '-' + next;
+      preview.style.color = 'var(--blue)';
+    });
+
+    /* 관리방식 라디오 스타일 */
+    ['p-track-qty','p-track-ind'].forEach(id => {
+      document.getElementById(id).addEventListener('change', () => {
+        document.getElementById('lbl-qty').style.borderColor = document.getElementById('p-track-qty').checked ? 'var(--blue)' : 'var(--gray-300)';
+        document.getElementById('lbl-ind').style.borderColor = document.getElementById('p-track-ind').checked ? 'var(--blue)' : 'var(--gray-300)';
+      });
+    });
+
+    /* 옵션 모드 라디오 */
+    document.getElementById('p-opt-none').addEventListener('change', () => {
+      document.getElementById('opt-builder').style.display = 'none';
+      document.getElementById('combo-section').style.display = 'none';
+      document.getElementById('lbl-no-opt').style.borderColor = 'var(--blue)';
+      document.getElementById('lbl-has-opt').style.borderColor = 'var(--gray-300)';
+    });
+    document.getElementById('p-opt-has').addEventListener('change', () => {
+      document.getElementById('opt-builder').style.display = '';
+      document.getElementById('lbl-no-opt').style.borderColor = 'var(--gray-300)';
+      document.getElementById('lbl-has-opt').style.borderColor = 'var(--blue)';
+      rebuildCombos();
+    });
+  }
+
+  /* ── 옵션 태그 입력 ── */
+  window.handleTagInput = function(e, axis) {
+    if (e.key !== 'Enter' && e.key !== ',') return;
+    e.preventDefault();
+    const input = document.getElementById('opt-input-' + axis);
+    const val = input.value.trim();
+    if (!val || window._optTags[axis].includes(val)) { input.value = ''; return; }
+    window._optTags[axis].push(val);
+    input.value = '';
+    renderTags(axis);
+    rebuildCombos();
+  };
+
+  function renderTags(axis) {
+    const wrap = document.getElementById('opt-tags-' + axis);
+    if (!wrap) return;
+    wrap.innerHTML = window._optTags[axis].map((t, i) =>
+      '<span style="display:inline-flex;align-items:center;gap:4px;background:var(--blue-light);color:var(--blue);padding:3px 8px;border-radius:20px;font-size:12px;font-weight:600;">' +
+      esc(t) + '<button onclick="removeTag(' + axis + ',' + i + ')" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:14px;line-height:1;padding:0;">×</button></span>'
+    ).join('');
+  }
+
+  window.removeTag = function(axis, idx) {
+    window._optTags[axis].splice(idx, 1);
+    renderTags(axis);
+    rebuildCombos();
+  };
+
+  /* ── 축 추가/제거 ── */
+  window.addAxis = function() {
+    if (window._activeAxes >= 3) return;
+    window._activeAxes++;
+    document.getElementById('opt-axis-' + window._activeAxes).style.display = '';
+    if (window._activeAxes >= 3) document.getElementById('btn-add-axis').style.display = 'none';
+  };
+
+  window.removeAxis = function(axis) {
+    window._optTags[axis] = [];
+    document.getElementById('opt-axis-' + axis).style.display = 'none';
+    if (axis === window._activeAxes) window._activeAxes--;
+    document.getElementById('btn-add-axis').style.display = '';
+    rebuildCombos();
+  };
+
+  /* ── 옵션 조합 자동 생성 ── */
+  window.rebuildCombos = function() {
+    const axes = [];
+    for (let i = 1; i <= 3; i++) {
+      const name = (document.getElementById('opt-axis-name-' + i) || {}).value || '';
+      const tags = window._optTags[i] || [];
+      const el = document.getElementById('opt-axis-' + i);
+      if (el && el.style.display !== 'none' && name && tags.length > 0) {
+        axes.push({ name, tags });
+      }
+    }
+
+    const combos = axes.length > 0 ? cartesian(axes.map(a => a.tags)) : [];
+    const section = document.getElementById('combo-section');
+    const wrap = document.getElementById('combo-table-wrap');
+
+    if (combos.length === 0) { section.style.display = 'none'; return; }
+
+    section.style.display = '';
+    window._combos = combos.map((c, i) => ({
+      idx: i,
+      values: Array.isArray(c) ? c : [c],
+      axisNames: axes.map(a => a.name),
+      optionNumber: String(i + 1).padStart(2, '0'),
+      price: ''
+    }));
+
+    renderComboTable(wrap);
+  };
+
+  function cartesian(arrays) {
+    return arrays.reduce((acc, arr) => acc.flatMap(a => arr.map(b => [].concat(a, b))), [[]]);
+  }
+
+  function renderComboTable(wrap) {
+    if (!window._combos || !window._combos.length) return;
+    const brandSel = document.getElementById('p-brand');
+    const brandOpt = brandSel.options[brandSel.selectedIndex];
+    const brandCode = brandOpt ? brandOpt.dataset.code : '???';
+    const last = brandOpt ? (brandOpt.dataset.last || '000') : '000';
+    const productNum = String(parseInt(last, 10) + 1).padStart(3, '0');
+
+    const rows = window._combos.map((c, i) => {
+      const label = c.axisNames.map((n, j) => n + ': ' + c.values[j]).join(' / ');
+      const barcode = brandCode + '-' + productNum + '-' + c.optionNumber;
+      return '<tr id="combo-row-' + i + '" draggable="true" ondragstart="dragStart(event,' + i + ')" ondragover="dragOver(event,' + i + ')" ondrop="dragDrop(event,' + i + ')" style="cursor:grab;">' +
+        '<td style="color:var(--gray-400);font-size:18px;text-align:center;">⠿</td>' +
+        '<td style="font-size:12px;color:var(--gray-400);">' + c.optionNumber + '</td>' +
+        '<td style="font-weight:500;">' + esc(label) + '</td>' +
+        '<td><input type="number" value="' + (c.price || '') + '" placeholder="기본가 사용" min="0" step="100" style="border:1px solid var(--gray-200);border-radius:6px;padding:5px 8px;font-size:13px;width:110px;" onchange="window._combos[' + i + '].price=this.value" /></td>' +
+        '<td style="font-family:monospace;font-size:12px;color:var(--gray-500);">' + esc(barcode) + '</td>' +
+        '</tr>';
+    }).join('');
+
+    wrap.innerHTML = '<div class="table-wrap"><table>' +
+      '<thead><tr><th style="width:32px;"></th><th>옵션번호</th><th>옵션 조합</th><th>판매가 (비우면 기본가)</th><th>바코드 미리보기</th></tr></thead>' +
+      '<tbody id="combo-tbody">' + rows + '</tbody>' +
+      '</table></div>' +
+      '<div style="font-size:11px;color:var(--gray-400);margin-top:8px;">⠿ 드래그해서 순서 변경 — 순서대로 옵션번호가 부여됩니다</div>';
+  }
+
+  /* ── 드래그 앤 드롭 ── */
+  let _dragIdx = null;
+  window.dragStart = function(e, i) { _dragIdx = i; e.dataTransfer.effectAllowed = 'move'; };
+  window.dragOver = function(e, i) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
+  window.dragDrop = function(e, i) {
+    e.preventDefault();
+    if (_dragIdx === null || _dragIdx === i) return;
+    const moved = window._combos.splice(_dragIdx, 1)[0];
+    window._combos.splice(i, 0, moved);
+    window._combos.forEach((c, j) => { c.idx = j; c.optionNumber = String(j + 1).padStart(2, '0'); });
+    _dragIdx = null;
+    renderComboTable(document.getElementById('combo-table-wrap'));
+  };
+
+  /* ── 상품 저장 (4단계에서 완성) ── */
+  window.saveProduct = function() {
+    showToast('저장 기능은 4단계에서 구현됩니다.', 'info');
+  };
 
   /* ── 준비중 ── */
   function renderComingSoon(container, name) {
