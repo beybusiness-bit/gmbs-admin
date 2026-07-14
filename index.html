@@ -453,13 +453,27 @@
   ════════════════════════════════ */
   function renderBarcodePage(container) {
     window._bcSelected = {};
+    if (!window._labelLayout) window._labelLayout = [
+      { id:'brand',   label:'브랜드명',     visible:true },
+      { id:'product', label:'상품명',       visible:true },
+      { id:'option',  label:'옵션',         visible:true },
+      { id:'price',   label:'가격',         visible:true },
+      { id:'barcode', label:'바코드 이미지', visible:true },
+      { id:'code',    label:'바코드 문자',   visible:true },
+    ];
+    if (!window._labelSize) window._labelSize = { w:200, h:120 };
+
     container.innerHTML =
-      '<div style="display:flex;gap:4px;margin-bottom:20px;background:#fff;padding:6px;border-radius:10px;border:1px solid var(--gray-200);width:fit-content;">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;">' +
+      '<div style="display:flex;gap:4px;background:#fff;padding:6px;border-radius:10px;border:1px solid var(--gray-200);">' +
       ['search','recent'].map((id, i) =>
         '<button id="barcode-tab-' + id + '" onclick="switchBarcodeTab(\'' + id + '\')" style="padding:7px 18px;border-radius:7px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.12s;' + (i===0?'background:var(--blue);color:#fff;':'background:transparent;color:var(--gray-500);') + '">' +
         (id==='search'?'🔍 검색 · 출력':'🕐 최근 생성') + '</button>'
       ).join('') +
-      '</div><div id="barcode-tab-content"></div>';
+      '</div>' +
+      '<button onclick="openBcDefaultSettings()" style="margin-left:auto;display:flex;align-items:center;gap:6px;padding:7px 14px;border:1px solid var(--gray-200);border-radius:8px;background:#fff;font-size:12px;font-weight:600;color:var(--gray-600);cursor:pointer;">⚙️ 기본 설정</button>' +
+      '</div>' +
+      '<div id="barcode-tab-content"></div>';
     switchBarcodeTab('search');
   }
 
@@ -475,6 +489,48 @@
     else initBarcodeRecent(content);
   };
 
+  /* ── 기본 설정 모달 ── */
+  window.openBcDefaultSettings = async function() {
+    let cfg = {};
+    try { const s = await getDoc(doc(db,'settings','config')); if(s.exists()) cfg = s.data(); } catch(e) {}
+    const pnd = cfg.product_number_digits || 3;
+    const ond = cfg.option_number_digits || 2;
+    const und = cfg.unit_number_digits || 3;
+    const lw  = window._labelSize.w;
+    const lh  = window._labelSize.h;
+    const body =
+      '<div style="margin-bottom:20px;">' +
+      '<div style="font-weight:700;font-size:14px;margin-bottom:4px;">번호 자릿수 규칙</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:12px;">⚠️ 변경 시 기존 바코드와 형식이 달라집니다.</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">' +
+      settingNumField('상품번호 자릿수','bcs-pnd',pnd,1,6) + settingNumField('옵션번호 자릿수','bcs-ond',ond,1,4) + settingNumField('개체번호 자릿수','bcs-und',und,1,6) +
+      '</div></div>' +
+      '<div>' +
+      '<div style="font-weight:700;font-size:14px;margin-bottom:4px;">라벨 기본 크기 (px)</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:12px;">출력 창의 초기 크기로 사용됩니다.</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:260px;">' +
+      settingNumField('너비','bcs-lw',lw,80,600) + settingNumField('높이','bcs-lh',lh,60,400) +
+      '</div></div>';
+    const footer =
+      '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>' +
+      '<button class="btn btn-primary" onclick="saveBcDefaultSettings()">저장</button>';
+    showModal('기본 설정', body, footer, 'sm');
+  };
+
+  window.saveBcDefaultSettings = async function() {
+    const pnd = parseInt((document.getElementById('bcs-pnd')||{}).value||3,10);
+    const ond = parseInt((document.getElementById('bcs-ond')||{}).value||2,10);
+    const und = parseInt((document.getElementById('bcs-und')||{}).value||3,10);
+    const lw  = parseInt((document.getElementById('bcs-lw')||{}).value||200,10);
+    const lh  = parseInt((document.getElementById('bcs-lh')||{}).value||120,10);
+    try {
+      await setDoc(doc(db,'settings','config'), { product_number_digits:pnd, option_number_digits:ond, unit_number_digits:und, default_label_width:lw, default_label_height:lh }, {merge:true});
+      window._labelSize = { w:lw, h:lh };
+      showToast('설정 저장 완료', 'success');
+      closeModal();
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
   /* ── 검색 탭 ── */
   function initBarcodeSearch(content) {
     window._bcSelected = {};
@@ -488,7 +544,7 @@
       '<div id="bc-action-bar" class="bc-action-bar" style="display:none;">' +
       '<div id="bc-action-count" style="flex:1;font-size:13px;font-weight:600;color:var(--gray-700);"></div>' +
       '<button class="btn btn-secondary" onclick="openLabelPreview()">🔍 미리보기 · 인쇄</button>' +
-      '<button class="btn btn-secondary" onclick="downloadLabelZIP()">📦 ZIP</button>' +
+      '<button class="btn btn-secondary" onclick="downloadLabels()">📥 다운로드</button>' +
       '</div>';
   }
 
@@ -526,10 +582,14 @@
           const optLabel = sku.option_number==='00' ? '옵션 없음'
             : [1,2,3].map(i=>sku['option_'+i+'_name']?sku['option_'+i+'_name']+': '+sku['option_'+i+'_value']:'').filter(Boolean).join(' / ');
           const itemKey = sku.id;
-          window._bcAllItems[itemKey] = { barcodeValue: sku.barcode_value, productName: p.product_name, brandCode: p.brand_code, optLabel, price: sku.price||p.base_price||0, type:'sku', productId:p.id, skuId:sku.id };
+          window._bcAllItems[itemKey] = { barcodeValue: sku.barcode_value, productName: p.product_name, brandCode: p.brand_code, optLabel, price: sku.price||p.base_price||0, type:'sku', productId:p.id, skuId:sku.id, isIndividual };
+
+          const chkOnchange = isIndividual
+            ? 'toggleBcParentSku(\'' + p.id + '\',\'' + sku.id + '\',this.checked)'
+            : 'toggleBcItem(\'' + itemKey + '\')';
 
           return '<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--gray-100);" id="bc-row-' + itemKey + '">' +
-            '<input type="checkbox" id="bc-chk-' + itemKey + '" onchange="toggleBcItem(\'' + itemKey + '\')" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue);" />' +
+            '<input type="checkbox" id="bc-chk-' + itemKey + '" onchange="' + chkOnchange + '" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue);" />' +
             '<div style="flex:1;">' +
             '<div style="font-size:13px;font-weight:500;">' + esc(optLabel) + '</div>' +
             '<code style="font-size:11px;color:var(--gray-400);">' + esc(sku.barcode_value) + '</code>' +
@@ -558,27 +618,70 @@
   };
 
   /* 개체 목록 펼치기 */
-  window.expandBcUnits = async function(productId, skuId) {
+  window.expandBcUnits = async function(productId, skuId, autoCheck) {
     const wrap = document.getElementById('bc-units-' + skuId);
     if (!wrap) return;
-    if (wrap.style.display !== 'none') { wrap.style.display = 'none'; return; }
+    if (!autoCheck && wrap.style.display !== 'none') { wrap.style.display = 'none'; return; }
     wrap.style.display = '';
+    if (wrap.dataset.loaded === '1') {
+      if (autoCheck) {
+        wrap.querySelectorAll('input[type="checkbox"]').forEach(chk => {
+          if (!chk.checked) { chk.checked = true; toggleBcItem(chk.id.replace('bc-chk-','')); }
+        });
+      }
+      return;
+    }
     wrap.innerHTML = '<div class="spinner spinner-sm" style="margin:8px 0;"></div>';
     const snap = await getDocs(collection(db, 'products', productId, 'skus', skuId, 'units'));
     const units = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.unit_number||'').localeCompare(b.unit_number||''));
     if (units.length === 0) { wrap.innerHTML = '<div style="font-size:12px;color:var(--gray-400);padding:8px 0;">등록된 개체가 없습니다.</div>'; return; }
 
     const skuItem = window._bcAllItems[skuId] || {};
+    wrap.dataset.loaded = '1';
     wrap.innerHTML = units.map(u => {
       const key = u.id;
       window._bcAllItems[key] = { barcodeValue: u.barcode_value, productName: skuItem.productName, brandCode: skuItem.brandCode, optLabel: (skuItem.optLabel||'') + ' #' + u.unit_number, price: skuItem.price||0, type:'unit', productId, skuId, unitId:u.id };
       return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;">' +
-        '<input type="checkbox" id="bc-chk-' + key + '" onchange="toggleBcItem(\'' + key + '\')" style="width:14px;height:14px;cursor:pointer;accent-color:var(--blue);" />' +
+        '<input type="checkbox" id="bc-chk-' + key + '" onchange="toggleBcItem(\'' + key + '\');syncParentChk(\'' + skuId + '\')" style="width:14px;height:14px;cursor:pointer;accent-color:var(--blue);" />' +
         '<code style="font-size:11px;color:var(--blue);">' + esc(u.barcode_value) + '</code>' +
         '<span style="font-size:11px;color:var(--gray-500);">#' + u.unit_number + '</span>' +
         '<span class="badge ' + (u.unit_status==='판매중'?'badge-green':'badge-gray') + '" style="font-size:10px;">' + esc(u.unit_status) + '</span>' +
         '</div>';
     }).join('');
+
+    if (autoCheck) {
+      wrap.querySelectorAll('input[type="checkbox"]').forEach(chk => {
+        chk.checked = true; toggleBcItem(chk.id.replace('bc-chk-',''));
+      });
+    }
+  };
+
+  /* 개체관리 SKU 부모 체크박스 토글 */
+  window.toggleBcParentSku = async function(productId, skuId, checked) {
+    const chk = document.getElementById('bc-chk-' + skuId);
+    if (checked) {
+      await expandBcUnits(productId, skuId, true);
+    } else {
+      const wrap = document.getElementById('bc-units-' + skuId);
+      if (wrap) {
+        wrap.querySelectorAll('input[type="checkbox"]').forEach(c => {
+          if (c.checked) { c.checked = false; toggleBcItem(c.id.replace('bc-chk-','')); }
+        });
+      }
+      if (chk) chk.checked = false;
+    }
+    updateBcActionBar();
+  };
+
+  /* 자식 체크 변경 시 부모 체크박스 동기화 */
+  window.syncParentChk = function(skuId) {
+    const wrap = document.getElementById('bc-units-' + skuId);
+    const parentChk = document.getElementById('bc-chk-' + skuId);
+    if (!wrap || !parentChk) return;
+    const all = wrap.querySelectorAll('input[type="checkbox"]');
+    const allChecked = all.length > 0 && Array.from(all).every(c => c.checked);
+    parentChk.checked = allChecked;
+    parentChk.indeterminate = !allChecked && Array.from(all).some(c => c.checked);
   };
 
   /* 선택 토글 */
@@ -639,64 +742,220 @@
   }
 
   /* ════════════════════════════════
+     라벨 레이아웃 헬퍼
+  ════════════════════════════════ */
+  function getLabelPresets() {
+    try { return JSON.parse(localStorage.getItem('gmbs_label_presets') || '[]'); } catch(e) { return []; }
+  }
+  function saveLabelPresetsStore(presets) {
+    localStorage.setItem('gmbs_label_presets', JSON.stringify(presets));
+  }
+
+  function buildLabelHTML(item, layout, w, h, idPrefix, i) {
+    let html = '<div class="barcode-label" id="' + idPrefix + i + '" style="width:' + w + 'px;min-height:' + h + 'px;">';
+    layout.forEach(function(row) {
+      if (!row.visible) return;
+      if (row.id === 'brand' && item.brandCode) html += '<div class="label-brand">' + esc(item.brandCode) + '</div>';
+      else if (row.id === 'product' && item.productName) html += '<div class="label-product">' + esc(item.productName) + '</div>';
+      else if (row.id === 'option' && item.optLabel && item.optLabel !== '옵션 없음') html += '<div class="label-brand">' + esc(item.optLabel) + '</div>';
+      else if (row.id === 'price' && item.price) html += '<div class="label-price">' + item.price.toLocaleString() + '원</div>';
+      else if (row.id === 'barcode') html += '<svg id="' + idPrefix + 'svg-' + i + '" class="label-svg"></svg>';
+      else if (row.id === 'code') html += '<div class="label-code">' + esc(item.barcodeValue) + '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  /* canvas에 직접 바코드 + 텍스트 렌더링 (SVG→canvas 변환 없음) */
+  function drawLabelToCanvas(item, layout, w, h) {
+    const scale = 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = w * scale; canvas.height = h * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+    ctx.textAlign = 'center';
+
+    let y = 8;
+    layout.forEach(function(row) {
+      if (!row.visible) return;
+      if (row.id === 'brand' && item.brandCode) {
+        ctx.font = '9px sans-serif'; ctx.fillStyle = '#888';
+        ctx.fillText(String(item.brandCode).slice(0,30), w/2, y + 9); y += 14;
+      } else if (row.id === 'product' && item.productName) {
+        ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#000';
+        ctx.fillText(String(item.productName).slice(0,30), w/2, y + 12); y += 17;
+      } else if (row.id === 'option' && item.optLabel && item.optLabel !== '옵션 없음') {
+        ctx.font = '9px sans-serif'; ctx.fillStyle = '#555';
+        ctx.fillText(String(item.optLabel).slice(0,30), w/2, y + 9); y += 13;
+      } else if (row.id === 'price' && item.price) {
+        ctx.font = '10px sans-serif'; ctx.fillStyle = '#000';
+        ctx.fillText(item.price.toLocaleString() + '원', w/2, y + 10); y += 15;
+      } else if (row.id === 'barcode') {
+        try {
+          const bcCanvas = document.createElement('canvas');
+          JsBarcode(bcCanvas, item.barcodeValue, { format:'CODE128', width:1.5, height:40, displayValue:false, margin:2 });
+          const bw = Math.min(bcCanvas.width / scale, w - 8);
+          const bh = 44;
+          ctx.drawImage(bcCanvas, (w - bw) / 2, y, bw, bh - 4);
+          y += bh;
+        } catch(e) {}
+      } else if (row.id === 'code') {
+        ctx.font = '8px monospace'; ctx.fillStyle = '#555';
+        ctx.fillText(String(item.barcodeValue), w/2, y + 8); y += 13;
+      }
+    });
+    return canvas;
+  }
+
+  /* ════════════════════════════════
      라벨 미리보기 · 인쇄 모달
   ════════════════════════════════ */
   window.openLabelPreview = function() {
     const items = Object.values(window._bcSelected);
     if (items.length === 0) { showToast('선택된 항목이 없습니다.', 'error'); return; }
 
-    const settingsHTML =
-      '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:20px;padding:12px 16px;background:var(--gray-50);border-radius:10px;font-size:12px;">' +
-      '<span style="font-weight:600;color:var(--gray-700);">라벨 설정</span>' +
-      '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="lbl-show-brand" checked onchange="rerenderLabels()"> 브랜드명</label>' +
-      '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="lbl-show-product" checked onchange="rerenderLabels()"> 상품명</label>' +
-      '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="lbl-show-option" checked onchange="rerenderLabels()"> 옵션</label>' +
-      '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="lbl-show-price" checked onchange="rerenderLabels()"> 가격</label>' +
-      '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="lbl-show-code" checked onchange="rerenderLabels()"> 바코드 문자</label>' +
-      '<span style="color:var(--gray-300);">|</span>' +
-      '너비<input type="number" id="lbl-w" value="200" min="120" max="400" style="width:52px;border:1px solid var(--gray-300);border-radius:4px;padding:2px 4px;font-size:12px;margin:0 2px;" onchange="rerenderLabels()" />px ' +
-      '높이<input type="number" id="lbl-h" value="120" min="80" max="300" style="width:52px;border:1px solid var(--gray-300);border-radius:4px;padding:2px 4px;font-size:12px;margin:0 2px;" onchange="rerenderLabels()" />px' +
-      '</div>' +
-      '<div id="label-preview-grid" class="label-preview-grid"></div>';
+    const presets = getLabelPresets();
+    const presetOptions = presets.length
+      ? presets.map(function(p) { return '<option value="' + esc(p.name) + '">' + esc(p.name) + '</option>'; }).join('')
+      : '<option value="">저장된 프리셋 없음</option>';
 
-    const footerHTML =
+    const body =
+      /* ── 프리셋 ── */
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px 14px;background:var(--gray-50);border-radius:8px;flex-wrap:wrap;">' +
+      '<span style="font-size:12px;font-weight:600;color:var(--gray-600);">프리셋</span>' +
+      '<select id="lbl-preset-sel" style="border:1px solid var(--gray-200);border-radius:6px;padding:4px 8px;font-size:12px;flex:1;min-width:120px;">' + presetOptions + '</select>' +
+      '<button onclick="loadLabelPreset()" class="btn btn-secondary" style="padding:4px 10px;font-size:12px;">불러오기</button>' +
+      '<button onclick="saveLabelPreset()" class="btn btn-secondary" style="padding:4px 10px;font-size:12px;">저장</button>' +
+      '<button onclick="deleteLabelPreset()" class="btn btn-secondary" style="padding:4px 10px;font-size:12px;color:var(--red);">삭제</button>' +
+      '</div>' +
+
+      /* ── 라벨 크기 ── */
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;font-size:12px;flex-wrap:wrap;">' +
+      '<span style="font-weight:600;color:var(--gray-700);">크기</span>' +
+      '너비 <input type="number" id="lbl-w" value="' + window._labelSize.w + '" min="80" max="600" style="width:56px;border:1px solid var(--gray-300);border-radius:4px;padding:3px 5px;font-size:12px;" onchange="rerenderLabels()" /> px' +
+      '&nbsp;&nbsp;높이 <input type="number" id="lbl-h" value="' + window._labelSize.h + '" min="60" max="400" style="width:56px;border:1px solid var(--gray-300);border-radius:4px;padding:3px 5px;font-size:12px;" onchange="rerenderLabels()" /> px' +
+      '</div>' +
+
+      /* ── 레이아웃 편집기 ── */
+      '<div style="display:flex;gap:20px;flex-wrap:wrap;">' +
+      '<div style="min-width:220px;">' +
+      '<div style="font-size:12px;font-weight:700;color:var(--gray-700);margin-bottom:8px;">라벨 항목 · 순서</div>' +
+      '<div id="lbl-layout-editor" style="background:var(--gray-50);border-radius:8px;padding:8px 12px;"></div>' +
+      '<div style="font-size:11px;color:var(--gray-400);margin-top:6px;">↑↓으로 순서 변경, 체크로 표시 여부 선택</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:200px;">' +
+      '<div style="font-size:12px;font-weight:700;color:var(--gray-700);margin-bottom:8px;">미리보기</div>' +
+      '<div id="label-preview-grid" class="label-preview-grid"></div>' +
+      '</div>' +
+      '</div>';
+
+    const totalLabels = Object.values(window._bcSelected).reduce(function(s,i){return s+(i.copies||1);},0);
+    const footer =
       '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>' +
-      '<button class="btn btn-secondary" onclick="downloadLabelZIP()">📦 ZIP 다운로드</button>' +
+      '<button class="btn btn-secondary" onclick="downloadLabels()">📥 다운로드 (' + totalLabels + '장)</button>' +
       '<button class="btn btn-primary" onclick="printLabels()">🖨️ 인쇄</button>';
 
-    showModal('라벨 미리보기', settingsHTML, footerHTML, 'lg');
-    setTimeout(rerenderLabels, 100);
+    showModal('라벨 미리보기', body, footer, 'lg');
+    setTimeout(function() { renderLayoutEditor(); rerenderLabels(); }, 80);
+  };
+
+  function renderLayoutEditor() {
+    const editor = document.getElementById('lbl-layout-editor');
+    if (!editor) return;
+    const layout = window._labelLayout;
+    editor.innerHTML = layout.map(function(row, i) {
+      return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--gray-200);">' +
+        '<input type="checkbox" ' + (row.visible?'checked':'') + ' onchange="updateLayoutRow(' + i + ',this.checked);rerenderLabels()" style="width:14px;height:14px;accent-color:var(--blue);cursor:pointer;" />' +
+        '<span style="flex:1;font-size:13px;color:var(--gray-700);">' + esc(row.label) + '</span>' +
+        (i > 0 ? '<button onclick="moveLayoutRow(' + i + ',-1)" title="위로" style="border:none;background:var(--gray-200);border-radius:4px;padding:2px 7px;cursor:pointer;font-size:13px;line-height:1;">↑</button>' : '<span style="width:26px;display:inline-block;"></span>') +
+        (i < layout.length - 1 ? '<button onclick="moveLayoutRow(' + i + ',1)" title="아래로" style="border:none;background:var(--gray-200);border-radius:4px;padding:2px 7px;cursor:pointer;font-size:13px;line-height:1;">↓</button>' : '<span style="width:26px;display:inline-block;"></span>') +
+        '</div>';
+    }).join('');
+  }
+
+  window.updateLayoutRow = function(i, checked) {
+    window._labelLayout[i].visible = checked;
+  };
+
+  window.moveLayoutRow = function(i, dir) {
+    const arr = window._labelLayout;
+    const j = i + dir;
+    if (j < 0 || j >= arr.length) return;
+    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    renderLayoutEditor();
+    rerenderLabels();
+  };
+
+  window.loadLabelPreset = function() {
+    const sel = document.getElementById('lbl-preset-sel');
+    if (!sel || !sel.value) { showToast('불러올 프리셋을 선택하세요.', 'error'); return; }
+    const preset = getLabelPresets().find(function(p) { return p.name === sel.value; });
+    if (!preset) return;
+    window._labelLayout = JSON.parse(JSON.stringify(preset.layout));
+    window._labelSize = preset.size;
+    const lw = document.getElementById('lbl-w');
+    const lh = document.getElementById('lbl-h');
+    if (lw) lw.value = preset.size.w;
+    if (lh) lh.value = preset.size.h;
+    renderLayoutEditor();
+    rerenderLabels();
+    showToast('프리셋 "' + preset.name + '" 불러오기 완료', 'success');
+  };
+
+  window.saveLabelPreset = function() {
+    const name = prompt('저장할 프리셋 이름을 입력하세요:');
+    if (!name || !name.trim()) return;
+    const n = name.trim();
+    const lw = parseInt((document.getElementById('lbl-w')||{}).value || window._labelSize.w, 10);
+    const lh = parseInt((document.getElementById('lbl-h')||{}).value || window._labelSize.h, 10);
+    const presets = getLabelPresets().filter(function(p) { return p.name !== n; });
+    presets.push({ name: n, layout: JSON.parse(JSON.stringify(window._labelLayout)), size: { w:lw, h:lh } });
+    saveLabelPresetsStore(presets);
+    /* 셀렉터 새로고침 */
+    const sel = document.getElementById('lbl-preset-sel');
+    if (sel) {
+      sel.innerHTML = presets.map(function(p) { return '<option value="' + esc(p.name) + '">' + esc(p.name) + '</option>'; }).join('');
+      sel.value = n;
+    }
+    showToast('프리셋 "' + n + '" 저장 완료', 'success');
+  };
+
+  window.deleteLabelPreset = function() {
+    const sel = document.getElementById('lbl-preset-sel');
+    if (!sel || !sel.value) { showToast('삭제할 프리셋을 선택하세요.', 'error'); return; }
+    const name = sel.value;
+    if (!confirm('"' + name + '" 프리셋을 삭제할까요?')) return;
+    const presets = getLabelPresets().filter(function(p) { return p.name !== name; });
+    saveLabelPresetsStore(presets);
+    sel.innerHTML = presets.length
+      ? presets.map(function(p) { return '<option value="' + esc(p.name) + '">' + esc(p.name) + '</option>'; }).join('')
+      : '<option value="">저장된 프리셋 없음</option>';
+    showToast('프리셋 삭제됨', 'success');
   };
 
   window.rerenderLabels = function() {
     const grid = document.getElementById('label-preview-grid');
     if (!grid) return;
-    const showBrand = document.getElementById('lbl-show-brand') && document.getElementById('lbl-show-brand').checked;
-    const showProduct = document.getElementById('lbl-show-product') && document.getElementById('lbl-show-product').checked;
-    const showOption = document.getElementById('lbl-show-option') && document.getElementById('lbl-show-option').checked;
-    const showPrice = document.getElementById('lbl-show-price') && document.getElementById('lbl-show-price').checked;
-    const showCode = document.getElementById('lbl-show-code') && document.getElementById('lbl-show-code').checked;
-    const w = parseInt((document.getElementById('lbl-w')||{}).value||200);
-    const h = parseInt((document.getElementById('lbl-h')||{}).value||120);
+    const w = parseInt((document.getElementById('lbl-w')||{}).value || window._labelSize.w, 10);
+    const h = parseInt((document.getElementById('lbl-h')||{}).value || window._labelSize.h, 10);
+    window._labelSize = { w, h };
+    const layout = window._labelLayout;
 
     const items = Object.values(window._bcSelected);
-    const allLabels = items.flatMap(item => Array(item.copies||1).fill(item));
+    const allLabels = items.reduce(function(acc, item) {
+      for (var c = 0; c < (item.copies||1); c++) acc.push(item);
+      return acc;
+    }, []);
 
-    grid.innerHTML = allLabels.map((item, i) =>
-      '<div class="barcode-label" id="lbl-' + i + '" style="width:' + w + 'px;min-height:' + h + 'px;">' +
-      (showBrand && item.brandCode ? '<div class="label-brand">' + esc(item.brandCode) + '</div>' : '') +
-      (showProduct && item.productName ? '<div class="label-product">' + esc(item.productName) + '</div>' : '') +
-      (showOption && item.optLabel && item.optLabel !== '옵션 없음' ? '<div class="label-brand">' + esc(item.optLabel) + '</div>' : '') +
-      (showPrice && item.price ? '<div class="label-price">' + item.price.toLocaleString() + '원</div>' : '') +
-      '<svg id="lbl-svg-' + i + '" class="label-svg"></svg>' +
-      (showCode ? '<div class="label-code">' + esc(item.barcodeValue) + '</div>' : '') +
-      '</div>'
-    ).join('');
+    grid.innerHTML = allLabels.map(function(item, i) {
+      return buildLabelHTML(item, layout, w, h, 'lbl-', i);
+    }).join('');
 
-    allLabels.forEach((item, i) => {
+    allLabels.forEach(function(item, i) {
       try {
         JsBarcode('#lbl-svg-' + i, item.barcodeValue, {
-          format: 'CODE128', width: 1.5, height: Math.floor(h * 0.35),
+          format: 'CODE128', width: 1.5, height: Math.max(30, Math.floor(h * 0.32)),
           displayValue: false, margin: 4, background: '#ffffff', lineColor: '#000000'
         });
       } catch(e) { console.warn('바코드 생성 실패:', e); }
@@ -708,97 +967,87 @@
     const items = Object.values(window._bcSelected);
     if (items.length === 0) { showToast('선택된 항목이 없습니다.', 'error'); return; }
 
-    const showBrand = (document.getElementById('lbl-show-brand')||{}).checked !== false;
-    const showProduct = (document.getElementById('lbl-show-product')||{}).checked !== false;
-    const showOption = (document.getElementById('lbl-show-option')||{}).checked !== false;
-    const showPrice = (document.getElementById('lbl-show-price')||{}).checked !== false;
-    const showCode = (document.getElementById('lbl-show-code')||{}).checked !== false;
-    const w = parseInt((document.getElementById('lbl-w')||{}).value||200);
-    const h = parseInt((document.getElementById('lbl-h')||{}).value||120);
+    const layout = window._labelLayout;
+    const w = parseInt((document.getElementById('lbl-w')||{}).value || window._labelSize.w, 10);
+    const h = parseInt((document.getElementById('lbl-h')||{}).value || window._labelSize.h, 10);
 
-    const allLabels = items.flatMap(item => Array(item.copies||1).fill(item));
+    const allLabels = items.reduce(function(acc, item) {
+      for (var c = 0; c < (item.copies||1); c++) acc.push(item);
+      return acc;
+    }, []);
+
     const printArea = document.getElementById('print-area');
     printArea.innerHTML = '<div class="print-label-page">' +
-      allLabels.map((item, i) =>
-        '<div class="barcode-label" id="plbl-' + i + '" style="width:' + w + 'px;min-height:' + h + 'px;">' +
-        (showBrand && item.brandCode ? '<div class="label-brand">' + esc(item.brandCode) + '</div>' : '') +
-        (showProduct && item.productName ? '<div class="label-product">' + esc(item.productName) + '</div>' : '') +
-        (showOption && item.optLabel && item.optLabel !== '옵션 없음' ? '<div class="label-brand">' + esc(item.optLabel) + '</div>' : '') +
-        (showPrice && item.price ? '<div class="label-price">' + item.price.toLocaleString() + '원</div>' : '') +
-        '<svg id="plbl-svg-' + i + '" class="label-svg"></svg>' +
-        (showCode ? '<div class="label-code">' + esc(item.barcodeValue) + '</div>' : '') +
-        '</div>'
-      ).join('') +
-      '</div>';
+      allLabels.map(function(item, i) {
+        return buildLabelHTML(item, layout, w, h, 'plbl-', i);
+      }).join('') + '</div>';
 
-    allLabels.forEach((item, i) => {
-      try { JsBarcode('#plbl-svg-' + i, item.barcodeValue, { format:'CODE128', width:1.5, height:Math.floor(h*0.35), displayValue:false, margin:4 }); } catch(e) {}
+    allLabels.forEach(function(item, i) {
+      try { JsBarcode('#plbl-svg-' + i, item.barcodeValue, { format:'CODE128', width:1.5, height:Math.max(30,Math.floor(h*0.32)), displayValue:false, margin:4 }); } catch(e) {}
     });
 
-    setTimeout(async () => {
+    setTimeout(async function() {
       window.print();
-      /* 출력일 기록 */
       const now = new Date().toISOString();
-      await Promise.all(items.map(item => {
+      await Promise.all(items.map(function(item) {
         if (item.type === 'unit' && item.productId && item.skuId && item.unitId) {
           return updateDoc(doc(db,'products',item.productId,'skus',item.skuId,'units',item.unitId), { barcode_printed_at: now });
         } else if (item.productId && item.skuId) {
           return updateDoc(doc(db,'products',item.productId,'skus',item.skuId), { barcode_printed_at: now });
         }
         return Promise.resolve();
-      })).catch(()=>{});
+      })).catch(function(){});
       printArea.innerHTML = '';
     }, 300);
   };
 
-  /* ── ZIP 다운로드 ── */
-  window.downloadLabelZIP = async function() {
+  /* ── PNG 다운로드 (단일 = PNG, 복수 = ZIP) ── */
+  window.downloadLabels = async function() {
     const items = Object.values(window._bcSelected);
     if (items.length === 0) { showToast('선택된 항목이 없습니다.', 'error'); return; }
-    if (typeof JSZip === 'undefined') { showToast('ZIP 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도해주세요.', 'error'); return; }
 
-    showToast('PNG 생성 중...', 'info');
+    const layout = window._labelLayout;
+    const w = parseInt((document.getElementById('lbl-w')||{}).value || window._labelSize.w, 10);
+    const h = parseInt((document.getElementById('lbl-h')||{}).value || window._labelSize.h, 10);
+
+    const allLabels = items.reduce(function(acc, item) {
+      for (var c = 0; c < (item.copies||1); c++) acc.push(item);
+      return acc;
+    }, []);
+
+    showToast('이미지 생성 중...', 'info');
+
+    /* 단일 라벨 → PNG 직접 다운로드 */
+    if (allLabels.length === 1) {
+      try {
+        const canvas = drawLabelToCanvas(allLabels[0], layout, w, h);
+        const a = document.createElement('a');
+        a.href = canvas.toDataURL('image/png');
+        a.download = allLabels[0].barcodeValue.replace(/\//g,'-') + '.png';
+        a.click();
+        showToast('PNG 다운로드 완료', 'success');
+      } catch(e) { showToast('PNG 생성 실패: ' + e.message, 'error'); }
+      return;
+    }
+
+    /* 복수 라벨 → ZIP */
+    if (typeof JSZip === 'undefined') { showToast('ZIP 라이브러리 로딩 중입니다. 잠시 후 다시 시도해주세요.', 'error'); return; }
     const zip = new JSZip();
-    const allLabels = items.flatMap(item => Array(item.copies||1).fill(item));
-
-    for (let i = 0; i < allLabels.length; i++) {
+    for (var i = 0; i < allLabels.length; i++) {
       const item = allLabels[i];
       try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 300; canvas.height = 180;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#fff'; ctx.fillRect(0,0,300,180);
-
-        const tmpSvg = document.createElement('svg');
-        document.body.appendChild(tmpSvg);
-        JsBarcode(tmpSvg, item.barcodeValue, { format:'CODE128', width:1.5, height:60, displayValue:false, margin:4 });
-        const svgData = new XMLSerializer().serializeToString(tmpSvg);
-        document.body.removeChild(tmpSvg);
-
-        await new Promise((resolve) => {
-          const img = new Image();
-          img.onload = () => { ctx.drawImage(img, 0, 50); resolve(); };
-          img.onerror = resolve;
-          img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
-        });
-
-        ctx.fillStyle = '#000'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
-        if (item.productName) ctx.fillText(item.productName.slice(0,30), 150, 20);
-        ctx.font = '9px sans-serif'; ctx.fillStyle = '#555';
-        ctx.fillText(item.barcodeValue, 150, 170);
-
+        const canvas = drawLabelToCanvas(item, layout, w, h);
         const pngData = canvas.toDataURL('image/png').split(',')[1];
         zip.file((i+1).toString().padStart(3,'0') + '_' + item.barcodeValue.replace(/\//g,'-') + '.png', pngData, {base64:true});
       } catch(e) { console.warn('PNG 생성 실패:', item.barcodeValue, e); }
     }
-
     const blob = await zip.generateAsync({ type:'blob' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'barcodes_' + new Date().toISOString().slice(0,10) + '.zip';
     a.click();
     URL.revokeObjectURL(a.href);
-    showToast('ZIP 다운로드 완료 (' + allLabels.length + '개)', 'success');
+    showToast('ZIP 다운로드 완료 (' + allLabels.length + '장)', 'success');
   };
 
   async function renderBrandList(container) {
@@ -1747,46 +1996,18 @@
      설정 페이지
   ════════════════════════════════ */
   async function renderSettings(container) {
-    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
-    let cfg = {};
-    try {
-      const snap = await getDoc(doc(db, 'settings', 'config'));
-      if (snap.exists()) cfg = snap.data();
-    } catch(e) {}
-
-    const pnd = cfg.product_number_digits || 3;
-    const ond = cfg.option_number_digits || 2;
-    const und = cfg.unit_number_digits || 3;
-    const lw  = cfg.default_label_width  || 60;
-    const lh  = cfg.default_label_height || 40;
-
     container.innerHTML =
       '<div style="max-width:660px;">' +
 
-      /* ── 번호 자릿수 ── */
-      '<div class="card" style="margin-bottom:20px;">' +
-      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">번호 자릿수 규칙</div>' +
-      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">⚠️ 자릿수를 변경하면 기존 바코드와 형식이 달라집니다. 신중하게 결정하세요.</div>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">' +
-      settingNumField('상품번호 자릿수', 'cfg-pnd', pnd, 1, 6) +
-      settingNumField('옵션번호 자릿수', 'cfg-ond', ond, 1, 4) +
-      settingNumField('개체번호 자릿수', 'cfg-und', und, 1, 6) +
+      /* ── 바코드 설정 링크 안내 ── */
+      '<div class="card" style="margin-bottom:20px;background:var(--blue-light);border:1px solid #bfdbfe;">' +
+      '<div style="display:flex;align-items:center;gap:12px;">' +
+      '<span style="font-size:24px;">⚙️</span>' +
+      '<div>' +
+      '<div style="font-size:14px;font-weight:700;color:var(--blue);">번호 자릿수 · 라벨 기본 크기</div>' +
+      '<div style="font-size:12px;color:var(--gray-600);margin-top:2px;">바코드 페이지의 <b>기본 설정</b> 버튼에서 변경할 수 있습니다.</div>' +
       '</div>' +
-      '<div style="margin-top:16px;">' +
-      '<button onclick="saveNumberDigits()" class="btn btn-primary">저장</button>' +
-      '</div>' +
-      '</div>' +
-
-      /* ── 라벨 기본 크기 ── */
-      '<div class="card" style="margin-bottom:20px;">' +
-      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">라벨 기본 크기</div>' +
-      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">바코드 출력 시 기본으로 사용할 라벨 크기(mm)입니다. 출력 창에서 개별 조정도 가능합니다.</div>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:320px;">' +
-      settingNumField('라벨 가로(mm)', 'cfg-lw', lw, 20, 200) +
-      settingNumField('라벨 세로(mm)', 'cfg-lh', lh, 10, 120) +
-      '</div>' +
-      '<div style="margin-top:16px;">' +
-      '<button onclick="saveLabelSize()" class="btn btn-primary">저장</button>' +
+      '<button onclick="navigate(\'barcode\')" class="btn btn-primary" style="margin-left:auto;">바코드 페이지로 →</button>' +
       '</div>' +
       '</div>' +
 
@@ -1835,31 +2056,6 @@
       '<input type="number" id="' + id + '" value="' + val + '" min="' + min + '" max="' + max + '" style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;">' +
       '</div>';
   }
-
-  window.saveNumberDigits = async function() {
-    const pnd = parseInt(document.getElementById('cfg-pnd').value, 10);
-    const ond = parseInt(document.getElementById('cfg-ond').value, 10);
-    const und = parseInt(document.getElementById('cfg-und').value, 10);
-    if (!pnd || !ond || !und || pnd < 1 || ond < 1 || und < 1) {
-      showToast('유효한 자릿수를 입력해 주세요.', 'error'); return;
-    }
-    try {
-      await setDoc(doc(db, 'settings', 'config'), { product_number_digits: pnd, option_number_digits: ond, unit_number_digits: und }, { merge: true });
-      showToast('번호 자릿수가 저장되었습니다.', 'success');
-    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
-  };
-
-  window.saveLabelSize = async function() {
-    const lw = parseInt(document.getElementById('cfg-lw').value, 10);
-    const lh = parseInt(document.getElementById('cfg-lh').value, 10);
-    if (!lw || !lh || lw < 20 || lh < 10) {
-      showToast('유효한 크기를 입력해 주세요.', 'error'); return;
-    }
-    try {
-      await setDoc(doc(db, 'settings', 'config'), { default_label_width: lw, default_label_height: lh }, { merge: true });
-      showToast('라벨 크기가 저장되었습니다.', 'success');
-    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
-  };
 
   async function checkFirebaseStatus() {
     const area = document.getElementById('firebase-status-area');
