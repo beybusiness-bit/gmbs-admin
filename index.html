@@ -272,7 +272,7 @@
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
   import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-  import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, collection, getDocs, query, where, orderBy } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+  import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, collection, getDocs, query, where, orderBy, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
   import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
 
   const firebaseConfig = {
@@ -350,12 +350,29 @@
     }
   });
 
+  /* ── 모달 시스템 ── */
+  window.closeModal = function() {
+    document.getElementById('modal-container').innerHTML = '';
+  };
+
+  function showModal(title, bodyHTML, footerHTML, size) {
+    const maxW = size === 'lg' ? '860px' : '640px';
+    document.getElementById('modal-container').innerHTML =
+      '<div class="modal-backdrop" onclick="if(event.target===this)closeModal()">' +
+      '<div class="modal" style="max-width:' + maxW + ';">' +
+      '<div class="modal-header"><div class="modal-title">' + title + '</div>' +
+      '<button class="modal-close" onclick="closeModal()">✕</button></div>' +
+      '<div class="modal-body">' + bodyHTML + '</div>' +
+      (footerHTML ? '<div class="modal-footer">' + footerHTML + '</div>' : '') +
+      '</div></div>';
+  }
+
   /* ── 라우터 ── */
   const PAGE_TITLES = {
     dashboard: '대시보드',
-    'product-list': '상품', 'product-new': '새 상품 등록',
+    'product-list': '상품',
     barcode: '바코드',
-    'brand-list': '브랜드', 'brand-new': '새 브랜드 등록', 'brand-edit': '브랜드 수정',
+    'brand-list': '브랜드',
     settings: '설정'
   };
 
@@ -371,10 +388,7 @@
 
     if (page === 'dashboard') await renderDashboard(content);
     else if (page === 'product-list') await renderProductList(content);
-    else if (page === 'product-new') await renderProductNew(content);
     else if (page === 'brand-list') await renderBrandList(content);
-    else if (page === 'brand-new') await renderBrandForm(content, null);
-    else if (page === 'brand-edit' && params) await renderBrandForm(content, params.id);
     else if (page === 'barcode') renderBarcodePage(content);
     else renderComingSoon(content, PAGE_TITLES[page] || page);
   };
@@ -399,9 +413,9 @@
         '</div>',
         '<div class="section-title">빠른 시작</div>',
         '<div style="display:flex;gap:12px;flex-wrap:wrap;">',
-        quickBtn('➕', '새 브랜드 등록', 'brand-new'),
-        quickBtn('📦', '새 상품 등록', 'product-new'),
-        quickBtn('🔍', '바코드 검색', 'barcode-search'),
+        quickBtn('➕', '새 브랜드 등록', 'openBrandModal()'),
+        quickBtn('📦', '새 상품 등록', 'openProductModal()'),
+        quickBtn('🔍', '바코드 검색', 'navigate(\'barcode\')'),
         '</div>'
       ].join('');
     } catch (e) {
@@ -448,7 +462,7 @@
 
   async function renderBrandList(container) {
     document.getElementById('page-header-actions').innerHTML =
-      '<button class="btn btn-primary" onclick="navigate(\'brand-new\')">➕ 새 브랜드 등록</button>';
+      '<button class="btn btn-primary" onclick="openBrandModal(null)">➕ 새 브랜드 등록</button>';
 
     container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
     try {
@@ -471,7 +485,7 @@
           '<td>' + (typeLabel[b.brand_type] || b.brand_type) + '</td>' +
           '<td>' + activeText + '</td>' +
           '<td style="color:var(--gray-400);font-size:12px;">' + (b.last_product_number || '000') + '</td>' +
-          '<td><button class="btn btn-secondary" style="padding:5px 12px;font-size:12px;" onclick="navigate(\'brand-edit\',{id:\'' + d.id + '\'})">수정</button></td>' +
+          '<td><button class="btn btn-secondary" style="padding:5px 12px;font-size:12px;" onclick="openBrandModal(\'' + d.id + '\')">수정</button></td>' +
           '</tr>';
       }).join('');
 
@@ -484,49 +498,45 @@
   }
 
   /* ════════════════════════════════
-     브랜드 등록 / 수정 폼
+     브랜드 등록 / 수정 (모달)
   ════════════════════════════════ */
-  async function renderBrandForm(container, brandId) {
+  window.openBrandModal = async function(brandId) {
     const isEdit = !!brandId;
-    document.getElementById('page-header-title').textContent = isEdit ? '브랜드 수정' : '새 브랜드 등록';
-
-    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+    showModal(isEdit ? '브랜드 수정' : '새 브랜드 등록',
+      '<div class="spinner" style="margin:40px auto;"></div>', null);
 
     let existing = null;
     if (isEdit) {
-      const snap = await getDoc(doc(db, 'brands', brandId));
-      if (!snap.exists()) { container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">브랜드를 찾을 수 없습니다.</div></div>'; return; }
-      existing = { id: snap.id, ...snap.data() };
+      try {
+        const snap = await getDoc(doc(db, 'brands', brandId));
+        if (!snap.exists()) { closeModal(); showToast('브랜드를 찾을 수 없습니다.', 'error'); return; }
+        existing = { id: snap.id, ...snap.data() };
+      } catch(e) { closeModal(); showToast('불러오기 실패: ' + e.message, 'error'); return; }
     }
 
     const si = existing && existing.settlement_info ? existing.settlement_info : {};
     const fi = existing && existing.fee_info ? existing.fee_info : {};
-    const bType = existing ? existing.brand_type : 'PB';
-    const needsSettlement = bType === '위탁' || bType === '매입';
 
-    container.innerHTML = '<div class="card" style="max-width:680px;"><div class="card-body">' + buildBrandFormHTML(existing, si, fi) + '</div></div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      '<button class="btn btn-primary" id="btn-save-brand">' + (isEdit ? '저장하기' : '브랜드 등록') + '</button>';
 
-    /* 거래유형 변경 시 정산/수수료 섹션 토글 */
+    showModal(isEdit ? '브랜드 수정' : '새 브랜드 등록', buildBrandFormHTML(existing, si, fi), footerHTML);
+
     document.getElementById('f-brand-type').addEventListener('change', function() {
       const show = this.value === '위탁' || this.value === '매입';
       document.getElementById('section-settlement').style.display = show ? '' : 'none';
       document.getElementById('section-fee').style.display = show ? '' : 'none';
     });
-
-    /* 브랜드코드 자동 대문자 */
     document.getElementById('f-brand-code').addEventListener('input', function() {
       const pos = this.selectionStart;
       this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
       this.setSelectionRange(pos, pos);
     });
-
-    /* 파일 업로드 영역 */
     setupFileUpload('upload-id-card', 'preview-id-card', 'input-id-card');
     setupFileUpload('upload-bank-book', 'preview-bank-book', 'input-bank-book');
-
-    /* 저장 버튼 */
     document.getElementById('btn-save-brand').addEventListener('click', () => saveBrand(brandId, existing));
-  }
+  };
 
   function buildBrandFormHTML(existing, si, fi) {
     const v = (key, def) => existing ? (existing[key] || def || '') : (def || '');
@@ -611,13 +621,6 @@
       '</div>',
       '</div>',
 
-      /* 버튼 */
-      '<div style="display:flex;gap:10px;justify-content:flex-end;padding-top:8px;border-top:1px solid var(--gray-100);margin-top:8px;">',
-      '<button class="btn btn-secondary" onclick="navigate(\'brand-list\')">취소</button>',
-      '<button class="btn btn-primary" id="btn-save-brand">',
-      existing ? '저장하기' : '브랜드 등록',
-      '</button>',
-      '</div>'
     ].join('');
   }
 
@@ -702,7 +705,9 @@
         showToast('브랜드를 등록했습니다.', 'success');
       }
 
-      navigate('brand-list');
+      closeModal();
+      const content = document.getElementById('page-content');
+      if (content) await renderBrandList(content);
     } catch (e) {
       showToast('저장 중 오류: ' + e.message, 'error');
       btn.disabled = false;
@@ -748,29 +753,41 @@
   ════════════════════════════════ */
   async function renderProductList(container) {
     document.getElementById('page-header-actions').innerHTML =
-      '<button class="btn btn-primary" onclick="navigate(\'product-new\')">➕ 새 상품 등록</button>';
+      '<button class="btn btn-primary" onclick="openProductModal()">➕ 새 상품 등록</button>';
     container.innerHTML = '<div class="coming-soon"><div class="coming-soon-icon">📦</div><div class="coming-soon-label">상품 목록</div><div class="coming-soon-sub">4단계에서 구현됩니다.</div></div>';
   }
 
   /* ════════════════════════════════
-     새 상품 등록
+     새 상품 등록 (모달)
   ════════════════════════════════ */
-  async function renderProductNew(container) {
-    document.getElementById('page-header-title').textContent = '새 상품 등록';
-    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+  window.openProductModal = async function() {
+    showModal('새 상품 등록', '<div class="spinner" style="margin:40px auto;"></div>', null, 'lg');
 
-    /* 브랜드 목록 로드 */
-    const brandsSnap = await getDocs(query(collection(db, 'brands'), where('active', '!=', false), orderBy('active'), orderBy('brand_name')));
-    const brands = brandsSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(b => b.active !== false);
-
-    if (brands.length === 0) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">먼저 브랜드를 등록해주세요.<br><button class="btn btn-primary" style="margin-top:16px;" onclick="navigate(\'brand-new\')">브랜드 등록하러 가기</button></div></div>';
+    let brands;
+    try {
+      const snap = await getDocs(collection(db, 'brands'));
+      brands = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(b => b.active !== false);
+      brands.sort((a, b) => (a.brand_name || '').localeCompare(b.brand_name || ''));
+    } catch(e) {
+      document.querySelector('#modal-container .modal-body').innerHTML =
+        '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">브랜드 목록을 불러오지 못했습니다.<br>' + e.message + '</div></div>';
       return;
     }
 
-    container.innerHTML = buildProductNewHTML(brands);
+    if (brands.length === 0) {
+      document.querySelector('#modal-container .modal-body').innerHTML =
+        '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">먼저 브랜드를 등록해주세요.<br>' +
+        '<button class="btn btn-primary" style="margin-top:16px;" onclick="closeModal();openBrandModal(null)">브랜드 등록하러 가기</button></div></div>';
+      return;
+    }
+
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      '<button class="btn btn-primary" id="btn-save-product" onclick="saveProduct()">다음 단계에서 저장</button>';
+
+    showModal('새 상품 등록', buildProductNewHTML(brands), footerHTML, 'lg');
     initProductNewForm(brands);
-  }
+  };
 
   function buildProductNewHTML(brands) {
     const brandOptions = brands.map(b =>
@@ -778,8 +795,6 @@
     ).join('');
 
     return [
-      '<div class="card" style="max-width:720px;">',
-      '<div class="card-body">',
 
       /* ── Step 1: 기본 정보 ── */
       '<div class="form-section">',
@@ -847,13 +862,7 @@
       '<div id="combo-table-wrap"></div>',
       '</div>',
 
-      /* ── 버튼 ── */
-      '<div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--gray-100);margin-top:8px;">',
-      '<button class="btn btn-secondary" onclick="navigate(\'product-list\')">취소</button>',
-      '<button class="btn btn-primary" id="btn-save-product" style="display:none;" onclick="saveProduct()">다음 단계에서 저장</button>',
-      '</div>',
 
-      '</div></div>'
     ].join('');
   }
 
@@ -1047,6 +1056,7 @@
   /* ── 상품 저장 (4단계에서 완성) ── */
   window.saveProduct = function() {
     showToast('저장 기능은 4단계에서 구현됩니다.', 'info');
+    closeModal();
   };
 
   /* ── 준비중 ── */
@@ -1058,8 +1068,9 @@
   function statCard(label, value, sub) {
     return '<div class="stat-card"><div class="stat-card-label">' + label + '</div><div class="stat-card-value">' + value + '</div>' + (sub ? '<div class="stat-card-sub">' + sub + '</div>' : '') + '</div>';
   }
-  function quickBtn(icon, label, page) {
-    return '<button onclick="navigate(\'' + page + '\')" style="display:flex;align-items:center;gap:8px;padding:12px 20px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;font-size:14px;font-weight:600;color:#374151;cursor:pointer;" onmouseover="this.style.borderColor=\'#2563eb\';this.style.color=\'#2563eb\'" onmouseout="this.style.borderColor=\'#e5e7eb\';this.style.color=\'#374151\'">' + icon + ' ' + label + '</button>';
+  function quickBtn(icon, label, action) {
+    const onclick = action.includes('(') ? action : "navigate('" + action + "')";
+    return '<button onclick="' + onclick + '" style="display:flex;align-items:center;gap:8px;padding:12px 20px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;font-size:14px;font-weight:600;color:#374151;cursor:pointer;" onmouseover="this.style.borderColor=\'#2563eb\';this.style.color=\'#2563eb\'" onmouseout="this.style.borderColor=\'#e5e7eb\';this.style.color=\'#374151\'">' + icon + ' ' + label + '</button>';
   }
   function formGroup(label, id, inputHTML, required) {
     return '<div class="form-group"><label class="form-label" for="' + id + '">' + label + (required ? '<span class="required">*</span>' : '') + '</label>' + inputHTML + '</div>';
