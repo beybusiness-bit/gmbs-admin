@@ -19,340 +19,162 @@
       --gray-50: #f9fafb;
       --gray-100: #f3f4f6;
       --gray-200: #e5e7eb;
+      --gray-300: #d1d5db;
       --gray-400: #9ca3af;
       --gray-500: #6b7280;
       --gray-700: #374151;
       --gray-900: #111827;
       --red: #dc2626;
+      --red-light: #fef2f2;
       --green: #16a34a;
+      --green-light: #f0fdf4;
+      --yellow: #d97706;
+      --yellow-light: #fffbeb;
       --sidebar-w: 220px;
     }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 14px;
-      color: var(--gray-900);
-      background: var(--gray-50);
-    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; color: var(--gray-900); background: var(--gray-50); }
 
-    /* ── 로그인 화면 ── */
-    #login-screen {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-    }
-    .login-card {
-      background: #fff;
-      border-radius: 16px;
-      padding: 48px 40px;
-      text-align: center;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
-      max-width: 360px;
-      width: 100%;
-    }
-    .login-logo {
-      width: 64px;
-      height: 64px;
-      background: var(--blue);
-      border-radius: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 20px;
-      font-size: 28px;
-      color: #fff;
-      font-weight: 800;
-    }
+    /* ── 로그인 ── */
+    #login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); }
+    .login-card { background: #fff; border-radius: 16px; padding: 48px 40px; text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,0.08); max-width: 360px; width: 100%; }
+    .login-logo { width: 64px; height: 64px; background: var(--blue); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 28px; color: #fff; font-weight: 800; }
     .login-title { font-size: 22px; font-weight: 700; color: var(--gray-900); margin-bottom: 6px; }
     .login-sub { font-size: 13px; color: var(--gray-500); margin-bottom: 32px; line-height: 1.5; }
-    .btn-google {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      width: 100%;
-      padding: 12px 20px;
-      border: 2px solid var(--gray-200);
-      border-radius: 10px;
-      background: #fff;
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--gray-700);
-      cursor: pointer;
-      transition: all 0.15s;
-    }
+    .btn-google { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 12px 20px; border: 2px solid var(--gray-200); border-radius: 10px; background: #fff; font-size: 14px; font-weight: 600; color: var(--gray-700); cursor: pointer; transition: all 0.15s; }
     .btn-google:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-light); }
-    .btn-google svg { flex-shrink: 0; }
-    .login-notice {
-      margin-top: 20px;
-      font-size: 12px;
-      color: var(--gray-400);
-      line-height: 1.6;
-    }
+    .login-notice { margin-top: 20px; font-size: 12px; color: var(--gray-400); line-height: 1.6; }
 
     /* ── 앱 레이아웃 ── */
     #app { display: none; min-height: 100vh; }
     #app.visible { display: flex; }
 
     /* ── 사이드바 ── */
-    #sidebar {
-      width: var(--sidebar-w);
-      min-height: 100vh;
-      background: #1e293b;
-      display: flex;
-      flex-direction: column;
-      flex-shrink: 0;
-      position: fixed;
-      top: 0;
-      left: 0;
-      bottom: 0;
-      z-index: 100;
-    }
-    .sidebar-header {
-      padding: 20px 16px 16px;
-      border-bottom: 1px solid #334155;
-    }
-    .sidebar-brand {
-      font-size: 16px;
-      font-weight: 800;
-      color: #fff;
-      letter-spacing: -0.3px;
-    }
-    .sidebar-brand-sub {
-      font-size: 11px;
-      color: #94a3b8;
-      margin-top: 2px;
-    }
+    #sidebar { width: var(--sidebar-w); min-height: 100vh; background: #1e293b; display: flex; flex-direction: column; flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; }
+    .sidebar-header { padding: 20px 16px 16px; border-bottom: 1px solid #334155; }
+    .sidebar-brand { font-size: 16px; font-weight: 800; color: #fff; letter-spacing: -0.3px; }
+    .sidebar-brand-sub { font-size: 11px; color: #94a3b8; margin-top: 2px; }
     .sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; }
-    .nav-section-label {
-      font-size: 10px;
-      font-weight: 600;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      padding: 10px 16px 4px;
-    }
-    .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 9px 16px;
-      color: #94a3b8;
-      cursor: pointer;
-      border-radius: 0;
-      transition: all 0.12s;
-      font-size: 13.5px;
-      font-weight: 500;
-      border-left: 3px solid transparent;
-      margin: 1px 0;
-    }
+    .nav-section-label { font-size: 10px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; padding: 10px 16px 4px; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 16px; color: #94a3b8; cursor: pointer; transition: all 0.12s; font-size: 13.5px; font-weight: 500; border-left: 3px solid transparent; margin: 1px 0; }
     .nav-item:hover { color: #e2e8f0; background: #334155; }
     .nav-item.active { color: #fff; background: #2563eb22; border-left-color: var(--blue); }
     .nav-item .icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
-    .nav-sub {
-      padding-left: 16px;
-    }
-    .nav-sub .nav-item {
-      font-size: 13px;
-      color: #64748b;
-      padding: 7px 16px 7px 46px;
-      border-left: none;
-    }
-    .nav-sub .nav-item:hover { color: #cbd5e1; background: #1e3a5f22; }
-    .nav-sub .nav-item.active { color: #93c5fd; background: transparent; }
-    .sidebar-footer {
-      padding: 12px 16px;
-      border-top: 1px solid #334155;
-    }
-    .user-info {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background 0.12s;
-    }
+    .sidebar-footer { padding: 12px 16px; border-top: 1px solid #334155; }
+    .user-info { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; cursor: pointer; transition: background 0.12s; }
     .user-info:hover { background: #334155; }
-    .user-avatar {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      background: var(--blue);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 13px;
-      font-weight: 700;
-      color: #fff;
-      flex-shrink: 0;
-      overflow: hidden;
-    }
+    .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--blue); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0; overflow: hidden; }
     .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
     .user-name { font-size: 12px; color: #cbd5e1; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .user-email { font-size: 11px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .btn-logout {
-      margin-top: 8px;
-      width: 100%;
-      padding: 7px;
-      border: 1px solid #334155;
-      border-radius: 7px;
-      background: transparent;
-      color: #94a3b8;
-      font-size: 12px;
-      cursor: pointer;
-      transition: all 0.12s;
-    }
+    .btn-logout { margin-top: 8px; width: 100%; padding: 7px; border: 1px solid #334155; border-radius: 7px; background: transparent; color: #94a3b8; font-size: 12px; cursor: pointer; transition: all 0.12s; }
     .btn-logout:hover { background: #334155; color: #e2e8f0; }
 
-    /* ── 모바일 사이드바 토글 ── */
-    #sidebar-toggle {
-      display: none;
-      position: fixed;
-      top: 12px;
-      left: 12px;
-      z-index: 200;
-      width: 40px;
-      height: 40px;
-      border-radius: 10px;
-      background: #1e293b;
-      border: none;
-      color: #fff;
-      font-size: 20px;
-      cursor: pointer;
-      align-items: center;
-      justify-content: center;
-    }
-    #sidebar-backdrop {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.4);
-      z-index: 99;
-    }
+    /* ── 모바일 ── */
+    #sidebar-toggle { display: none; position: fixed; top: 12px; left: 12px; z-index: 200; width: 40px; height: 40px; border-radius: 10px; background: #1e293b; border: none; color: #fff; font-size: 20px; cursor: pointer; align-items: center; justify-content: center; }
+    #sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 99; }
 
-    /* ── 메인 콘텐츠 ── */
-    #main {
-      margin-left: var(--sidebar-w);
-      flex: 1;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    .page-header {
-      background: #fff;
-      border-bottom: 1px solid var(--gray-200);
-      padding: 0 28px;
-      height: 56px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      position: sticky;
-      top: 0;
-      z-index: 50;
-    }
-    .page-header-title {
-      font-size: 17px;
-      font-weight: 700;
-      color: var(--gray-900);
-    }
+    /* ── 메인 ── */
+    #main { margin-left: var(--sidebar-w); flex: 1; min-height: 100vh; display: flex; flex-direction: column; }
+    .page-header { background: #fff; border-bottom: 1px solid var(--gray-200); padding: 0 28px; height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 16px; position: sticky; top: 0; z-index: 50; }
+    .page-header-title { font-size: 17px; font-weight: 700; color: var(--gray-900); }
     .page-content { padding: 28px; flex: 1; }
 
-    /* ── 대시보드 카드 ── */
-    .dashboard-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 16px;
-      margin-bottom: 28px;
-    }
-    .stat-card {
-      background: #fff;
-      border-radius: 12px;
-      padding: 20px;
-      border: 1px solid var(--gray-200);
-    }
+    /* ── 공통 컴포넌트 ── */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.12s; }
+    .btn-primary { background: var(--blue); color: #fff; }
+    .btn-primary:hover { background: var(--blue-dark); }
+    .btn-secondary { background: #fff; color: var(--gray-700); border: 1px solid var(--gray-200); }
+    .btn-secondary:hover { background: var(--gray-50); border-color: var(--gray-300); }
+    .btn-danger { background: var(--red-light); color: var(--red); border: 1px solid #fecaca; }
+    .btn-danger:hover { background: #fee2e2; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .card { background: #fff; border-radius: 12px; border: 1px solid var(--gray-200); }
+    .card-body { padding: 24px; }
+
+    /* ── 폼 ── */
+    .form-section { margin-bottom: 32px; }
+    .form-section-title { font-size: 14px; font-weight: 700; color: var(--gray-900); margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--gray-100); }
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--gray-700); margin-bottom: 6px; }
+    .form-label .required { color: var(--red); margin-left: 2px; }
+    .form-label .hint { font-size: 11px; font-weight: 400; color: var(--gray-400); margin-left: 6px; }
+    .form-input { width: 100%; padding: 9px 12px; border: 1px solid var(--gray-300); border-radius: 8px; font-size: 14px; color: var(--gray-900); background: #fff; transition: border-color 0.12s; outline: none; }
+    .form-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #2563eb18; }
+    .form-input.error { border-color: var(--red); }
+    .form-input:disabled { background: var(--gray-50); color: var(--gray-400); cursor: not-allowed; }
+    .form-select { width: 100%; padding: 9px 12px; border: 1px solid var(--gray-300); border-radius: 8px; font-size: 14px; color: var(--gray-900); background: #fff; cursor: pointer; outline: none; }
+    .form-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #2563eb18; }
+    .form-error { font-size: 12px; color: var(--red); margin-top: 4px; }
+    .form-hint { font-size: 12px; color: var(--gray-400); margin-top: 4px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    /* ── 배지 ── */
+    .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .badge-blue { background: #dbeafe; color: #1d4ed8; }
+    .badge-green { background: #dcfce7; color: #15803d; }
+    .badge-gray { background: var(--gray-100); color: var(--gray-500); }
+    .badge-yellow { background: #fef9c3; color: #854d0e; }
+    .badge-red { background: #fee2e2; color: #b91c1c; }
+
+    /* ── 브랜드 목록 테이블 ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 11px; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 16px; border-bottom: 1px solid var(--gray-200); white-space: nowrap; }
+    td { padding: 14px 16px; border-bottom: 1px solid var(--gray-100); font-size: 13px; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--gray-50); }
+    .td-code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; font-weight: 600; color: var(--blue); }
+
+    /* ── 파일 업로드 ── */
+    .file-upload-area { border: 2px dashed var(--gray-300); border-radius: 8px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.12s; background: var(--gray-50); }
+    .file-upload-area:hover { border-color: var(--blue); background: var(--blue-light); }
+    .file-upload-area.has-file { border-color: var(--green); background: var(--green-light); border-style: solid; }
+    .file-upload-label { font-size: 13px; color: var(--gray-500); }
+    .file-upload-label strong { color: var(--blue); }
+    .file-preview { display: flex; align-items: center; gap: 10px; }
+    .file-preview img { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid var(--gray-200); }
+    .file-preview-name { font-size: 12px; color: var(--gray-700); font-weight: 500; }
+    .file-preview-size { font-size: 11px; color: var(--gray-400); }
+
+    /* ── 대시보드 ── */
+    .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .stat-card { background: #fff; border-radius: 12px; padding: 20px; border: 1px solid var(--gray-200); }
     .stat-card-label { font-size: 12px; color: var(--gray-500); margin-bottom: 8px; }
     .stat-card-value { font-size: 28px; font-weight: 800; color: var(--gray-900); }
     .stat-card-sub { font-size: 11px; color: var(--gray-400); margin-top: 4px; }
+    .section-title { font-size: 15px; font-weight: 700; color: var(--gray-900); margin-bottom: 16px; }
 
-    .section-title {
-      font-size: 15px;
-      font-weight: 700;
-      color: var(--gray-900);
-      margin-bottom: 16px;
-    }
+    /* ── 모달 ── */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 500; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .modal { background: #fff; border-radius: 16px; width: 100%; max-width: 640px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+    .modal-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--gray-200); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: #fff; z-index: 1; border-radius: 16px 16px 0 0; }
+    .modal-title { font-size: 16px; font-weight: 700; }
+    .modal-close { width: 32px; height: 32px; border-radius: 8px; border: none; background: var(--gray-100); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+    .modal-close:hover { background: var(--gray-200); }
+    .modal-body { padding: 24px; }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid var(--gray-200); display: flex; gap: 10px; justify-content: flex-end; }
 
-    /* ── 빈 상태 ── */
-    .empty-state {
-      text-align: center;
-      padding: 60px 20px;
-      color: var(--gray-400);
-    }
+    /* ── 빈 상태 / 준비중 ── */
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--gray-400); }
     .empty-state-icon { font-size: 48px; margin-bottom: 12px; }
     .empty-state-text { font-size: 14px; line-height: 1.6; }
-
-    /* ── 준비중 페이지 ── */
-    .coming-soon {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 60vh;
-      gap: 12px;
-      color: var(--gray-400);
-    }
+    .coming-soon { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; gap: 12px; color: var(--gray-400); }
     .coming-soon-icon { font-size: 56px; }
     .coming-soon-label { font-size: 18px; font-weight: 700; color: var(--gray-700); }
     .coming-soon-sub { font-size: 13px; }
 
     /* ── 로딩 ── */
-    #loading-screen {
-      position: fixed;
-      inset: 0;
-      background: #fff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      gap: 16px;
-      z-index: 9999;
-    }
-    .spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid var(--gray-200);
-      border-top-color: var(--blue);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
+    #loading-screen { position: fixed; inset: 0; background: #fff; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; z-index: 9999; }
+    .spinner { width: 40px; height: 40px; border: 3px solid var(--gray-200); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .spinner-sm { width: 16px; height: 16px; border-width: 2px; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .loading-text { font-size: 14px; color: var(--gray-500); }
 
-    /* ── 토스트 알림 ── */
-    #toast-container {
-      position: fixed;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 9999;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-      pointer-events: none;
-    }
-    .toast {
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 500;
-      color: #fff;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      animation: toast-in 0.2s ease;
-    }
+    /* ── 토스트 ── */
+    #toast-container { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+    .toast { padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 500; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: toast-in 0.2s ease; white-space: nowrap; }
     .toast.success { background: var(--green); }
     .toast.error { background: var(--red); }
     .toast.info { background: var(--blue); }
@@ -368,18 +190,18 @@
       .page-header { padding: 0 16px 0 60px; }
       .page-content { padding: 16px; }
       .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
+      .form-row { grid-template-columns: 1fr; }
+      .modal { max-width: 100%; border-radius: 16px 16px 0 0; margin-top: auto; }
     }
   </style>
 </head>
 <body>
 
-<!-- 로딩 화면 -->
 <div id="loading-screen">
   <div class="spinner"></div>
   <div class="loading-text">불러오는 중...</div>
 </div>
 
-<!-- 로그인 화면 -->
 <div id="login-screen" style="display:none;">
   <div class="login-card">
     <div class="login-logo">G</div>
@@ -398,13 +220,10 @@
   </div>
 </div>
 
-<!-- 모바일 사이드바 토글 -->
 <button id="sidebar-toggle" onclick="toggleSidebar()">☰</button>
 <div id="sidebar-backdrop" onclick="closeSidebar()"></div>
 
-<!-- 앱 -->
 <div id="app">
-  <!-- 사이드바 -->
   <nav id="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-brand">GMBS 관리</div>
@@ -414,7 +233,6 @@
       <div class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
         <span class="icon">📊</span> 대시보드
       </div>
-
       <div class="nav-section-label">상품 관리</div>
       <div class="nav-item" data-page="product-list" onclick="navigate('product-list')">
         <span class="icon">📦</span> 상품 목록
@@ -425,7 +243,6 @@
       <div class="nav-item" data-page="unit-manage" onclick="navigate('unit-manage')">
         <span class="icon">🏷️</span> 개체 관리
       </div>
-
       <div class="nav-section-label">바코드</div>
       <div class="nav-item" data-page="barcode-search" onclick="navigate('barcode-search')">
         <span class="icon">🔍</span> 검색 · 출력
@@ -433,7 +250,6 @@
       <div class="nav-item" data-page="barcode-recent" onclick="navigate('barcode-recent')">
         <span class="icon">🕐</span> 최근 생성
       </div>
-
       <div class="nav-section-label">브랜드</div>
       <div class="nav-item" data-page="brand-list" onclick="navigate('brand-list')">
         <span class="icon">🏬</span> 브랜드 목록
@@ -441,14 +257,13 @@
       <div class="nav-item" data-page="brand-new" onclick="navigate('brand-new')">
         <span class="icon">➕</span> 새 브랜드 등록
       </div>
-
       <div class="nav-section-label">시스템</div>
       <div class="nav-item" data-page="settings" onclick="navigate('settings')">
         <span class="icon">⚙️</span> 설정
       </div>
     </div>
     <div class="sidebar-footer">
-      <div class="user-info" id="user-info-block">
+      <div class="user-info">
         <div class="user-avatar" id="user-avatar">?</div>
         <div>
           <div class="user-name" id="user-display-name">-</div>
@@ -459,40 +274,24 @@
     </div>
   </nav>
 
-  <!-- 메인 -->
   <main id="main">
     <div class="page-header">
       <div class="page-header-title" id="page-header-title">대시보드</div>
+      <div id="page-header-actions"></div>
     </div>
-    <div class="page-content" id="page-content">
-      <!-- 페이지 콘텐츠가 여기에 렌더링됩니다 -->
-    </div>
+    <div class="page-content" id="page-content"></div>
   </main>
 </div>
 
-<!-- 토스트 -->
 <div id="toast-container"></div>
+<div id="modal-container"></div>
 
-<!-- Firebase SDK -->
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-  import {
-    getAuth,
-    GoogleAuthProvider,
-    signInWithPopup,
-    onAuthStateChanged,
-    signOut as fbSignOut
-  } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-  import {
-    getFirestore,
-    doc,
-    getDoc,
-    setDoc,
-    collection,
-    getDocs
-  } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+  import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, collection, getDocs, query, where, orderBy } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+  import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
 
-  /* ── Firebase 초기화 ── */
   const firebaseConfig = {
     apiKey: 'AIzaSyC8uy09XOeEYIs1m3Rga5BMqd7gS7o3roI',
     authDomain: 'beyhome-admin.firebaseapp.com',
@@ -501,34 +300,29 @@
     messagingSenderId: '849320781553',
     appId: '1:849320781553:web:5363f137447f791aaa2b50'
   };
+
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getFirestore(app);
+  const storage = getStorage(app);
 
-  /* ── 허용 이메일 ── */
   const ALLOWED_EMAILS = ['itsbeybusiness@gmail.com', 'baekeun0@gmail.com'];
 
-  /* ── 전역 상태 ── */
   window._db = db;
-  window._auth = auth;
+  window._storage = storage;
   window._currentUser = null;
 
-  /* ── 로그인 버튼 ── */
+  /* ── 로그인 ── */
   document.getElementById('btn-google-login').addEventListener('click', async () => {
-    const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      await signInWithPopup(auth, new GoogleAuthProvider());
     } catch (e) {
-      showToast('로그인 중 오류가 발생했습니다: ' + e.message, 'error');
+      showToast('로그인 중 오류: ' + e.message, 'error');
     }
   });
 
-  /* ── 로그아웃 ── */
-  window.signOut = async () => {
-    await fbSignOut(auth);
-  };
+  window.signOut = () => fbSignOut(auth);
 
-  /* ── 인증 상태 감지 ── */
   onAuthStateChanged(auth, async (user) => {
     const loading = document.getElementById('loading-screen');
     const loginScreen = document.getElementById('login-screen');
@@ -542,38 +336,28 @@
         showToast('접근 권한이 없는 계정입니다.', 'error');
         return;
       }
-
       window._currentUser = user;
-
-      /* 사용자 정보 사이드바 표시 */
       document.getElementById('user-display-name').textContent = user.displayName || '관리자';
       document.getElementById('user-email-display').textContent = user.email;
       const avatarEl = document.getElementById('user-avatar');
       if (user.photoURL) {
-        avatarEl.innerHTML = '<img src="' + user.photoURL + '" alt="프로필" />';
+        avatarEl.innerHTML = '<img src="' + user.photoURL + '" alt="" />';
       } else {
         avatarEl.textContent = (user.displayName || 'A')[0].toUpperCase();
       }
-
       loading.style.display = 'none';
       loginScreen.style.display = 'none';
       appEl.classList.add('visible');
 
-      /* settings/config 문서 초기화 (없으면 생성) */
       const configRef = doc(db, 'settings', 'config');
       const configSnap = await getDoc(configRef);
       if (!configSnap.exists()) {
         await setDoc(configRef, {
-          product_number_digits: 3,
-          option_number_digits: 2,
-          unit_number_digits: 3,
-          no_option_code: '00',
-          barcode_format: 'CODE128',
-          default_label_width: 60,
-          default_label_height: 40
+          product_number_digits: 3, option_number_digits: 2, unit_number_digits: 3,
+          no_option_code: '00', barcode_format: 'CODE128',
+          default_label_width: 60, default_label_height: 40
         });
       }
-
       navigate('dashboard');
     } else {
       window._currentUser = null;
@@ -583,37 +367,35 @@
     }
   });
 
-  /* ── 페이지 라우터 ── */
+  /* ── 라우터 ── */
   const PAGE_TITLES = {
     dashboard: '대시보드',
-    'product-list': '상품 목록',
-    'product-new': '새 상품 등록',
-    'unit-manage': '개체 관리',
-    'barcode-search': '바코드 검색 · 출력',
-    'barcode-recent': '최근 생성 바코드',
-    'brand-list': '브랜드 목록',
-    'brand-new': '새 브랜드 등록',
+    'product-list': '상품 목록', 'product-new': '새 상품 등록', 'unit-manage': '개체 관리',
+    'barcode-search': '바코드 검색 · 출력', 'barcode-recent': '최근 생성 바코드',
+    'brand-list': '브랜드 목록', 'brand-new': '새 브랜드 등록',
     settings: '설정'
   };
 
-  window.navigate = async (page) => {
+  window.navigate = async (page, params) => {
     closeSidebar();
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     const activeEl = document.querySelector('.nav-item[data-page="' + page + '"]');
     if (activeEl) activeEl.classList.add('active');
     document.getElementById('page-header-title').textContent = PAGE_TITLES[page] || page;
-
+    document.getElementById('page-header-actions').innerHTML = '';
     const content = document.getElementById('page-content');
     content.innerHTML = '';
 
-    if (page === 'dashboard') {
-      await renderDashboard(content);
-    } else {
-      renderComingSoon(content, PAGE_TITLES[page] || page);
-    }
+    if (page === 'dashboard') await renderDashboard(content);
+    else if (page === 'brand-list') await renderBrandList(content);
+    else if (page === 'brand-new') await renderBrandForm(content, null);
+    else if (page === 'brand-edit' && params) await renderBrandForm(content, params.id);
+    else renderComingSoon(content, PAGE_TITLES[page] || page);
   };
 
-  /* ── 대시보드 ── */
+  /* ════════════════════════════════
+     대시보드
+  ════════════════════════════════ */
   async function renderDashboard(container) {
     container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
     try {
@@ -621,14 +403,11 @@
         getDocs(collection(db, 'brands')),
         getDocs(collection(db, 'products'))
       ]);
-      const brandCount = brandsSnap.size;
-      const productCount = productsSnap.size;
       const activeBrands = brandsSnap.docs.filter(d => d.data().active !== false).length;
-
       container.innerHTML = [
         '<div class="dashboard-grid">',
-        statCard('등록된 브랜드', brandCount, activeBrands + '개 활성'),
-        statCard('등록된 상품', productCount, ''),
+        statCard('등록된 브랜드', brandsSnap.size, activeBrands + '개 활성'),
+        statCard('등록된 상품', productsSnap.size, ''),
         statCard('SKU (옵션 조합)', '—', '준비 중'),
         statCard('오늘 생성된 바코드', '—', '준비 중'),
         '</div>',
@@ -644,22 +423,330 @@
     }
   }
 
+  /* ════════════════════════════════
+     브랜드 목록
+  ════════════════════════════════ */
+  async function renderBrandList(container) {
+    document.getElementById('page-header-actions').innerHTML =
+      '<button class="btn btn-primary" onclick="navigate(\'brand-new\')">➕ 새 브랜드 등록</button>';
+
+    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+    try {
+      const snap = await getDocs(query(collection(db, 'brands'), orderBy('created_at', 'desc')));
+      if (snap.empty) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🏬</div><div class="empty-state-text">등록된 브랜드가 없습니다.<br>새 브랜드를 등록해보세요.</div></div>';
+        return;
+      }
+
+      const typeLabel = { PB: '<span class="badge badge-blue">PB</span>', '위탁': '<span class="badge badge-yellow">위탁</span>', '매입': '<span class="badge badge-green">매입</span>' };
+
+      const rows = snap.docs.map(d => {
+        const b = d.data();
+        const activeText = b.active !== false
+          ? '<span class="badge badge-green">활성</span>'
+          : '<span class="badge badge-gray">비활성</span>';
+        return '<tr>' +
+          '<td class="td-code">' + esc(b.brand_code) + '</td>' +
+          '<td style="font-weight:600;">' + esc(b.brand_name) + '</td>' +
+          '<td>' + (typeLabel[b.brand_type] || b.brand_type) + '</td>' +
+          '<td>' + activeText + '</td>' +
+          '<td style="color:var(--gray-400);font-size:12px;">' + (b.last_product_number || '000') + '</td>' +
+          '<td><button class="btn btn-secondary" style="padding:5px 12px;font-size:12px;" onclick="navigate(\'brand-edit\',{id:\'' + d.id + '\'})">수정</button></td>' +
+          '</tr>';
+      }).join('');
+
+      container.innerHTML = '<div class="card"><div class="table-wrap"><table>' +
+        '<thead><tr><th>브랜드코드</th><th>브랜드명</th><th>거래유형</th><th>상태</th><th>마지막 상품번호</th><th></th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table></div></div>';
+    } catch (e) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
+    }
+  }
+
+  /* ════════════════════════════════
+     브랜드 등록 / 수정 폼
+  ════════════════════════════════ */
+  async function renderBrandForm(container, brandId) {
+    const isEdit = !!brandId;
+    document.getElementById('page-header-title').textContent = isEdit ? '브랜드 수정' : '새 브랜드 등록';
+
+    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+
+    let existing = null;
+    if (isEdit) {
+      const snap = await getDoc(doc(db, 'brands', brandId));
+      if (!snap.exists()) { container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">브랜드를 찾을 수 없습니다.</div></div>'; return; }
+      existing = { id: snap.id, ...snap.data() };
+    }
+
+    const si = existing && existing.settlement_info ? existing.settlement_info : {};
+    const fi = existing && existing.fee_info ? existing.fee_info : {};
+    const bType = existing ? existing.brand_type : 'PB';
+    const needsSettlement = bType === '위탁' || bType === '매입';
+
+    container.innerHTML = '<div class="card" style="max-width:680px;"><div class="card-body">' + buildBrandFormHTML(existing, si, fi) + '</div></div>';
+
+    /* 거래유형 변경 시 정산/수수료 섹션 토글 */
+    document.getElementById('f-brand-type').addEventListener('change', function() {
+      const show = this.value === '위탁' || this.value === '매입';
+      document.getElementById('section-settlement').style.display = show ? '' : 'none';
+      document.getElementById('section-fee').style.display = show ? '' : 'none';
+    });
+
+    /* 브랜드코드 자동 대문자 */
+    document.getElementById('f-brand-code').addEventListener('input', function() {
+      const pos = this.selectionStart;
+      this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      this.setSelectionRange(pos, pos);
+    });
+
+    /* 파일 업로드 영역 */
+    setupFileUpload('upload-id-card', 'preview-id-card', 'input-id-card');
+    setupFileUpload('upload-bank-book', 'preview-bank-book', 'input-bank-book');
+
+    /* 저장 버튼 */
+    document.getElementById('btn-save-brand').addEventListener('click', () => saveBrand(brandId, existing));
+  }
+
+  function buildBrandFormHTML(existing, si, fi) {
+    const v = (key, def) => existing ? (existing[key] || def || '') : (def || '');
+    const bType = v('brand_type', 'PB');
+    const showSI = bType === '위탁' || bType === '매입';
+
+    return [
+      /* 기본 정보 */
+      '<div class="form-section">',
+      '<div class="form-section-title">기본 정보</div>',
+      '<div class="form-row">',
+      formGroup('브랜드명', 'f-brand-name', '<input class="form-input" id="f-brand-name" type="text" placeholder="예: 온기" value="' + esc(v('brand_name')) + '" required />', true),
+      formGroup('브랜드코드', 'f-brand-code',
+        '<input class="form-input" id="f-brand-code" type="text" placeholder="예: ONG" maxlength="10" value="' + esc(v('brand_code')) + '" ' + (existing ? 'style="font-family:monospace;font-weight:700;"' : '') + ' />' +
+        '<div class="form-hint">영문 대문자+숫자, 최대 10자. 등록 후 변경 자제.</div>', true),
+      '</div>',
+      '<div class="form-row">',
+      formGroup('거래유형', 'f-brand-type',
+        '<select class="form-select" id="f-brand-type">' +
+        opt('PB', 'PB (자체 제작)', bType) +
+        opt('위탁', '위탁 (판매 후 정산)', bType) +
+        opt('매입', '매입 (직접 구매)', bType) +
+        '</select>', true),
+      formGroup('상태', 'f-active',
+        '<select class="form-select" id="f-active">' +
+        '<option value="true"' + (existing && existing.active === false ? '' : ' selected') + '>활성 (사용 중)</option>' +
+        '<option value="false"' + (existing && existing.active === false ? ' selected' : '') + '>비활성 (사용 중지)</option>' +
+        '</select>'),
+      '</div>',
+      '</div>',
+
+      /* 수수료 정보 (위탁/매입만) */
+      '<div class="form-section" id="section-fee" style="' + (showSI ? '' : 'display:none;') + '">',
+      '<div class="form-section-title">수수료 정보</div>',
+      '<div class="form-row">',
+      formGroup('중개수수료 (%)', 'f-commission',
+        '<input class="form-input" id="f-commission" type="number" min="0" max="100" step="0.1" value="' + (fi.commission_rate !== undefined ? fi.commission_rate : 10) + '" />' +
+        '<div class="form-hint">기본값 10%. 판매 금액의 몇 %를 수수료로 받을지 입력.</div>'),
+      formGroup('제세공과금 (%)', 'f-tax-rate',
+        '<input class="form-input" id="f-tax-rate" type="number" min="0" max="100" step="0.1" value="' + (fi.tax_rate !== undefined ? fi.tax_rate : 5) + '" />' +
+        '<div class="form-hint">기본값 5%. 정산 시 공제할 제세공과금 비율.</div>'),
+      '</div>',
+      '</div>',
+
+      /* 정산 정보 (위탁/매입만) */
+      '<div class="form-section" id="section-settlement" style="' + (showSI ? '' : 'display:none;') + '">',
+      '<div class="form-section-title">정산 정보 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택사항 — 나중에 추가해도 됩니다</span></div>',
+
+      '<div class="form-row">',
+      formGroup('주민등록번호', 'f-resident',
+        '<input class="form-input" id="f-resident" type="text" placeholder="000000-0000000" value="' + esc(si.resident_number || '') + '" />' +
+        '<div class="form-hint">사업소득/기타소득 세금계산 목적으로만 사용됩니다.</div>'),
+      formGroup('소득 유형', 'f-income-type',
+        '<select class="form-select" id="f-income-type">' +
+        opt('기타소득', '기타소득', si.income_type || '기타소득') +
+        opt('사업소득', '사업소득', si.income_type || '기타소득') +
+        '</select>'),
+      '</div>',
+
+      '<div class="form-section-title" style="font-size:13px;margin-top:8px;">통장 정보</div>',
+      '<div class="form-row">',
+      formGroup('은행', 'f-bank-name',
+        '<input class="form-input" id="f-bank-name" type="text" placeholder="예: 국민은행" value="' + esc(si.bank_name || '') + '" />'),
+      formGroup('예금주명', 'f-account-holder',
+        '<input class="form-input" id="f-account-holder" type="text" placeholder="예: 홍길동" value="' + esc(si.account_holder || '') + '" />'),
+      '</div>',
+      '<div class="form-group">',
+      '<label class="form-label" for="f-account-number">계좌번호</label>',
+      '<input class="form-input" id="f-account-number" type="text" placeholder="- 없이 숫자만 입력" value="' + esc(si.account_number || '') + '" />',
+      '</div>',
+
+      '<div class="form-section-title" style="font-size:13px;margin-top:8px;">서류 이미지</div>',
+      '<div class="form-row">',
+      '<div class="form-group">',
+      '<label class="form-label">신분증 사본</label>',
+      fileUploadArea('upload-id-card', 'preview-id-card', 'input-id-card', si.id_card_url),
+      '</div>',
+      '<div class="form-group">',
+      '<label class="form-label">통장 사본</label>',
+      fileUploadArea('upload-bank-book', 'preview-bank-book', 'input-bank-book', si.bank_book_url),
+      '</div>',
+      '</div>',
+      '</div>',
+
+      /* 버튼 */
+      '<div style="display:flex;gap:10px;justify-content:flex-end;padding-top:8px;border-top:1px solid var(--gray-100);margin-top:8px;">',
+      '<button class="btn btn-secondary" onclick="navigate(\'brand-list\')">취소</button>',
+      '<button class="btn btn-primary" id="btn-save-brand">',
+      existing ? '저장하기' : '브랜드 등록',
+      '</button>',
+      '</div>'
+    ].join('');
+  }
+
+  /* ── 브랜드 저장 ── */
+  async function saveBrand(brandId, existing) {
+    const btn = document.getElementById('btn-save-brand');
+    const brandName = document.getElementById('f-brand-name').value.trim();
+    const brandCode = document.getElementById('f-brand-code').value.trim().toUpperCase();
+    const brandType = document.getElementById('f-brand-type').value;
+    const active = document.getElementById('f-active').value === 'true';
+
+    /* 유효성 검사 */
+    if (!brandName) { showToast('브랜드명을 입력해주세요.', 'error'); return; }
+    if (!brandCode) { showToast('브랜드코드를 입력해주세요.', 'error'); return; }
+    if (!/^[A-Z0-9]+$/.test(brandCode)) { showToast('브랜드코드는 영문 대문자와 숫자만 사용할 수 있습니다.', 'error'); return; }
+
+    /* 브랜드코드 중복 확인 */
+    if (!brandId || (existing && existing.brand_code !== brandCode)) {
+      const q = query(collection(db, 'brands'), where('brand_code', '==', brandCode));
+      const dup = await getDocs(q);
+      if (!dup.empty) { showToast('이미 사용 중인 브랜드코드입니다: ' + brandCode, 'error'); return; }
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner spinner-sm"></div> 저장 중...';
+
+    try {
+      const data = {
+        brand_name: brandName,
+        brand_code: brandCode,
+        brand_type: brandType,
+        active: active,
+        updated_at: new Date().toISOString()
+      };
+
+      if (!brandId) {
+        data.last_product_number = '000';
+        data.created_at = new Date().toISOString();
+      }
+
+      /* 정산/수수료 정보 (위탁/매입만) */
+      if (brandType === '위탁' || brandType === '매입') {
+        data.fee_info = {
+          commission_rate: parseFloat(document.getElementById('f-commission').value) || 10,
+          tax_rate: parseFloat(document.getElementById('f-tax-rate').value) || 5
+        };
+
+        /* 이미지 업로드 */
+        let idCardUrl = existing && existing.settlement_info ? (existing.settlement_info.id_card_url || '') : '';
+        let bankBookUrl = existing && existing.settlement_info ? (existing.settlement_info.bank_book_url || '') : '';
+
+        const idCardFile = document.getElementById('input-id-card') && document.getElementById('input-id-card').files[0];
+        const bankBookFile = document.getElementById('input-bank-book') && document.getElementById('input-bank-book').files[0];
+
+        if (idCardFile) {
+          const path = 'brands/' + brandCode + '/id_card_' + Date.now();
+          const snapFile = await uploadBytes(ref(storage, path), idCardFile);
+          idCardUrl = await getDownloadURL(snapFile.ref);
+        }
+        if (bankBookFile) {
+          const path = 'brands/' + brandCode + '/bank_book_' + Date.now();
+          const snapFile = await uploadBytes(ref(storage, path), bankBookFile);
+          bankBookUrl = await getDownloadURL(snapFile.ref);
+        }
+
+        data.settlement_info = {
+          resident_number: document.getElementById('f-resident').value.trim(),
+          income_type: document.getElementById('f-income-type').value,
+          bank_name: document.getElementById('f-bank-name').value.trim(),
+          account_holder: document.getElementById('f-account-holder').value.trim(),
+          account_number: document.getElementById('f-account-number').value.trim(),
+          id_card_url: idCardUrl,
+          bank_book_url: bankBookUrl
+        };
+      }
+
+      if (brandId) {
+        await updateDoc(doc(db, 'brands', brandId), data);
+        showToast('브랜드 정보를 수정했습니다.', 'success');
+      } else {
+        await addDoc(collection(db, 'brands'), data);
+        showToast('브랜드를 등록했습니다.', 'success');
+      }
+
+      navigate('brand-list');
+    } catch (e) {
+      showToast('저장 중 오류: ' + e.message, 'error');
+      btn.disabled = false;
+      btn.textContent = brandId ? '저장하기' : '브랜드 등록';
+    }
+  }
+
+  /* ── 파일 업로드 UI ── */
+  function fileUploadArea(areaId, previewId, inputId, existingUrl) {
+    const existing = existingUrl
+      ? '<div class="file-preview"><img src="' + esc(existingUrl) + '" /><div><div class="file-preview-name">기존 파일</div><div class="file-preview-size">변경하려면 클릭</div></div></div>'
+      : '<div class="file-upload-label"><strong>클릭</strong>해서 이미지 선택<br><span style="font-size:11px;color:var(--gray-400);">JPG, PNG, PDF</span></div>';
+    return '<div class="file-upload-area" id="' + areaId + '" onclick="document.getElementById(\'' + inputId + '\').click()">' +
+      '<div id="' + previewId + '">' + existing + '</div>' +
+      '<input type="file" id="' + inputId + '" accept="image/*,.pdf" style="display:none;" />' +
+      '</div>';
+  }
+
+  function setupFileUpload(areaId, previewId, inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    input.addEventListener('change', function() {
+      const file = this.files[0];
+      if (!file) return;
+      const area = document.getElementById(areaId);
+      const preview = document.getElementById(previewId);
+      area.classList.add('has-file');
+      const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = e => {
+          preview.innerHTML = '<div class="file-preview"><img src="' + e.target.result + '" /><div><div class="file-preview-name">' + esc(file.name) + '</div><div class="file-preview-size">' + sizeMB + ' MB</div></div></div>';
+        };
+        reader.readAsDataURL(file);
+      } else {
+        preview.innerHTML = '<div class="file-preview"><div style="font-size:28px;">📄</div><div><div class="file-preview-name">' + esc(file.name) + '</div><div class="file-preview-size">' + sizeMB + ' MB</div></div></div>';
+      }
+    });
+  }
+
+  /* ── 준비중 ── */
+  function renderComingSoon(container, name) {
+    container.innerHTML = '<div class="coming-soon"><div class="coming-soon-icon">🔧</div><div class="coming-soon-label">' + name + '</div><div class="coming-soon-sub">다음 단계에서 구현됩니다.</div></div>';
+  }
+
+  /* ── 유틸 ── */
   function statCard(label, value, sub) {
     return '<div class="stat-card"><div class="stat-card-label">' + label + '</div><div class="stat-card-value">' + value + '</div>' + (sub ? '<div class="stat-card-sub">' + sub + '</div>' : '') + '</div>';
   }
-
   function quickBtn(icon, label, page) {
-    return '<button onclick="navigate(\'' + page + '\')" style="display:flex;align-items:center;gap:8px;padding:12px 20px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;font-size:14px;font-weight:600;color:#374151;cursor:pointer;transition:all 0.12s;" onmouseover="this.style.borderColor=\'#2563eb\';this.style.color=\'#2563eb\'" onmouseout="this.style.borderColor=\'#e5e7eb\';this.style.color=\'#374151\'">' + icon + ' ' + label + '</button>';
+    return '<button onclick="navigate(\'' + page + '\')" style="display:flex;align-items:center;gap:8px;padding:12px 20px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;font-size:14px;font-weight:600;color:#374151;cursor:pointer;" onmouseover="this.style.borderColor=\'#2563eb\';this.style.color=\'#2563eb\'" onmouseout="this.style.borderColor=\'#e5e7eb\';this.style.color=\'#374151\'">' + icon + ' ' + label + '</button>';
   }
-
-  /* ── 준비중 페이지 ── */
-  function renderComingSoon(container, pageName) {
-    container.innerHTML = '<div class="coming-soon"><div class="coming-soon-icon">🔧</div><div class="coming-soon-label">' + pageName + '</div><div class="coming-soon-sub">다음 단계에서 구현됩니다.</div></div>';
+  function formGroup(label, id, inputHTML, required) {
+    return '<div class="form-group"><label class="form-label" for="' + id + '">' + label + (required ? '<span class="required">*</span>' : '') + '</label>' + inputHTML + '</div>';
+  }
+  function opt(value, label, selected) {
+    return '<option value="' + value + '"' + (selected === value ? ' selected' : '') + '>' + label + '</option>';
+  }
+  function esc(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 </script>
 
 <script>
-  /* ── 사이드바 토글 (모바일) ── */
   function toggleSidebar() {
     document.getElementById('sidebar').classList.toggle('open');
     document.getElementById('sidebar-backdrop').classList.toggle('open');
@@ -668,19 +755,15 @@
     document.getElementById('sidebar').classList.remove('open');
     document.getElementById('sidebar-backdrop').classList.remove('open');
   }
-
-  /* ── 토스트 ── */
   function showToast(msg, type) {
     type = type || 'info';
     const el = document.createElement('div');
     el.className = 'toast ' + type;
     el.textContent = msg;
     document.getElementById('toast-container').appendChild(el);
-    setTimeout(() => el.remove(), 3000);
+    setTimeout(() => el.remove(), 3500);
   }
   window.showToast = showToast;
-
-  /* ── PWA 서비스 워커 등록 ── */
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/service-worker.js').catch(() => {});
