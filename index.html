@@ -754,8 +754,159 @@
   async function renderProductList(container) {
     document.getElementById('page-header-actions').innerHTML =
       '<button class="btn btn-primary" onclick="openProductModal()">➕ 새 상품 등록</button>';
-    container.innerHTML = '<div class="coming-soon"><div class="coming-soon-icon">📦</div><div class="coming-soon-label">상품 목록</div><div class="coming-soon-sub">4단계에서 구현됩니다.</div></div>';
+
+    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+    try {
+      const snap = await getDocs(collection(db, 'products'));
+      if (snap.empty) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📦</div><div class="empty-state-text">등록된 상품이 없습니다.<br><button class="btn btn-primary" style="margin-top:16px;" onclick="openProductModal()">새 상품 등록</button></div></div>';
+        return;
+      }
+
+      const products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      products.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+      const trackingLabel = { quantity: '<span class="badge badge-blue">수량</span>', individual: '<span class="badge badge-yellow">개체</span>' };
+      const statusLabel = { '판매중': '<span class="badge badge-green">판매중</span>', '판매중지': '<span class="badge badge-gray">판매중지</span>' };
+
+      const rows = products.map(p =>
+        '<tr style="cursor:pointer;" onclick="openProductDetail(\'' + p.id + '\')">' +
+        '<td class="td-code">' + esc(p.id) + '</td>' +
+        '<td style="font-weight:600;">' + esc(p.product_name) + '</td>' +
+        '<td>' + esc(p.brand_code) + '</td>' +
+        '<td>' + (trackingLabel[p.tracking_type] || p.tracking_type) + '</td>' +
+        '<td>' + (p.base_price || 0).toLocaleString() + '원</td>' +
+        '<td>' + (statusLabel[p.status] || p.status) + '</td>' +
+        '<td style="color:var(--gray-400);font-size:12px;">' + (p.created_at ? p.created_at.slice(0,10) : '-') + '</td>' +
+        '</tr>'
+      ).join('');
+
+      container.innerHTML =
+        '<div style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">' +
+        '<div style="font-size:13px;color:var(--gray-500);">총 <strong>' + products.length + '</strong>개 상품</div>' +
+        '</div>' +
+        '<div class="card"><div class="table-wrap"><table>' +
+        '<thead><tr><th>상품 ID</th><th>상품명</th><th>브랜드</th><th>관리방식</th><th>판매가</th><th>상태</th><th>등록일</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table></div></div>';
+    } catch(e) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
+    }
   }
+
+  /* ════════════════════════════════
+     상품 상세 (모달)
+  ════════════════════════════════ */
+  window.openProductDetail = async function(productId) {
+    showModal('상품 상세', '<div class="spinner" style="margin:40px auto;"></div>', null, 'lg');
+    try {
+      const [productSnap, skusSnap] = await Promise.all([
+        getDoc(doc(db, 'products', productId)),
+        getDocs(collection(db, 'products', productId, 'skus'))
+      ]);
+      if (!productSnap.exists()) { closeModal(); showToast('상품을 찾을 수 없습니다.', 'error'); return; }
+      const p = productSnap.data();
+      const skus = skusSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      skus.sort((a, b) => (a.option_sort_order ?? 99) - (b.option_sort_order ?? 99));
+
+      const skuRows = skus.map(s => {
+        const optLabel = s.option_number === '00' ? '옵션 없음'
+          : [1,2,3].map(i => s['option_' + i + '_name'] ? s['option_' + i + '_name'] + ': ' + s['option_' + i + '_value'] : '').filter(Boolean).join(' / ');
+        return '<tr>' +
+          '<td class="td-code" style="font-size:12px;">' + esc(s.barcode_value) + '</td>' +
+          '<td style="font-size:13px;">' + esc(optLabel) + '</td>' +
+          '<td>' + (s.price || p.base_price || 0).toLocaleString() + '원</td>' +
+          '<td><span class="badge ' + (s.sku_status === '판매중' ? 'badge-green' : 'badge-gray') + '">' + esc(s.sku_status) + '</span></td>' +
+          (p.tracking_type === 'individual' ? '<td><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;" onclick="openUnitList(\'' + productId + '\',\'' + s.id + '\')">개체 보기</button></td>' : '') +
+          '</tr>';
+      }).join('');
+
+      const body =
+        '<div style="background:var(--gray-50);border-radius:10px;padding:16px;margin-bottom:20px;">' +
+        '<div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13px;">' +
+        row('상품 ID', '<span style="font-family:monospace;font-weight:700;color:var(--blue);">' + esc(productId) + '</span>') +
+        row('상품명', '<strong>' + esc(p.product_name) + '</strong>') +
+        row('브랜드', esc(p.brand_code)) +
+        row('기본 판매가', (p.base_price || 0).toLocaleString() + '원') +
+        row('관리방식', p.tracking_type === 'quantity' ? '수량 관리' : '개체 관리') +
+        row('상태', p.status || '-') +
+        (p.memo ? row('메모', esc(p.memo)) : '') +
+        '</div></div>' +
+        '<div style="font-size:13px;font-weight:700;margin-bottom:10px;">SKU / 옵션 (' + skus.length + '개)</div>' +
+        '<div class="table-wrap"><table>' +
+        '<thead><tr><th>바코드</th><th>옵션</th><th>판매가</th><th>상태</th>' +
+        (p.tracking_type === 'individual' ? '<th></th>' : '') + '</tr></thead>' +
+        '<tbody>' + skuRows + '</tbody></table></div>';
+
+      const footerHTML =
+        '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>' +
+        '<button class="btn btn-danger" onclick="toggleProductStatus(\'' + productId + '\',\'' + p.status + '\')">' +
+        (p.status === '판매중' ? '판매중지' : '판매 재개') + '</button>';
+
+      showModal('상품 상세 — ' + esc(p.product_name), body, footerHTML, 'lg');
+    } catch(e) {
+      document.querySelector('#modal-container .modal-body').innerHTML =
+        '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
+    }
+  };
+
+  window.toggleProductStatus = async function(productId, currentStatus) {
+    const next = currentStatus === '판매중' ? '판매중지' : '판매중';
+    try {
+      await updateDoc(doc(db, 'products', productId), { status: next, updated_at: new Date().toISOString() });
+      showToast('상태를 ' + next + '으로 변경했습니다.', 'success');
+      closeModal();
+      await renderProductList(document.getElementById('page-content'));
+    } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
+  };
+
+  /* ── 개체 목록 (개체관리 상품) ── */
+  window.openUnitList = async function(productId, skuId) {
+    showModal('개체 목록', '<div class="spinner" style="margin:40px auto;"></div>', null, 'lg');
+    try {
+      const [skuSnap, unitsSnap] = await Promise.all([
+        getDoc(doc(db, 'products', productId, 'skus', skuId)),
+        getDocs(collection(db, 'products', productId, 'skus', skuId, 'units'))
+      ]);
+      const sku = skuSnap.data();
+      const units = unitsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      units.sort((a, b) => (a.unit_number || '').localeCompare(b.unit_number || ''));
+
+      const statusOpts = ['판매중','판매완료','분실','폐기'];
+      const statusColors = { '판매중':'badge-green','판매완료':'badge-blue','분실':'badge-red','폐기':'badge-gray' };
+
+      const unitRows = units.length === 0
+        ? '<tr><td colspan="4" style="text-align:center;color:var(--gray-400);padding:24px;">등록된 개체가 없습니다.</td></tr>'
+        : units.map(u =>
+          '<tr>' +
+          '<td class="td-code" style="font-size:12px;">' + esc(u.barcode_value) + '</td>' +
+          '<td style="font-size:13px;color:var(--gray-500);">' + esc(u.unit_number) + '</td>' +
+          '<td><span class="badge ' + (statusColors[u.unit_status] || 'badge-gray') + '">' + esc(u.unit_status) + '</span></td>' +
+          '<td><select onchange="changeUnitStatus(\'' + productId + '\',\'' + skuId + '\',\'' + u.id + '\',this.value)" ' +
+          'style="border:1px solid var(--gray-200);border-radius:6px;padding:4px 6px;font-size:12px;">' +
+          statusOpts.map(s => '<option' + (s === u.unit_status ? ' selected' : '') + '>' + s + '</option>').join('') +
+          '</select></td>' +
+          '</tr>'
+        ).join('');
+
+      const body =
+        '<div style="font-size:13px;color:var(--gray-500);margin-bottom:16px;">바코드: <code style="color:var(--blue);">' + esc(sku.barcode_value) + '</code></div>' +
+        '<div class="table-wrap"><table>' +
+        '<thead><tr><th>개체 바코드</th><th>개체번호</th><th>상태</th><th>상태 변경</th></tr></thead>' +
+        '<tbody>' + unitRows + '</tbody></table></div>';
+
+      showModal('개체 목록 — ' + esc(skuId), body, '<button class="btn btn-secondary" onclick="openProductDetail(\'' + productId + '\')">← 상품으로</button>', 'lg');
+    } catch(e) {
+      document.querySelector('#modal-container .modal-body').innerHTML =
+        '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
+    }
+  };
+
+  window.changeUnitStatus = async function(productId, skuId, unitId, newStatus) {
+    try {
+      await updateDoc(doc(db, 'products', productId, 'skus', skuId, 'units', unitId), { unit_status: newStatus, updated_at: new Date().toISOString() });
+      showToast('개체 상태를 ' + newStatus + '으로 변경했습니다.', 'success');
+    } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
+  };
 
   /* ════════════════════════════════
      새 상품 등록 (모달)
