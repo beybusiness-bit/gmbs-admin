@@ -1800,6 +1800,24 @@
       '</div>' +
       '</div>' +
 
+      /* ── 앱 설치 ── */
+      '<div class="card" style="margin-bottom:20px;">' +
+      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">홈 화면에 앱 설치</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">이 관리 도구를 스마트폰 또는 컴퓨터의 홈 화면에 앱처럼 설치할 수 있습니다.</div>' +
+      '<div id="pwa-install-area">' +
+      '<div style="background:var(--blue-light);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.7;color:var(--gray-700);">' +
+      '<b>📱 iOS(아이폰/아이패드)</b><br>' +
+      'Safari에서 열기 → 하단 공유 버튼(□↑) → "홈 화면에 추가" 선택<br><br>' +
+      '<b>🤖 Android / 💻 Chrome(PC)</b><br>' +
+      '아래 버튼을 누르거나, 주소창 오른쪽 설치 아이콘을 클릭하세요.' +
+      '</div>' +
+      '<div style="margin-top:12px;">' +
+      '<button id="btn-pwa-install" onclick="triggerPwaInstall()" class="btn btn-primary" style="display:none;">📲 홈 화면에 설치</button>' +
+      '<span id="pwa-already-installed" style="display:none;color:var(--green);font-weight:600;">✅ 이미 설치된 상태입니다.</span>' +
+      '</div>' +
+      '</div>' +
+      '</div>' +
+
       /* ── Firebase 연결 상태 ── */
       '<div class="card">' +
       '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:16px;">Firebase 연결 상태</div>' +
@@ -1948,6 +1966,35 @@
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+    });
+  }
+
+  /* ── PWA 설치 프롬프트 ── */
+  window._pwaInstallPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    window._pwaInstallPrompt = e;
+    const btn = document.getElementById('btn-pwa-install');
+    if (btn) btn.style.display = 'inline-flex';
+  });
+  window.addEventListener('appinstalled', () => {
+    window._pwaInstallPrompt = null;
+    const btn = document.getElementById('btn-pwa-install');
+    const msg = document.getElementById('pwa-already-installed');
+    if (btn) btn.style.display = 'none';
+    if (msg) msg.style.display = 'inline';
+    showToast('앱이 홈 화면에 설치되었습니다!', 'success');
+  });
+  window.triggerPwaInstall = async function() {
+    if (!window._pwaInstallPrompt) return;
+    window._pwaInstallPrompt.prompt();
+    const { outcome } = await window._pwaInstallPrompt.userChoice;
+    if (outcome === 'accepted') window._pwaInstallPrompt = null;
+  };
+  if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+    window.addEventListener('DOMContentLoaded', () => {
+      const msg = document.getElementById('pwa-already-installed');
+      if (msg) msg.style.display = 'inline';
     });
   }
 </script>
