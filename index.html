@@ -11,6 +11,7 @@
   <meta name="apple-mobile-web-app-title" content="GMBS" />
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -410,6 +411,7 @@
     else if (page === 'product-list') await renderProductList(content);
     else if (page === 'brand-list') await renderBrandList(content);
     else if (page === 'barcode') renderBarcodePage(content);
+    else if (page === 'settings') await renderSettings(content);
     else renderComingSoon(content, PAGE_TITLES[page] || page);
   };
 
@@ -1740,6 +1742,166 @@
     });
     return savedId;
   }
+
+  /* ════════════════════════════════
+     설정 페이지
+  ════════════════════════════════ */
+  async function renderSettings(container) {
+    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+    let cfg = {};
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'config'));
+      if (snap.exists()) cfg = snap.data();
+    } catch(e) {}
+
+    const pnd = cfg.product_number_digits || 3;
+    const ond = cfg.option_number_digits || 2;
+    const und = cfg.unit_number_digits || 3;
+    const lw  = cfg.default_label_width  || 60;
+    const lh  = cfg.default_label_height || 40;
+
+    container.innerHTML =
+      '<div style="max-width:660px;">' +
+
+      /* ── 번호 자릿수 ── */
+      '<div class="card" style="margin-bottom:20px;">' +
+      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">번호 자릿수 규칙</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">⚠️ 자릿수를 변경하면 기존 바코드와 형식이 달라집니다. 신중하게 결정하세요.</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">' +
+      settingNumField('상품번호 자릿수', 'cfg-pnd', pnd, 1, 6) +
+      settingNumField('옵션번호 자릿수', 'cfg-ond', ond, 1, 4) +
+      settingNumField('개체번호 자릿수', 'cfg-und', und, 1, 6) +
+      '</div>' +
+      '<div style="margin-top:16px;">' +
+      '<button onclick="saveNumberDigits()" class="btn btn-primary">저장</button>' +
+      '</div>' +
+      '</div>' +
+
+      /* ── 라벨 기본 크기 ── */
+      '<div class="card" style="margin-bottom:20px;">' +
+      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">라벨 기본 크기</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">바코드 출력 시 기본으로 사용할 라벨 크기(mm)입니다. 출력 창에서 개별 조정도 가능합니다.</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:320px;">' +
+      settingNumField('라벨 가로(mm)', 'cfg-lw', lw, 20, 200) +
+      settingNumField('라벨 세로(mm)', 'cfg-lh', lh, 10, 120) +
+      '</div>' +
+      '<div style="margin-top:16px;">' +
+      '<button onclick="saveLabelSize()" class="btn btn-primary">저장</button>' +
+      '</div>' +
+      '</div>' +
+
+      /* ── 데이터 내보내기 ── */
+      '<div class="card" style="margin-bottom:20px;">' +
+      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">데이터 내보내기</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">Firestore에 저장된 데이터를 엑셀(.xlsx)로 다운로드합니다.</div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+      '<button onclick="exportBrands()" class="btn btn-secondary">브랜드 목록 내보내기</button>' +
+      '<button onclick="exportProducts()" class="btn btn-secondary">상품 목록 내보내기</button>' +
+      '</div>' +
+      '</div>' +
+
+      /* ── Firebase 연결 상태 ── */
+      '<div class="card">' +
+      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:16px;">Firebase 연결 상태</div>' +
+      '<div id="firebase-status-area"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
+      '</div>' +
+
+      '</div>';
+
+    checkFirebaseStatus();
+  }
+
+  function settingNumField(label, id, val, min, max) {
+    return '<div>' +
+      '<label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:6px;">' + label + '</label>' +
+      '<input type="number" id="' + id + '" value="' + val + '" min="' + min + '" max="' + max + '" style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;">' +
+      '</div>';
+  }
+
+  window.saveNumberDigits = async function() {
+    const pnd = parseInt(document.getElementById('cfg-pnd').value, 10);
+    const ond = parseInt(document.getElementById('cfg-ond').value, 10);
+    const und = parseInt(document.getElementById('cfg-und').value, 10);
+    if (!pnd || !ond || !und || pnd < 1 || ond < 1 || und < 1) {
+      showToast('유효한 자릿수를 입력해 주세요.', 'error'); return;
+    }
+    try {
+      await setDoc(doc(db, 'settings', 'config'), { product_number_digits: pnd, option_number_digits: ond, unit_number_digits: und }, { merge: true });
+      showToast('번호 자릿수가 저장되었습니다.', 'success');
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  window.saveLabelSize = async function() {
+    const lw = parseInt(document.getElementById('cfg-lw').value, 10);
+    const lh = parseInt(document.getElementById('cfg-lh').value, 10);
+    if (!lw || !lh || lw < 20 || lh < 10) {
+      showToast('유효한 크기를 입력해 주세요.', 'error'); return;
+    }
+    try {
+      await setDoc(doc(db, 'settings', 'config'), { default_label_width: lw, default_label_height: lh }, { merge: true });
+      showToast('라벨 크기가 저장되었습니다.', 'success');
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  async function checkFirebaseStatus() {
+    const area = document.getElementById('firebase-status-area');
+    if (!area) return;
+    const rows = [];
+    try {
+      await getDoc(doc(db, 'settings', 'config'));
+      rows.push(statusRow('Firestore 연결', true));
+    } catch(e) { rows.push(statusRow('Firestore 연결', false, e.message)); }
+    rows.push(statusRow('Firebase 인증', !!window._currentUser));
+    rows.push(statusRow('현재 계정', true, window._currentUser ? window._currentUser.email : '없음'));
+    area.innerHTML = '<div style="display:flex;flex-direction:column;gap:10px;">' + rows.join('') + '</div>';
+  }
+
+  function statusRow(label, ok, note) {
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:' + (ok ? 'var(--green-light)' : 'var(--red-light)') + ';">' +
+      '<span style="font-size:18px;">' + (ok ? '✅' : '❌') + '</span>' +
+      '<div>' +
+      '<div style="font-weight:600;font-size:13px;">' + label + '</div>' +
+      (note ? '<div style="font-size:12px;color:var(--gray-500);">' + esc(note) + '</div>' : '') +
+      '</div></div>';
+  }
+
+  window.exportBrands = async function() {
+    if (!window.XLSX) { showToast('엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 시도하세요.', 'error'); return; }
+    try {
+      const snap = await getDocs(collection(db, 'brands'));
+      const rows = [['브랜드명','브랜드코드','거래유형','상태','등록일']];
+      snap.docs.forEach(d => {
+        const b = d.data();
+        rows.push([b.brand_name, b.brand_code, b.brand_type, b.active === false ? '사용중지' : '활성', b.created_at ? b.created_at.toDate().toLocaleDateString('ko-KR') : '']);
+      });
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '브랜드목록');
+      XLSX.writeFile(wb, 'GMBS_브랜드목록.xlsx');
+    } catch(e) { showToast('내보내기 실패: ' + e.message, 'error'); }
+  };
+
+  window.exportProducts = async function() {
+    if (!window.XLSX) { showToast('엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 시도하세요.', 'error'); return; }
+    try {
+      const snap = await getDocs(collection(db, 'products'));
+      const rows = [['상품ID','브랜드코드','상품명','기본가','관리방식','상태','메모','등록일']];
+      for (const d of snap.docs) {
+        const p = d.data();
+        rows.push([d.id, p.brand_code, p.product_name, p.base_price, p.tracking_type === 'individual' ? '개체관리' : '수량관리', p.status, p.memo || '', p.created_at ? p.created_at.toDate().toLocaleDateString('ko-KR') : '']);
+        const skuSnap = await getDocs(collection(db, 'products', d.id, 'skus'));
+        skuSnap.docs.forEach(s => {
+          const sk = s.data();
+          const opts = [sk.option_1_value, sk.option_2_value, sk.option_3_value].filter(Boolean).join(' / ');
+          rows.push(['  └ ' + s.id, p.brand_code, p.product_name + (opts ? ' [' + opts + ']' : ''), sk.price || p.base_price, '', sk.sku_status, '', '']);
+        });
+      }
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '상품목록');
+      XLSX.writeFile(wb, 'GMBS_상품목록.xlsx');
+    } catch(e) { showToast('내보내기 실패: ' + e.message, 'error'); }
+  };
 
   /* ── 준비중 ── */
   function renderComingSoon(container, name) {
