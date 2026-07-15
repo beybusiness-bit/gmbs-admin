@@ -1731,6 +1731,8 @@
             row('계좌번호', esc(si.account_number || '')) : '') +
         '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">담당자</div>' +
         '<div id="brand-persons-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
+        '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">계약</div>' +
+        '<div id="brand-contracts-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
         '</div>';
 
       const footer =
@@ -1739,8 +1741,9 @@
 
       showModal('브랜드 정보 — ' + esc(b.brand_name), body, footer, 'lg');
 
-      // 담당자 목록 비동기 로드
+      // 담당자·계약 목록 비동기 로드
       loadBrandPersons(brandId);
+      loadBrandContracts(brandId);
     } catch(e) {
       document.querySelector('#modal-container .modal-body').innerHTML =
         '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
@@ -1889,6 +1892,172 @@
       // 브랜드 상세 팝업으로 복귀 (담당자 섹션 자동 갱신됨)
       openBrandDetail(brandId);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  /* ════════════════════════════════
+     계약(Contract) 관리
+  ════════════════════════════════ */
+  async function loadBrandContracts(brandId) {
+    const sec = document.getElementById('brand-contracts-section');
+    if (!sec) return;
+    try {
+      const snap = await getDocs(query(
+        collection(db, 'brands', brandId, 'contracts'),
+        orderBy('created_at', 'desc')
+      ));
+      const contracts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderContractsSection(brandId, contracts, sec);
+    } catch(e) {
+      if (sec) sec.innerHTML = '<div style="font-size:12px;color:var(--gray-400);">계약 로드 실패: ' + esc(e.message) + '</div>';
+    }
+  }
+
+  function renderContractsSection(brandId, contracts, sec) {
+    const statusBadge = s => ({
+      '진행중': '<span class="badge badge-green">진행중</span>',
+      '만료': '<span class="badge badge-gray">만료</span>',
+      '해지': '<span class="badge badge-red">해지</span>'
+    }[s] || '<span class="badge badge-gray">' + esc(s || '') + '</span>');
+
+    let html = '<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">' +
+      '<button class="btn btn-secondary" style="font-size:12px;padding:5px 12px;" onclick="openContractModal(\'' + brandId + '\',null)">+ 계약 추가</button>' +
+      '</div>';
+
+    if (contracts.length === 0) {
+      html += '<div style="font-size:13px;color:var(--gray-400);padding:12px 0;">등록된 계약이 없습니다.</div>';
+    } else {
+      contracts.forEach(c => {
+        const period = (c.signed_at || '?') + ' ~ ' + (c.end_at || '무기한');
+        html += '<div style="padding:12px 0;border-bottom:1px solid var(--gray-100);">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">' +
+          '<span style="font-size:13px;font-weight:600;color:var(--gray-800);">v' + esc(String(c.version || 1)) + '</span>' +
+          statusBadge(c.status) +
+          (c.auto_renew ? '<span style="font-size:11px;color:var(--gray-400);">자동갱신</span>' : '') +
+          '<span style="font-size:12px;color:var(--gray-500);margin-left:4px;">' + esc(period) + '</span>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px;">' +
+          (c.file_url
+            ? '<a href="' + esc(c.file_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:4px 10px;text-decoration:none;">📄 계약서 보기</a>'
+            : '<span style="font-size:11px;color:var(--gray-400);padding:4px 0;">파일 없음</span>') +
+          '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openContractModal(\'' + brandId + '\',\'' + c.id + '\')">수정</button>' +
+          '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openContractStatusModal(\'' + brandId + '\',\'' + c.id + '\',\'' + esc(c.status || '진행중') + '\')">상태 변경</button>' +
+          '</div></div>';
+      });
+    }
+    sec.innerHTML = html;
+  }
+
+  window.openContractModal = async function(brandId, contractId) {
+    let existing = null;
+    if (contractId) {
+      const snap = await getDoc(doc(db, 'brands', brandId, 'contracts', contractId));
+      if (snap.exists()) existing = { id: snap.id, ...snap.data() };
+    }
+    const isEdit = !!existing;
+    const c = existing || {};
+
+    // 다음 버전 번호 자동 계산
+    let nextVersion = 1;
+    if (!isEdit) {
+      try {
+        const snap = await getDocs(collection(db, 'brands', brandId, 'contracts'));
+        nextVersion = snap.size + 1;
+      } catch(e) {}
+    }
+
+    const formHTML =
+      '<div class="form-group"><label class="form-label">버전</label>' +
+      '<input class="form-input" id="contract-version" type="number" min="1" value="' + (c.version || nextVersion) + '" /></div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+      '<div class="form-group"><label class="form-label">계약 시작일</label>' +
+      '<input class="form-input" id="contract-signed-at" type="date" value="' + esc(c.signed_at || '') + '" /></div>' +
+      '<div class="form-group"><label class="form-label">계약 종료일</label>' +
+      '<input class="form-input" id="contract-end-at" type="date" value="' + esc(c.end_at || '') + '" /></div>' +
+      '</div>' +
+      '<div class="form-group" style="display:flex;align-items:center;gap:8px;">' +
+      '<input type="checkbox" id="contract-auto-renew" style="accent-color:var(--blue);"' + (c.auto_renew ? ' checked' : '') + ' />' +
+      '<label for="contract-auto-renew" style="font-size:13px;color:var(--gray-700);cursor:pointer;">자동 갱신</label></div>' +
+      '<div class="form-group"><label class="form-label">계약서 파일 (PDF/이미지)</label>' +
+      '<div id="contract-file-area" style="border:2px dashed var(--gray-200);border-radius:8px;padding:16px;text-align:center;cursor:pointer;" onclick="document.getElementById(\'contract-file-input\').click()">' +
+      (c.file_url
+        ? '<div style="font-size:13px;color:var(--blue);">📄 기존 파일 있음 — 클릭해서 교체</div>'
+        : '<div style="font-size:13px;color:var(--gray-400);">클릭해서 파일 선택</div>') +
+      '<div id="contract-file-preview" style="margin-top:8px;font-size:12px;color:var(--gray-600);"></div>' +
+      '</div>' +
+      '<input type="file" id="contract-file-input" accept=".pdf,image/*" style="display:none;" onchange="onContractFileChange(this)" /></div>';
+
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="openBrandDetail(\'' + brandId + '\')">취소</button>' +
+      '<button class="btn btn-primary" id="btn-save-contract" onclick="saveContract(\'' + brandId + '\',\'' + (contractId || '') + '\',\'' + esc(c.file_url || '') + '\')">' + (isEdit ? '저장' : '추가') + '</button>';
+
+    showModal(isEdit ? '계약 수정' : '계약 추가', formHTML, footerHTML);
+  };
+
+  window.onContractFileChange = function(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const preview = document.getElementById('contract-file-preview');
+    const area = document.getElementById('contract-file-area');
+    if (preview) preview.textContent = file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)';
+    if (area) area.style.borderColor = 'var(--blue)';
+  };
+
+  window.openContractStatusModal = function(brandId, contractId, currentStatus) {
+    const opts = ['진행중', '만료', '해지'];
+    const formHTML = '<div class="form-group"><label class="form-label">계약 상태</label>' +
+      '<select class="form-input" id="contract-status-select">' +
+      opts.map(o => '<option value="' + o + '"' + (o === currentStatus ? ' selected' : '') + '>' + o + '</option>').join('') +
+      '</select></div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="openBrandDetail(\'' + brandId + '\')">취소</button>' +
+      '<button class="btn btn-primary" onclick="saveContractStatus(\'' + brandId + '\',\'' + contractId + '\')">저장</button>';
+    showModal('계약 상태 변경', formHTML, footerHTML);
+  };
+
+  window.saveContractStatus = async function(brandId, contractId) {
+    const status = document.getElementById('contract-status-select').value;
+    try {
+      await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), { status, updated_at: today() });
+      showToast('계약 상태를 변경했습니다.');
+      openBrandDetail(brandId);
+    } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
+  };
+
+  window.saveContract = async function(brandId, contractId, existingFileUrl) {
+    const btn = document.getElementById('btn-save-contract');
+    if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
+
+    const version = parseInt(document.getElementById('contract-version').value) || 1;
+    const signed_at = document.getElementById('contract-signed-at').value || '';
+    const end_at = document.getElementById('contract-end-at').value || '';
+    const auto_renew = document.getElementById('contract-auto-renew').checked;
+    const fileInput = document.getElementById('contract-file-input');
+    const file = fileInput && fileInput.files[0];
+
+    try {
+      let file_url = existingFileUrl || '';
+      if (file) {
+        const path = 'contracts/' + brandId + '/' + today() + '_v' + version + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const snap = await uploadBytes(ref(storage, path), file);
+        file_url = await getDownloadURL(snap.ref);
+      }
+
+      const data = { version, signed_at, end_at, auto_renew, file_url, status: contractId ? undefined : '진행중', updated_at: today() };
+      if (!contractId) { data.status = '진행중'; data.created_at = today(); }
+
+      if (contractId) {
+        const updateData = { version, signed_at, end_at, auto_renew, file_url, updated_at: today() };
+        await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), updateData);
+      } else {
+        await addDoc(collection(db, 'brands', brandId, 'contracts'), { version, signed_at, end_at, auto_renew, file_url, status: '진행중', created_at: today(), updated_at: today() });
+      }
+
+      showToast(contractId ? '계약을 수정했습니다.' : '계약을 추가했습니다.');
+      openBrandDetail(brandId);
+    } catch(e) {
+      if (btn) { btn.disabled = false; btn.textContent = contractId ? '저장' : '추가'; }
+      showToast('저장 실패: ' + e.message, 'error');
+    }
   };
 
   /* ── 파일 업로드 UI ── */
