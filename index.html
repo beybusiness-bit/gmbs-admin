@@ -1191,8 +1191,8 @@
           ? '<span class="badge badge-green">활성</span>'
           : '<span class="badge badge-gray">비활성</span>';
         const logoCell = b.logo_url
-          ? '<img src="' + esc(b.logo_url) + '" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);" />'
-          : '<div style="width:56px;height:56px;border-radius:8px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:20px;">🏬</div>';
+          ? '<img src="' + esc(b.logo_url) + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);" />'
+          : '<div style="width:72px;height:72px;border-radius:8px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:20px;">🏬</div>';
         return '<tr style="cursor:pointer;" onclick="openBrandDetail(\'' + d.id + '\')">' +
           '<td style="padding:8px 8px 8px 16px;">' + logoCell + '</td>' +
           '<td class="td-code">' + esc(b.brand_code) + '</td>' +
@@ -1200,12 +1200,11 @@
           '<td>' + (typeLabel[b.brand_type] || b.brand_type) + '</td>' +
           '<td>' + activeText + '</td>' +
           '<td style="color:var(--gray-400);font-size:12px;">' + (b.last_product_number || '000') + '</td>' +
-          '<td onclick="event.stopPropagation()"><button class="btn btn-secondary" style="padding:5px 12px;font-size:12px;" onclick="openBrandModal(\'' + d.id + '\')">수정</button></td>' +
           '</tr>';
       }).join('');
 
       container.innerHTML = '<div class="card"><div class="table-wrap"><table>' +
-        '<thead><tr><th style="width:48px;"></th><th>브랜드코드</th><th>브랜드명</th><th>거래유형</th><th>상태</th><th>마지막 상품번호</th><th></th></tr></thead>' +
+        '<thead><tr><th style="width:48px;"></th><th>브랜드코드</th><th>브랜드명</th><th>거래유형</th><th>상태</th><th>마지막 상품번호</th></tr></thead>' +
         '<tbody>' + rows + '</tbody></table></div></div>';
     } catch (e) {
       container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
@@ -1597,7 +1596,7 @@
             row('SNS', esc(ci.sns || '')) : '') +
         (fi.commission !== undefined || fi.tax_rate !== undefined
           ? '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:16px;margin-bottom:8px;">수수료</div>' +
-            row('중개수수료', fi.commission !== undefined ? fi.commission + '%' : '') +
+            row('중개수수료', fi.commission_rate !== undefined ? fi.commission_rate + '%' : '') +
             row('소득세율', fi.tax_rate !== undefined ? fi.tax_rate + '%' : '') : '') +
         (bizTypeText
           ? '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:16px;margin-bottom:8px;">정산 정보</div>' +
@@ -1708,8 +1707,8 @@
     } else {
       tbody.innerHTML = products.map(p => {
         const thumb = p.image_url
-          ? '<img src="' + esc(p.image_url) + '" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);" />'
-          : '<div style="width:64px;height:64px;border-radius:8px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:22px;">📦</div>';
+          ? '<img src="' + esc(p.image_url) + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);" />'
+          : '<div style="width:72px;height:72px;border-radius:8px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:22px;">📦</div>';
         return '<tr style="cursor:pointer;" onclick="openProductDetail(\'' + p.id + '\')">' +
         '<td style="padding:8px 8px 8px 16px;">' + thumb + '</td>' +
         '<td class="td-code">' + esc(p.id) + '</td>' +
@@ -1757,7 +1756,7 @@
       }).join('');
 
       const mainImgHTML = p.image_url
-        ? '<img src="' + esc(p.image_url) + '" style="width:80px;height:80px;object-fit:cover;border-radius:10px;border:1px solid var(--gray-200);margin-right:16px;flex-shrink:0;" />'
+        ? '<img src="' + esc(p.image_url) + '" style="width:144px;height:144px;object-fit:cover;border-radius:10px;border:1px solid var(--gray-200);margin-right:16px;flex-shrink:0;" />'
         : '';
 
       const body =
@@ -1874,10 +1873,10 @@
         '<div style="display:flex;gap:16px;align-items:flex-start;">' +
         '<div style="flex:0 0 auto;">' +
         (p.image_url
-          ? '<img id="edit-product-img-preview" src="' + esc(p.image_url) + '" style="width:72px;height:72px;object-fit:cover;border-radius:10px;border:1px solid var(--gray-200);cursor:pointer;" onclick="document.getElementById(\'input-edit-product-img\').click()" title="클릭해서 사진 변경" />'
-          : '<div id="edit-product-img-preview" onclick="document.getElementById(\'input-edit-product-img\').click()" style="width:72px;height:72px;border-radius:10px;border:2px dashed var(--gray-300);background:var(--gray-50);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:4px;">' +
-            '<span style="font-size:22px;">📷</span><span style="font-size:10px;color:var(--gray-400);">사진 추가</span></div>') +
-        '<input type="file" id="input-edit-product-img" accept="image/*" style="display:none;" onchange="(function(f){if(!f)return;var r=new FileReader();r.onload=function(e){var el=document.getElementById(\'edit-product-img-preview\');el.outerHTML=\'<img id=\\\'edit-product-img-preview\\\' src=\\\'\'+e.target.result+\'\\\' style=\\\'width:72px;height:72px;object-fit:cover;border-radius:10px;border:1px solid var(--gray-200);cursor:pointer;\\\' onclick=\\\'document.getElementById(\\\\\\\'input-edit-product-img\\\\\\\').click()\\\' title=\\\'클릭해서 사진 변경\\\' />\';};r.readAsDataURL(f);})(this.files[0])" />' +
+          ? '<img id="edit-product-img-preview" src="' + esc(p.image_url) + '" style="width:144px;height:144px;object-fit:cover;border-radius:10px;border:1px solid var(--gray-200);cursor:pointer;" onclick="document.getElementById(\'input-edit-product-img\').click()" title="클릭해서 사진 변경" />'
+          : '<div id="edit-product-img-preview" onclick="document.getElementById(\'input-edit-product-img\').click()" style="width:144px;height:144px;border-radius:10px;border:2px dashed var(--gray-300);background:var(--gray-50);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:4px;">' +
+            '<span style="font-size:32px;">📷</span><span style="font-size:11px;color:var(--gray-400);">사진 추가</span></div>') +
+        '<input type="file" id="input-edit-product-img" accept="image/*" style="display:none;" onchange="(function(f){if(!f)return;var r=new FileReader();r.onload=function(e){var el=document.getElementById(\'edit-product-img-preview\');el.outerHTML=\'<img id=\\\'edit-product-img-preview\\\' src=\\\'\'+e.target.result+\'\\\' style=\\\'width:144px;height:144px;object-fit:cover;border-radius:10px;border:1px solid var(--gray-200);cursor:pointer;\\\' onclick=\\\'document.getElementById(\\\\\\\'input-edit-product-img\\\\\\\').click()\\\' title=\\\'클릭해서 사진 변경\\\' />\';};r.readAsDataURL(f);})(this.files[0])" />' +
         '</div>' +
         '<div style="flex:1;display:grid;gap:12px;">' +
         '<div class="form-group" style="margin:0;"><label class="form-label">상품 ID</label>' +
@@ -2170,20 +2169,33 @@
       /* ── Step 1: 기본 정보 ── */
       '<div class="form-section">',
       '<div class="form-section-title">기본 정보</div>',
-      '<div class="form-row">',
-      '<div class="form-group">',
+
+      /* 사진 + 브랜드/상품ID/상품명 (수정 화면과 동일 레이아웃) */
+      '<div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:16px;">',
+      '<div style="flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:6px;">',
+      '<div id="new-product-img-preview" onclick="document.getElementById(\'input-new-product-img\').click()" style="width:144px;height:144px;border-radius:10px;border:2px dashed var(--gray-300);background:var(--gray-50);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:4px;">',
+      '<span style="font-size:32px;">📷</span><span style="font-size:11px;color:var(--gray-400);">대표 사진 추가</span>',
+      '</div>',
+      '<input type="file" id="input-new-product-img" accept="image/*" style="display:none;" onchange="(function(f){if(!f)return;var r=new FileReader();r.onload=function(e){var el=document.getElementById(\'new-product-img-preview\');el.outerHTML=\'<img id=\\\'new-product-img-preview\\\' src=\\\'\'+e.target.result+\'\\\' style=\\\'width:144px;height:144px;object-fit:cover;border-radius:10px;border:1px solid var(--gray-200);cursor:pointer;\\\' onclick=\\\'document.getElementById(\\\\\\\'input-new-product-img\\\\\\\').click()\\\' title=\\\'클릭해서 사진 변경\\\' />\';};r.readAsDataURL(f);})(this.files[0])" />',
+      '</div>',
+      '<div style="flex:1;display:grid;gap:12px;">',
+      '<div class="form-row" style="margin:0;">',
+      '<div class="form-group" style="margin:0;">',
       '<label class="form-label" for="p-brand">브랜드 <span class="required">*</span></label>',
       '<select class="form-select" id="p-brand"><option value="">브랜드 선택...</option>' + brandOptions + '</select>',
       '</div>',
-      '<div class="form-group">',
+      '<div class="form-group" style="margin:0;">',
       '<label class="form-label">예정 상품 ID</label>',
       '<div id="p-product-id-preview" style="padding:9px 12px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;font-family:monospace;font-size:14px;font-weight:700;color:var(--gray-400);">브랜드 선택 후 표시</div>',
       '</div>',
       '</div>',
-      '<div class="form-group">',
+      '<div class="form-group" style="margin:0;">',
       '<label class="form-label" for="p-name">상품명 <span class="required">*</span></label>',
       '<input class="form-input" id="p-name" type="text" placeholder="예: 체크 파우치" />',
       '</div>',
+      '</div>',
+      '</div>',
+
       /* ── 가격 정보 ── */
       '<div class="form-row">',
       '<div class="form-group">',
@@ -2197,7 +2209,6 @@
       '<div class="form-hint">브랜드 기본값 자동 입력, 상품별 수정 가능</div>',
       '</div>',
       '</div>',
-      '<div class="form-row">',
       '<div class="form-group">',
       '<label class="form-label">판매가격 <span style="font-size:11px;color:var(--gray-400);font-weight:400;">(자동 계산)</span></label>',
       '<div id="p-price-display" style="padding:9px 12px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-weight:700;color:var(--gray-400);">공급가격 · 수수료 입력 후 표시</div>',
@@ -2216,16 +2227,9 @@
       '</label>',
       '</div>',
       '</div>',
-      '</div>',
-      '<div class="form-row">',
       '<div class="form-group">',
       '<label class="form-label" for="p-memo">메모 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택</span></label>',
       '<input class="form-input" id="p-memo" type="text" placeholder="내부 메모 (선택)" />',
-      '</div>',
-      '<div class="form-group">',
-      '<label class="form-label">상품 대표 사진 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택</span></label>',
-      fileUploadArea('upload-product-main-img', 'preview-product-main-img', 'input-product-main-img', ''),
-      '</div>',
       '</div>',
       '</div>',
 
@@ -2353,7 +2357,6 @@
       rebuildCombos();
     });
 
-    setupFileUpload('upload-product-main-img', 'preview-product-main-img', 'input-product-main-img');
   }
 
   /* ── 옵션 태그 입력 ── */
@@ -2517,7 +2520,7 @@
       }));
     }
 
-    const mainImgInput = document.getElementById('input-product-main-img');
+    const mainImgInput = document.getElementById('input-new-product-img');
     const mainImgFile = mainImgInput && mainImgInput.files[0] ? mainImgInput.files[0] : null;
     window._pendingProduct = { brandId, brandCode, nextProductNum, productName, supplyPrice, commissionRate, basePrice, trackingType, optionMode, memo, skus, mainImgFile };
     showProductConfirm();
