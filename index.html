@@ -2083,6 +2083,92 @@
   };
 
   /* ════════════════════════════════
+     13단계 상품 승인 워크플로우
+  ════════════════════════════════ */
+  window.openApprovalModal = function(productId, currentStatus) {
+    const formHTML =
+      '<div class="form-group"><label class="form-label">승인 상태</label>' +
+      '<select class="form-input" id="approval-status">' +
+      '<option value="">미설정</option>' +
+      ['승인대기','승인','거절'].map(o => '<option value="' + o + '"' + (o === currentStatus ? ' selected' : '') + '>' + o + '</option>').join('') +
+      '</select></div>' +
+      '<div id="approval-extra"></div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="openProductDetail(\'' + productId + '\')">취소</button>' +
+      '<button class="btn btn-primary" onclick="saveApproval(\'' + productId + '\')">저장</button>';
+    showModal('상품 승인 심사', formHTML, footerHTML);
+
+    // 상태 선택에 따라 추가 입력 필드 동적 표시
+    document.getElementById('approval-status').addEventListener('change', function() {
+      renderApprovalExtra(this.value);
+    });
+    renderApprovalExtra(currentStatus);
+  };
+
+  function renderApprovalExtra(status) {
+    const el = document.getElementById('approval-extra');
+    if (!el) return;
+    if (status === '승인') {
+      el.innerHTML =
+        '<div style="background:var(--blue-light);border-radius:8px;padding:14px;margin-bottom:4px;">' +
+        '<div style="font-size:12px;font-weight:600;color:var(--blue);margin-bottom:10px;">공급가격 / 수수료율 입력</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+        '<div class="form-group" style="margin:0;"><label class="form-label">공급가격 (원)</label>' +
+        '<input class="form-input" id="approval-supply-price" type="number" min="0" placeholder="0" /></div>' +
+        '<div class="form-group" style="margin:0;"><label class="form-label">중개수수료율 (%)</label>' +
+        '<input class="form-input" id="approval-commission-rate" type="number" min="0" max="100" step="0.1" placeholder="0" oninput="calcRetailPrice()" /></div>' +
+        '</div>' +
+        '<div style="margin-top:10px;font-size:12px;color:var(--gray-600);">정가(자동산정): <strong id="retail-price-preview">—</strong></div>' +
+        '</div>';
+    } else if (status === '거절') {
+      el.innerHTML =
+        '<div class="form-group"><label class="form-label">거절 사유 <span style="color:var(--red);">*</span></label>' +
+        '<input class="form-input" id="approval-rejection-reason" placeholder="거절 사유를 입력하세요" /></div>';
+    } else {
+      el.innerHTML = '';
+    }
+  }
+
+  window.calcRetailPrice = function() {
+    const supply = parseFloat((document.getElementById('approval-supply-price') || {}).value) || 0;
+    const rate = parseFloat((document.getElementById('approval-commission-rate') || {}).value) || 0;
+    const preview = document.getElementById('retail-price-preview');
+    if (!preview) return;
+    if (supply > 0 && rate > 0) {
+      // 정가 = 공급가 / (1 - 수수료율/100), 100원 단위 올림
+      const retail = Math.ceil(supply / (1 - rate / 100) / 100) * 100;
+      preview.textContent = retail.toLocaleString() + '원';
+    } else {
+      preview.textContent = '—';
+    }
+  };
+
+  window.saveApproval = async function(productId) {
+    const status = document.getElementById('approval-status').value;
+    const data = { approval_status: status || null, updated_at: today() };
+
+    if (status === '승인') {
+      const supply = parseFloat((document.getElementById('approval-supply-price') || {}).value) || 0;
+      const rate = parseFloat((document.getElementById('approval-commission-rate') || {}).value) || 0;
+      data.supply_price = supply;
+      data.commission_rate = rate;
+      if (supply > 0 && rate > 0) {
+        data.retail_price_auto = Math.ceil(supply / (1 - rate / 100) / 100) * 100;
+      }
+    } else if (status === '거절') {
+      const reason = ((document.getElementById('approval-rejection-reason') || {}).value || '').trim();
+      if (!reason) { showToast('거절 사유를 입력해주세요.', 'error'); return; }
+      data.rejection_reason = reason;
+    }
+
+    try {
+      await updateDoc(doc(db, 'products', productId), data);
+      showToast('승인 상태를 저장했습니다.');
+      openProductDetail(productId);
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  /* ════════════════════════════════
      12단계 입점 심사 워크플로우
   ════════════════════════════════ */
   window.openOnboardingModal = function(brandId, currentStatus) {
@@ -2173,6 +2259,9 @@
         '<select id="pl-status-filter" onchange="window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="">전체 상태</option><option value="판매중">판매중</option><option value="판매중지">판매중지</option>' +
         '</select>' +
+        '<select id="pl-approval-filter" onchange="window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
+        '<option value="">전체 승인상태</option><option value="승인대기">승인대기</option><option value="승인">승인</option><option value="거절">거절</option>' +
+        '</select>' +
         '<select id="pl-page-size" onchange="window._productPageSize=parseInt(this.value);window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
         '</select>' +
@@ -2237,13 +2326,15 @@
   window.filterProductList = function() {
     const term = ((document.getElementById('pl-search') || {}).value || '').trim().toLowerCase();
     const statusFilter = ((document.getElementById('pl-status-filter') || {}).value || '');
+    const approvalFilter = ((document.getElementById('pl-approval-filter') || {}).value || '');
     const filtered = (window._allProducts || []).filter(function(p) {
       const matchTerm = !term ||
         (p.product_name || '').toLowerCase().includes(term) ||
         (p.id || '').toLowerCase().includes(term) ||
         (p.brand_code || '').toLowerCase().includes(term);
       const matchStatus = !statusFilter || p.status === statusFilter;
-      return matchTerm && matchStatus;
+      const matchApproval = !approvalFilter || p.approval_status === approvalFilter;
+      return matchTerm && matchStatus && matchApproval;
     });
     window._productFiltered = filtered;
 
@@ -2339,6 +2430,19 @@
         ? '<img src="' + esc(p.image_url) + '" style="width:144px;height:144px;object-fit:cover;border-radius:10px;border:1px solid var(--gray-200);margin-right:16px;flex-shrink:0;" />'
         : '';
 
+      const approvalBadge = s => ({
+        '승인대기': '<span class="badge badge-yellow">승인대기</span>',
+        '승인': '<span class="badge badge-green">승인</span>',
+        '거절': '<span class="badge badge-red">거절</span>'
+      }[s] || '');
+
+      const approvalRow = p.approval_status
+        ? row('승인 상태', approvalBadge(p.approval_status) +
+            (p.rejection_reason ? ' <span style="font-size:12px;color:var(--gray-500);">— ' + esc(p.rejection_reason) + '</span>' : '') +
+            ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openApprovalModal(\'' + productId + '\',\'' + esc(p.approval_status) + '\')">심사</button>')
+        : row('승인 상태', '<span class="badge badge-gray">미설정</span>' +
+            ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openApprovalModal(\'' + productId + '\',\'\')">심사</button>');
+
       const body =
         '<div style="display:flex;align-items:flex-start;margin-bottom:20px;">' +
         mainImgHTML +
@@ -2347,8 +2451,10 @@
         row('상품 ID', '<span style="font-family:monospace;font-weight:700;color:var(--blue);">' + esc(productId) + '</span>') +
         row('상품명', '<strong>' + esc(p.product_name) + '</strong>') +
         row('브랜드', esc(p.brand_code)) +
+        approvalRow +
         (p.supply_price ? row('공급가격', (p.supply_price).toLocaleString() + '원') : '') +
-        (p.commission_rate !== undefined ? row('중개수수료', p.commission_rate + '%') : '') +
+        (p.commission_rate !== undefined ? row('중개수수료율', p.commission_rate + '%') : '') +
+        (p.retail_price_auto ? row('정가(자동산정)', (p.retail_price_auto).toLocaleString() + '원') : '') +
         row('판매가격', (p.base_price || 0).toLocaleString() + '원') +
         row('관리방식', p.tracking_type === 'quantity' ? '수량 관리' : '개체 관리') +
         row('상태', p.status || '-') +
