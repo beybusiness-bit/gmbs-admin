@@ -533,8 +533,12 @@
       '<option value="brand_asc">브랜드코드 A→Z</option>' +
       '<option value="brand_desc">브랜드코드 Z→A</option>' +
       '</select>' +
+      '<select id="bc-page-size" onchange="window._bcPageSize=parseInt(this.value);runBcSearch()" style="border:1px solid var(--gray-200);border-radius:8px;padding:7px 10px;font-size:13px;background:#fff;cursor:pointer;">' +
+      '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
+      '</select>' +
       '<button onclick="openBcDefaultSettings()" style="display:flex;align-items:center;gap:5px;padding:7px 12px;border:1px solid var(--gray-200);border-radius:8px;background:#fff;font-size:12px;font-weight:600;color:var(--gray-600);cursor:pointer;white-space:nowrap;">⚙️ 기본 설정</button>' +
       '</div>' +
+      '<div id="bc-count" style="font-size:13px;color:var(--gray-500);margin-bottom:10px;"></div>' +
       '<div id="bc-results"></div>' +
       '<div id="bc-action-bar" class="bc-action-bar" style="display:none;">' +
       '<div id="bc-action-count" style="flex:1;font-size:13px;font-weight:600;color:var(--gray-700);"></div>' +
@@ -611,6 +615,12 @@
         if (sortKey === 'brand_desc') return (b.brand_code||'').localeCompare(a.brand_code||'');
         return (b.created_at||'').localeCompare(a.created_at||''); // created_desc
       });
+
+      const totalCount = products.length;
+      const bcPageSize = window._bcPageSize || 20;
+      const countEl = document.getElementById('bc-count');
+      if (countEl) countEl.innerHTML = '총 <strong>' + totalCount + '</strong>개 상품' + (totalCount > bcPageSize ? ' · 상위 <strong>' + bcPageSize + '</strong>개 표시 (페이지당 개수 선택으로 조정 가능)' : '');
+      products = products.slice(0, bcPageSize);
 
       if (products.length === 0) {
         resultsEl.innerHTML = '<div class="empty-state"><div class="empty-state-text">검색 결과가 없습니다.</div></div>';
@@ -1172,44 +1182,157 @@
   };
 
   async function renderBrandList(container) {
+    window._brandSelected = window._brandSelected || new Set();
+    window._brandPageSize = window._brandPageSize || 20;
+    window._brandPage = 1;
+
     document.getElementById('page-header-actions').innerHTML =
+      '<button class="btn btn-secondary" id="btn-export-brands" onclick="exportSelectedBrands()" style="display:none;">📥 선택 내보내기</button>' +
       '<button class="btn btn-primary" onclick="openBrandModal(null)">➕ 새 브랜드 등록</button>';
 
     container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
     try {
       const snap = await getDocs(query(collection(db, 'brands'), orderBy('created_at', 'desc')));
+      window._allBrands = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
       if (snap.empty) {
         container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🏬</div><div class="empty-state-text">등록된 브랜드가 없습니다.<br>새 브랜드를 등록해보세요.</div></div>';
         return;
       }
 
-      const typeLabel = { PB: '<span class="badge badge-blue">PB</span>', '위탁': '<span class="badge badge-yellow">위탁</span>', '매입': '<span class="badge badge-green">매입</span>' };
+      container.innerHTML =
+        '<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">' +
+        '<input class="form-input" id="bl-search" placeholder="브랜드명, 브랜드코드 검색..." style="flex:1;min-width:220px;" oninput="window._brandPage=1;filterBrandList()" />' +
+        '<select id="bl-type-filter" onchange="window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
+        '<option value="">전체 유형</option><option value="PB">PB</option><option value="위탁">위탁</option><option value="매입">매입</option>' +
+        '</select>' +
+        '<select id="bl-page-size" onchange="window._brandPageSize=parseInt(this.value);window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
+        '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
+        '</select>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+        '<div id="bl-count" style="font-size:13px;color:var(--gray-500);"></div>' +
+        '<div id="bl-pagination"></div>' +
+        '</div>' +
+        '<div class="card"><div class="table-wrap"><table id="bl-table">' +
+        '<thead><tr>' +
+        '<th style="width:36px;padding-left:16px;"><input type="checkbox" id="bl-chk-all" onchange="toggleAllBrands(this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></th>' +
+        '<th style="width:80px;"></th><th>브랜드코드</th><th>브랜드명</th><th>거래유형</th><th>상태</th><th>마지막 상품번호</th>' +
+        '</tr></thead>' +
+        '<tbody id="bl-tbody"></tbody></table></div></div>';
 
-      const rows = snap.docs.map(d => {
-        const b = d.data();
-        const activeText = b.active !== false
-          ? '<span class="badge badge-green">활성</span>'
-          : '<span class="badge badge-gray">비활성</span>';
-        const logoCell = b.logo_url
-          ? '<img src="' + esc(b.logo_url) + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);" />'
-          : '<div style="width:72px;height:72px;border-radius:8px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:20px;">🏬</div>';
-        return '<tr style="cursor:pointer;" onclick="openBrandDetail(\'' + d.id + '\')">' +
-          '<td style="padding:8px 8px 8px 16px;">' + logoCell + '</td>' +
-          '<td class="td-code">' + esc(b.brand_code) + '</td>' +
-          '<td style="font-weight:600;">' + esc(b.brand_name) + '</td>' +
-          '<td>' + (typeLabel[b.brand_type] || b.brand_type) + '</td>' +
-          '<td>' + activeText + '</td>' +
-          '<td style="color:var(--gray-400);font-size:12px;">' + (b.last_product_number || '000') + '</td>' +
-          '</tr>';
-      }).join('');
-
-      container.innerHTML = '<div class="card"><div class="table-wrap"><table>' +
-        '<thead><tr><th style="width:48px;"></th><th>브랜드코드</th><th>브랜드명</th><th>거래유형</th><th>상태</th><th>마지막 상품번호</th></tr></thead>' +
-        '<tbody>' + rows + '</tbody></table></div></div>';
+      filterBrandList();
     } catch (e) {
       container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
     }
   }
+
+  window.toggleAllBrands = function(checked) {
+    const filtered = window._brandFiltered || [];
+    const ps = window._brandPageSize || 20;
+    const pg = window._brandPage || 1;
+    const pageItems = filtered.slice((pg-1)*ps, pg*ps);
+    pageItems.forEach(b => {
+      if (checked) window._brandSelected.add(b.id);
+      else window._brandSelected.delete(b.id);
+      const cb = document.getElementById('bl-chk-' + b.id);
+      if (cb) cb.checked = checked;
+    });
+    updateBrandExportBtn();
+  };
+
+  window.toggleBrandSelect = function(id, checked) {
+    if (checked) window._brandSelected.add(id);
+    else window._brandSelected.delete(id);
+    const allChk = document.getElementById('bl-chk-all');
+    if (allChk) {
+      const filtered = window._brandFiltered || [];
+      const ps = window._brandPageSize || 20;
+      const pg = window._brandPage || 1;
+      const pageItems = filtered.slice((pg-1)*ps, pg*ps);
+      allChk.checked = pageItems.length > 0 && pageItems.every(b => window._brandSelected.has(b.id));
+    }
+    updateBrandExportBtn();
+  };
+
+  function updateBrandExportBtn() {
+    const btn = document.getElementById('btn-export-brands');
+    if (!btn) return;
+    const cnt = (window._brandSelected || new Set()).size;
+    if (cnt > 0) {
+      btn.style.display = '';
+      btn.textContent = '📥 선택 내보내기 (' + cnt + '개)';
+    } else {
+      btn.style.display = 'none';
+    }
+  }
+
+  window.filterBrandList = function() {
+    const term = ((document.getElementById('bl-search') || {}).value || '').trim().toLowerCase();
+    const typeFilter = ((document.getElementById('bl-type-filter') || {}).value || '');
+    const filtered = (window._allBrands || []).filter(function(b) {
+      const matchTerm = !term ||
+        (b.brand_name || '').toLowerCase().includes(term) ||
+        (b.brand_code || '').toLowerCase().includes(term);
+      const matchType = !typeFilter || b.brand_type === typeFilter;
+      return matchTerm && matchType;
+    });
+    window._brandFiltered = filtered;
+
+    const ps = window._brandPageSize || 20;
+    const pg = window._brandPage || 1;
+    const total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / ps));
+    if (window._brandPage > totalPages) window._brandPage = totalPages;
+    const pageItems = filtered.slice((pg-1)*ps, pg*ps);
+
+    const typeLabel = { PB: '<span class="badge badge-blue">PB</span>', '위탁': '<span class="badge badge-yellow">위탁</span>', '매입': '<span class="badge badge-green">매입</span>' };
+
+    const tbody = document.getElementById('bl-tbody');
+    const countEl = document.getElementById('bl-count');
+    const paginEl = document.getElementById('bl-pagination');
+    if (!tbody) return;
+
+    if (pageItems.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--gray-400);padding:32px;">검색 결과가 없습니다.</td></tr>';
+    } else {
+      tbody.innerHTML = pageItems.map(b => {
+        const activeText = b.active !== false ? '<span class="badge badge-green">활성</span>' : '<span class="badge badge-gray">비활성</span>';
+        const logoCell = b.logo_url
+          ? '<img src="' + esc(b.logo_url) + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);" />'
+          : '<div style="width:72px;height:72px;border-radius:8px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:20px;">🏬</div>';
+        const checked = (window._brandSelected || new Set()).has(b.id) ? ' checked' : '';
+        return '<tr style="cursor:pointer;" onclick="openBrandDetail(\'' + b.id + '\')">' +
+          '<td style="padding-left:16px;" onclick="event.stopPropagation()"><input type="checkbox" id="bl-chk-' + b.id + '"' + checked + ' onchange="toggleBrandSelect(\'' + b.id + '\',this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></td>' +
+          '<td style="padding:8px;">' + logoCell + '</td>' +
+          '<td class="td-code">' + esc(b.brand_code) + '</td>' +
+          '<td style="font-weight:600;">' + esc(b.brand_name) + '</td>' +
+          '<td>' + (typeLabel[b.brand_type] || b.brand_type || '-') + '</td>' +
+          '<td>' + activeText + '</td>' +
+          '<td style="color:var(--gray-400);font-size:12px;">' + (b.last_product_number || '000') + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+
+    const allChk = document.getElementById('bl-chk-all');
+    if (allChk) allChk.checked = pageItems.length > 0 && pageItems.every(b => (window._brandSelected||new Set()).has(b.id));
+
+    if (countEl) countEl.innerHTML = '총 <strong>' + (window._allBrands || []).length + '</strong>개 중 <strong>' + total + '</strong>개 · 선택 <strong>' + (window._brandSelected||new Set()).size + '</strong>개';
+
+    if (paginEl) {
+      if (totalPages <= 1) { paginEl.innerHTML = ''; }
+      else {
+        paginEl.innerHTML =
+          '<div style="display:flex;align-items:center;gap:6px;font-size:13px;">' +
+          '<button onclick="window._brandPage=Math.max(1,window._brandPage-1);filterBrandList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg<=1?' disabled':'') + '>이전</button>' +
+          '<span style="color:var(--gray-500);">' + pg + ' / ' + totalPages + '</span>' +
+          '<button onclick="window._brandPage=Math.min(' + totalPages + ',window._brandPage+1);filterBrandList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg>=totalPages?' disabled':'') + '>다음</button>' +
+          '</div>';
+      }
+    }
+
+    updateBrandExportBtn();
+  };
 
   /* ════════════════════════════════
      브랜드 등록 / 수정 (모달)
@@ -1656,7 +1779,12 @@
      상품 목록
   ════════════════════════════════ */
   async function renderProductList(container) {
+    window._productSelected = window._productSelected || new Set();
+    window._productPageSize = window._productPageSize || 20;
+    window._productPage = 1;
+
     document.getElementById('page-header-actions').innerHTML =
+      '<button class="btn btn-secondary" id="btn-export-products" onclick="exportSelectedProducts()" style="display:none;">📥 선택 내보내기 (토스포스)</button>' +
       '<button class="btn btn-primary" onclick="openProductModal()">➕ 새 상품 등록</button>';
 
     container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
@@ -1667,14 +1795,23 @@
 
       container.innerHTML =
         '<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">' +
-        '<input class="form-input" id="pl-search" placeholder="상품명, 상품ID, 브랜드코드 검색..." style="flex:1;min-width:220px;" oninput="filterProductList()" />' +
-        '<select id="pl-status-filter" onchange="filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
+        '<input class="form-input" id="pl-search" placeholder="상품명, 상품ID, 브랜드코드 검색..." style="flex:1;min-width:220px;" oninput="window._productPage=1;filterProductList()" />' +
+        '<select id="pl-status-filter" onchange="window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="">전체 상태</option><option value="판매중">판매중</option><option value="판매중지">판매중지</option>' +
         '</select>' +
+        '<select id="pl-page-size" onchange="window._productPageSize=parseInt(this.value);window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
+        '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
+        '</select>' +
         '</div>' +
-        '<div id="pl-count" style="font-size:13px;color:var(--gray-500);margin-bottom:10px;"></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+        '<div id="pl-count" style="font-size:13px;color:var(--gray-500);"></div>' +
+        '<div id="pl-pagination"></div>' +
+        '</div>' +
         '<div class="card"><div class="table-wrap"><table id="pl-table">' +
-        '<thead><tr><th style="width:48px;"></th><th>상품 ID</th><th>상품명</th><th>브랜드</th><th>관리방식</th><th>판매가</th><th>상태</th><th>등록일</th></tr></thead>' +
+        '<thead><tr>' +
+        '<th style="width:36px;padding-left:16px;"><input type="checkbox" id="pl-chk-all" onchange="toggleAllProducts(this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></th>' +
+        '<th style="width:80px;"></th><th>상품 ID</th><th>상품명</th><th>브랜드</th><th>관리방식</th><th>판매가</th><th>상태</th><th>등록일</th>' +
+        '</tr></thead>' +
         '<tbody id="pl-tbody"></tbody></table></div></div>';
 
       filterProductList();
@@ -1683,10 +1820,50 @@
     }
   }
 
+  window.toggleAllProducts = function(checked) {
+    const filtered = window._productFiltered || [];
+    const ps = window._productPageSize || 20;
+    const pg = window._productPage || 1;
+    const pageItems = filtered.slice((pg-1)*ps, pg*ps);
+    pageItems.forEach(p => {
+      if (checked) window._productSelected.add(p.id);
+      else window._productSelected.delete(p.id);
+      const cb = document.getElementById('pl-chk-' + p.id);
+      if (cb) cb.checked = checked;
+    });
+    updateProductExportBtn();
+  };
+
+  window.toggleProductSelect = function(id, checked) {
+    if (checked) window._productSelected.add(id);
+    else window._productSelected.delete(id);
+    const allChk = document.getElementById('pl-chk-all');
+    if (allChk) {
+      const filtered = window._productFiltered || [];
+      const ps = window._productPageSize || 20;
+      const pg = window._productPage || 1;
+      const pageItems = filtered.slice((pg-1)*ps, pg*ps);
+      allChk.checked = pageItems.length > 0 && pageItems.every(p => window._productSelected.has(p.id));
+    }
+    updateProductExportBtn();
+  };
+
+  function updateProductExportBtn() {
+    const btn = document.getElementById('btn-export-products');
+    if (!btn) return;
+    const cnt = (window._productSelected || new Set()).size;
+    if (cnt > 0) {
+      btn.style.display = '';
+      btn.textContent = '📥 선택 내보내기 (' + cnt + '개, 토스포스)';
+    } else {
+      btn.style.display = 'none';
+    }
+  }
+
   window.filterProductList = function() {
     const term = ((document.getElementById('pl-search') || {}).value || '').trim().toLowerCase();
     const statusFilter = ((document.getElementById('pl-status-filter') || {}).value || '');
-    const products = (window._allProducts || []).filter(function(p) {
+    const filtered = (window._allProducts || []).filter(function(p) {
       const matchTerm = !term ||
         (p.product_name || '').toLowerCase().includes(term) ||
         (p.id || '').toLowerCase().includes(term) ||
@@ -1694,23 +1871,34 @@
       const matchStatus = !statusFilter || p.status === statusFilter;
       return matchTerm && matchStatus;
     });
+    window._productFiltered = filtered;
+
+    const ps = window._productPageSize || 20;
+    const pg = window._productPage || 1;
+    const total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / ps));
+    if (window._productPage > totalPages) window._productPage = totalPages;
+    const pageItems = filtered.slice((pg-1)*ps, pg*ps);
 
     const trackingLabel = { quantity: '<span class="badge badge-blue">수량</span>', individual: '<span class="badge badge-yellow">개체</span>' };
     const statusLabel = { '판매중': '<span class="badge badge-green">판매중</span>', '판매중지': '<span class="badge badge-gray">판매중지</span>' };
 
     const tbody = document.getElementById('pl-tbody');
     const countEl = document.getElementById('pl-count');
+    const paginEl = document.getElementById('pl-pagination');
     if (!tbody) return;
 
-    if (products.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--gray-400);padding:32px;">검색 결과가 없습니다.</td></tr>';
+    if (pageItems.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--gray-400);padding:32px;">검색 결과가 없습니다.</td></tr>';
     } else {
-      tbody.innerHTML = products.map(p => {
+      tbody.innerHTML = pageItems.map(p => {
         const thumb = p.image_url
           ? '<img src="' + esc(p.image_url) + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);" />'
           : '<div style="width:72px;height:72px;border-radius:8px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:22px;">📦</div>';
+        const checked = (window._productSelected || new Set()).has(p.id) ? ' checked' : '';
         return '<tr style="cursor:pointer;" onclick="openProductDetail(\'' + p.id + '\')">' +
-        '<td style="padding:8px 8px 8px 16px;">' + thumb + '</td>' +
+        '<td style="padding-left:16px;" onclick="event.stopPropagation()"><input type="checkbox" id="pl-chk-' + p.id + '"' + checked + ' onchange="toggleProductSelect(\'' + p.id + '\',this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></td>' +
+        '<td style="padding:8px;">' + thumb + '</td>' +
         '<td class="td-code">' + esc(p.id) + '</td>' +
         '<td style="font-weight:600;">' + esc(p.product_name) + '</td>' +
         '<td>' + esc(p.brand_code) + '</td>' +
@@ -1721,7 +1909,25 @@
         '</tr>';
       }).join('');
     }
-    if (countEl) countEl.innerHTML = '총 <strong>' + (window._allProducts || []).length + '</strong>개 중 <strong>' + products.length + '</strong>개 표시';
+
+    const allChk = document.getElementById('pl-chk-all');
+    if (allChk) allChk.checked = pageItems.length > 0 && pageItems.every(p => (window._productSelected||new Set()).has(p.id));
+
+    if (countEl) countEl.innerHTML = '총 <strong>' + (window._allProducts || []).length + '</strong>개 중 <strong>' + total + '</strong>개 · 선택 <strong>' + (window._productSelected||new Set()).size + '</strong>개';
+
+    if (paginEl) {
+      if (totalPages <= 1) { paginEl.innerHTML = ''; }
+      else {
+        paginEl.innerHTML =
+          '<div style="display:flex;align-items:center;gap:6px;font-size:13px;">' +
+          '<button onclick="window._productPage=Math.max(1,window._productPage-1);filterProductList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg<=1?' disabled':'') + '>이전</button>' +
+          '<span style="color:var(--gray-500);">' + pg + ' / ' + totalPages + '</span>' +
+          '<button onclick="window._productPage=Math.min(' + totalPages + ',window._productPage+1);filterProductList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg>=totalPages?' disabled':'') + '>다음</button>' +
+          '</div>';
+      }
+    }
+
+    updateProductExportBtn();
   };
 
   /* ════════════════════════════════
@@ -2709,16 +2915,6 @@
     container.innerHTML =
       '<div style="max-width:660px;">' +
 
-      /* ── 데이터 내보내기 ── */
-      '<div class="card" style="margin-bottom:20px;">' +
-      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">데이터 내보내기</div>' +
-      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">Firestore에 저장된 데이터를 엑셀(.xlsx)로 다운로드합니다.</div>' +
-      '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
-      '<button onclick="exportBrands()" class="btn btn-secondary">브랜드 목록 내보내기</button>' +
-      '<button onclick="exportProducts()" class="btn btn-secondary">상품 목록 내보내기</button>' +
-      '</div>' +
-      '</div>' +
-
       /* ── 앱 설치 ── */
       '<div class="card" style="margin-bottom:20px;">' +
       '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">홈 화면에 앱 설치</div>' +
@@ -2777,41 +2973,79 @@
       '</div></div>';
   }
 
-  window.exportBrands = async function() {
+  /* ── 날짜 포맷 헬퍼 (ISO 문자열 → 한국 날짜) ── */
+  function fmtDate(v) {
+    if (!v) return '';
+    if (typeof v === 'string') return v.slice(0,10);
+    if (v && typeof v.toDate === 'function') return v.toDate().toLocaleDateString('ko-KR');
+    return String(v);
+  }
+
+  /* ── 브랜드 내보내기 (선택한 항목만 GMBS 내부 양식) ── */
+  window.exportSelectedBrands = async function() {
     if (!window.XLSX) { showToast('엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 시도하세요.', 'error'); return; }
+    const selected = window._brandSelected || new Set();
+    if (selected.size === 0) { showToast('내보낼 브랜드를 먼저 선택해주세요.', 'error'); return; }
     try {
-      const snap = await getDocs(collection(db, 'brands'));
-      const rows = [['브랜드명','브랜드코드','거래유형','상태','등록일']];
-      snap.docs.forEach(d => {
-        const b = d.data();
-        rows.push([b.brand_name, b.brand_code, b.brand_type, b.active === false ? '사용중지' : '활성', b.created_at ? b.created_at.toDate().toLocaleDateString('ko-KR') : '']);
+      const allBrands = window._allBrands || [];
+      const brands = allBrands.filter(b => selected.has(b.id));
+      const rows = [['브랜드명','브랜드코드','거래유형','상태','마지막 상품번호','등록일']];
+      brands.forEach(b => {
+        rows.push([b.brand_name, b.brand_code, b.brand_type, b.active === false ? '사용중지' : '활성', b.last_product_number || '000', fmtDate(b.created_at)]);
       });
       const ws = XLSX.utils.aoa_to_sheet(rows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, '브랜드목록');
       XLSX.writeFile(wb, 'GMBS_브랜드목록.xlsx');
+      showToast(brands.length + '개 브랜드를 내보냈습니다.', 'success');
     } catch(e) { showToast('내보내기 실패: ' + e.message, 'error'); }
   };
 
-  window.exportProducts = async function() {
+  /* ── 상품 내보내기 (선택한 항목 → 토스포스 양식) ── */
+  window.exportSelectedProducts = async function() {
     if (!window.XLSX) { showToast('엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 시도하세요.', 'error'); return; }
+    const selected = window._productSelected || new Set();
+    if (selected.size === 0) { showToast('내보낼 상품을 먼저 선택해주세요.', 'error'); return; }
+
+    showToast('내보내기 준비 중...', 'info');
     try {
-      const snap = await getDocs(collection(db, 'products'));
-      const rows = [['상품ID','브랜드코드','상품명','기본가','관리방식','상태','메모','등록일']];
-      for (const d of snap.docs) {
-        const p = d.data();
-        rows.push([d.id, p.brand_code, p.product_name, p.base_price, p.tracking_type === 'individual' ? '개체관리' : '수량관리', p.status, p.memo || '', p.created_at ? p.created_at.toDate().toLocaleDateString('ko-KR') : '']);
-        const skuSnap = await getDocs(collection(db, 'products', d.id, 'skus'));
-        skuSnap.docs.forEach(s => {
-          const sk = s.data();
+      const allProducts = (window._allProducts || []).filter(p => selected.has(p.id));
+
+      /* 토스포스 양식 헤더 (2행: 헤더 + 필수여부) */
+      const header1 = ['상품 ID','상품이름','상품코드','카테고리','가격타입\n(고정 가격 or 시가)','기본가격 (원)','세금','바코드','제조사','재고'];
+      const header2 = ['','*필수','선택','*필수','선택','*필수','선택','선택','선택','선택'];
+      const rows = [header1, header2];
+
+      for (const p of allProducts) {
+        const skuSnap = await getDocs(collection(db, 'products', p.id, 'skus'));
+        const skus = skuSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        skus.sort((a, b) => (a.option_sort_order ?? 99) - (b.option_sort_order ?? 99));
+
+        skus.forEach(sk => {
           const opts = [sk.option_1_value, sk.option_2_value, sk.option_3_value].filter(Boolean).join(' / ');
-          rows.push(['  └ ' + s.id, p.brand_code, p.product_name + (opts ? ' [' + opts + ']' : ''), sk.price || p.base_price, '', sk.sku_status, '', '']);
+          const itemName = p.product_name + (opts ? ' (' + opts + ')' : '');
+          rows.push([
+            '',                              // 상품 ID (신규등록이므로 빈칸)
+            itemName,                        // 상품이름 *필수
+            sk.barcode_value || '',          // 상품코드
+            p.brand_name || p.brand_code,   // 카테고리 *필수 (브랜드명)
+            '고정 가격',                     // 가격타입
+            sk.price || p.base_price || 0,  // 기본가격 *필수
+            '과세',                          // 세금
+            sk.barcode_value || '',          // 바코드
+            p.brand_name || p.brand_code,   // 제조사
+            ''                              // 재고
+          ]);
         });
       }
+
       const ws = XLSX.utils.aoa_to_sheet(rows);
+      /* 열 너비 설정 */
+      ws['!cols'] = [8,28,18,12,12,12,8,18,12,8].map(w => ({ wch: w }));
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, '상품목록');
-      XLSX.writeFile(wb, 'GMBS_상품목록.xlsx');
+      XLSX.utils.book_append_sheet(wb, ws, '상품목록(토스포스)');
+      XLSX.writeFile(wb, 'GMBS_토스포스_상품등록.xlsx');
+      showToast(allProducts.length + '개 상품을 토스포스 양식으로 내보냈습니다.', 'success');
     } catch(e) { showToast('내보내기 실패: ' + e.message, 'error'); }
   };
 
