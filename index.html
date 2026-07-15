@@ -1397,18 +1397,50 @@
     container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
     try {
       const snap = await getDocs(collection(db, 'products'));
-      if (snap.empty) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📦</div><div class="empty-state-text">등록된 상품이 없습니다.<br><button class="btn btn-primary" style="margin-top:16px;" onclick="openProductModal()">새 상품 등록</button></div></div>';
-        return;
-      }
+      window._allProducts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      window._allProducts.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
 
-      const products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      products.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+      container.innerHTML =
+        '<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">' +
+        '<input class="form-input" id="pl-search" placeholder="상품명, 상품ID, 브랜드코드 검색..." style="flex:1;min-width:220px;" oninput="filterProductList()" />' +
+        '<select id="pl-status-filter" onchange="filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
+        '<option value="">전체 상태</option><option value="판매중">판매중</option><option value="판매중지">판매중지</option>' +
+        '</select>' +
+        '</div>' +
+        '<div id="pl-count" style="font-size:13px;color:var(--gray-500);margin-bottom:10px;"></div>' +
+        '<div class="card"><div class="table-wrap"><table id="pl-table">' +
+        '<thead><tr><th>상품 ID</th><th>상품명</th><th>브랜드</th><th>관리방식</th><th>판매가</th><th>상태</th><th>등록일</th></tr></thead>' +
+        '<tbody id="pl-tbody"></tbody></table></div></div>';
 
-      const trackingLabel = { quantity: '<span class="badge badge-blue">수량</span>', individual: '<span class="badge badge-yellow">개체</span>' };
-      const statusLabel = { '판매중': '<span class="badge badge-green">판매중</span>', '판매중지': '<span class="badge badge-gray">판매중지</span>' };
+      filterProductList();
+    } catch(e) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
+    }
+  }
 
-      const rows = products.map(p =>
+  window.filterProductList = function() {
+    const term = ((document.getElementById('pl-search') || {}).value || '').trim().toLowerCase();
+    const statusFilter = ((document.getElementById('pl-status-filter') || {}).value || '');
+    const products = (window._allProducts || []).filter(function(p) {
+      const matchTerm = !term ||
+        (p.product_name || '').toLowerCase().includes(term) ||
+        (p.id || '').toLowerCase().includes(term) ||
+        (p.brand_code || '').toLowerCase().includes(term);
+      const matchStatus = !statusFilter || p.status === statusFilter;
+      return matchTerm && matchStatus;
+    });
+
+    const trackingLabel = { quantity: '<span class="badge badge-blue">수량</span>', individual: '<span class="badge badge-yellow">개체</span>' };
+    const statusLabel = { '판매중': '<span class="badge badge-green">판매중</span>', '판매중지': '<span class="badge badge-gray">판매중지</span>' };
+
+    const tbody = document.getElementById('pl-tbody');
+    const countEl = document.getElementById('pl-count');
+    if (!tbody) return;
+
+    if (products.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--gray-400);padding:32px;">검색 결과가 없습니다.</td></tr>';
+    } else {
+      tbody.innerHTML = products.map(p =>
         '<tr style="cursor:pointer;" onclick="openProductDetail(\'' + p.id + '\')">' +
         '<td class="td-code">' + esc(p.id) + '</td>' +
         '<td style="font-weight:600;">' + esc(p.product_name) + '</td>' +
@@ -1419,18 +1451,9 @@
         '<td style="color:var(--gray-400);font-size:12px;">' + (p.created_at ? p.created_at.slice(0,10) : '-') + '</td>' +
         '</tr>'
       ).join('');
-
-      container.innerHTML =
-        '<div style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">' +
-        '<div style="font-size:13px;color:var(--gray-500);">총 <strong>' + products.length + '</strong>개 상품</div>' +
-        '</div>' +
-        '<div class="card"><div class="table-wrap"><table>' +
-        '<thead><tr><th>상품 ID</th><th>상품명</th><th>브랜드</th><th>관리방식</th><th>판매가</th><th>상태</th><th>등록일</th></tr></thead>' +
-        '<tbody>' + rows + '</tbody></table></div></div>';
-    } catch(e) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
     }
-  }
+    if (countEl) countEl.innerHTML = '총 <strong>' + (window._allProducts || []).length + '</strong>개 중 <strong>' + products.length + '</strong>개 표시';
+  };
 
   /* ════════════════════════════════
      상품 상세 (모달)
@@ -1559,11 +1582,14 @@
         '<input class="form-input" id="edit-p-price" type="number" min="0" step="100" value="' + basePrice + '" /></div>' +
         '<div class="form-group"><label class="form-label" for="edit-p-memo">메모</label>' +
         '<input class="form-input" id="edit-p-memo" type="text" value="' + esc(p.memo || '') + '" /></div>' +
-        /* SKU 가격 + 순서 */
-        (skus.length > 0 ? '<div><div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:8px;">SKU별 판매가 · 표시 순서</div>' +
-        '<div id="edit-sku-table-wrap" class="table-wrap"><table>' +
-        '<thead><tr><th>바코드</th><th>옵션</th><th>판매가</th><th>순서</th></tr></thead>' +
-        '<tbody id="edit-sku-tbody">' + skuRows + '</tbody></table></div></div>' : '') +
+        /* SKU 가격 + 순서: 옵션 있는 상품(2개 이상 SKU)만 표시 */
+        (skus.length > 1 ?
+          '<div style="background:var(--blue-light);border:1px solid #bfdbfe;border-radius:10px;padding:16px;">' +
+          '<div style="font-size:13px;font-weight:700;color:var(--blue);margin-bottom:4px;">📋 SKU별 판매가 · 표시 순서</div>' +
+          '<div style="font-size:12px;color:var(--gray-500);margin-bottom:12px;">옵션별 가격을 개별 조정하고 목록 표시 순서를 바꿀 수 있습니다.</div>' +
+          '<div id="edit-sku-table-wrap" class="table-wrap"><table>' +
+          '<thead><tr><th>바코드</th><th>옵션</th><th>판매가</th><th>순서</th></tr></thead>' +
+          '<tbody id="edit-sku-tbody">' + skuRows + '</tbody></table></div></div>' : '') +
         '</div>';
 
       const footerHTML =
@@ -1678,7 +1704,14 @@
         ).join('');
 
       const body =
-        '<div style="font-size:13px;color:var(--gray-500);margin-bottom:16px;">바코드: <code style="color:var(--blue);">' + esc(sku.barcode_value) + '</code></div>' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">' +
+        '<div style="font-size:13px;color:var(--gray-500);">바코드: <code style="color:var(--blue);">' + esc(sku.barcode_value) + '</code></div>' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<span style="font-size:13px;color:var(--gray-500);">추가:</span>' +
+        '<input type="number" id="add-unit-count" min="1" max="99" value="1" style="width:60px;border:1px solid var(--gray-300);border-radius:6px;padding:5px 8px;font-size:13px;text-align:center;" />' +
+        '<span style="font-size:13px;color:var(--gray-500);">개</span>' +
+        '<button class="btn btn-primary" style="padding:6px 14px;font-size:13px;" onclick="addUnitsToSku(\'' + productId + '\',\'' + skuId + '\')">➕ 개체 추가</button>' +
+        '</div></div>' +
         '<div class="table-wrap"><table>' +
         '<thead><tr><th>개체 바코드</th><th>개체번호</th><th>상태</th><th>상태 변경</th></tr></thead>' +
         '<tbody>' + unitRows + '</tbody></table></div>';
@@ -1695,6 +1728,55 @@
       await updateDoc(doc(db, 'products', productId, 'skus', skuId, 'units', unitId), { unit_status: newStatus, updated_at: new Date().toISOString() });
       showToast('개체 상태를 ' + newStatus + '으로 변경했습니다.', 'success');
     } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
+  };
+
+  /* 개체 추가 (Firestore 트랜잭션) */
+  window.addUnitsToSku = async function(productId, skuId) {
+    const countEl = document.getElementById('add-unit-count');
+    const count = parseInt((countEl || {}).value || '1');
+    if (!count || count < 1 || count > 99) { showToast('1~99 사이의 숫자를 입력해주세요.', 'error'); return; }
+
+    const btn = document.querySelector('button[onclick="addUnitsToSku(\'' + productId + '\',\'' + skuId + '\')"]');
+    if (btn) { btn.disabled = true; btn.textContent = '추가 중...'; }
+
+    try {
+      const skuRef = doc(db, 'products', productId, 'skus', skuId);
+      let newUnits = [];
+
+      await runTransaction(db, async (tx) => {
+        const skuSnap = await tx.get(skuRef);
+        if (!skuSnap.exists()) throw new Error('SKU를 찾을 수 없습니다.');
+        const skuData = skuSnap.data();
+        const lastNum = parseInt(skuData.last_unit_number || '000', 10);
+        const now = new Date().toISOString();
+        newUnits = [];
+
+        for (let i = 1; i <= count; i++) {
+          const unitNum = String(lastNum + i).padStart(3, '0');
+          const unitId = skuId + '-' + unitNum;
+          const barcodeValue = skuData.barcode_value + '-' + unitNum;
+          newUnits.push({ id: unitId, unit_number: unitNum, barcode_value: barcodeValue });
+          tx.set(doc(db, 'products', productId, 'skus', skuId, 'units', unitId), {
+            unit_number: unitNum,
+            barcode_value: barcodeValue,
+            unit_price: 0,
+            unit_status: '판매중',
+            memo: '',
+            barcode_printed_at: null,
+            created_at: now,
+            updated_at: now
+          });
+        }
+        tx.update(skuRef, { last_unit_number: String(lastNum + count).padStart(3, '0'), updated_at: now });
+      });
+
+      showToast(count + '개 개체가 추가됐습니다.', 'success');
+      /* 목록 새로고침 */
+      await openUnitList(productId, skuId);
+    } catch(e) {
+      showToast('추가 실패: ' + e.message, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '➕ 개체 추가'; }
+    }
   };
 
   /* ════════════════════════════════
