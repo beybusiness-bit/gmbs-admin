@@ -1756,6 +1756,8 @@
             row('예금주', esc(si.account_holder || '')) +
             row('은행', esc(si.bank_name || '')) +
             row('계좌번호', esc(si.account_number || '')) : '') +
+        '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">변경 이력</div>' +
+        '<div id="brand-activity-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
         '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">담당자</div>' +
         '<div id="brand-persons-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
         '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">계약</div>' +
@@ -1768,7 +1770,8 @@
 
       showModal('브랜드 정보 — ' + esc(b.brand_name), body, footer, 'lg');
 
-      // 담당자·계약 목록 비동기 로드
+      // 변경이력·담당자·계약 목록 비동기 로드
+      loadBrandActivity(brandId);
       loadBrandPersons(brandId);
       loadBrandContracts(brandId);
     } catch(e) {
@@ -1776,6 +1779,58 @@
         '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
     }
   };
+
+  /* ════════════════════════════════
+     15단계 Activity Log
+  ════════════════════════════════ */
+  async function writeActivityLog(brandId, entityType, entityId, action, beforeValue, afterValue) {
+    try {
+      await addDoc(collection(db, 'activity_log'), {
+        brand_id: brandId || '',
+        entity_type: entityType,
+        entity_id: entityId || '',
+        action,
+        actor_email: (auth.currentUser || {}).email || '',
+        actor_role: 'admin',
+        before_value: beforeValue ? JSON.stringify(beforeValue) : '',
+        after_value: afterValue ? JSON.stringify(afterValue) : '',
+        created_at: today()
+      });
+    } catch(e) { /* 로그 실패는 조용히 무시 */ }
+  }
+
+  async function loadBrandActivity(brandId) {
+    const sec = document.getElementById('brand-activity-section');
+    if (!sec) return;
+    try {
+      const snap = await getDocs(query(
+        collection(db, 'activity_log'),
+        where('brand_id', '==', brandId),
+        orderBy('created_at', 'desc')
+      ));
+      const logs = snap.docs.map(d => ({ id: d.id, ...d.data() })).slice(0, 20);
+      if (logs.length === 0) {
+        sec.innerHTML = '<div style="font-size:13px;color:var(--gray-400);padding:8px 0;">변경 이력이 없습니다.</div>';
+        return;
+      }
+      const actionLabel = { created: '등록', updated: '수정', status_changed: '상태변경', deleted: '삭제' };
+      const entityLabel = { contract: '계약', product: '상품', price: '가격', settlement: '정산', admin_action: '관리자 작업' };
+      sec.innerHTML = logs.map(l =>
+        '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--gray-100);font-size:12px;">' +
+        '<div style="min-width:70px;color:var(--gray-400);">' + esc(l.created_at || '') + '</div>' +
+        '<div style="flex:1;">' +
+        '<span style="color:var(--gray-700);">' + esc(entityLabel[l.entity_type] || l.entity_type || '') + '</span>' +
+        (l.entity_id ? ' <code style="font-size:11px;background:var(--gray-100);padding:1px 5px;border-radius:3px;">' + esc(l.entity_id) + '</code>' : '') +
+        ' — <span style="color:var(--blue);">' + esc(actionLabel[l.action] || l.action || '') + '</span>' +
+        (l.after_value ? '<div style="color:var(--gray-500);margin-top:2px;word-break:break-all;">' + esc(l.after_value.slice(0, 100)) + '</div>' : '') +
+        '</div>' +
+        '<div style="min-width:90px;color:var(--gray-400);text-align:right;">' + esc(l.actor_email || '') + '</div>' +
+        '</div>'
+      ).join('');
+    } catch(e) {
+      if (sec) sec.innerHTML = '<div style="font-size:12px;color:var(--gray-400);">이력 로드 실패</div>';
+    }
+  }
 
   /* ════════════════════════════════
      담당자(Person) 관리
@@ -2079,6 +2134,7 @@
         await addDoc(collection(db, 'brands', brandId, 'contracts'), { version, signed_at, end_at, auto_renew, file_url, status: '진행중', created_at: today(), updated_at: today() });
       }
 
+      await writeActivityLog(brandId, 'contract', contractId || 'new', contractId ? 'updated' : 'created', null, { version, signed_at, end_at });
       showToast(contractId ? '계약을 수정했습니다.' : '계약을 추가했습니다.');
       openBrandDetail(brandId);
     } catch(e) {
@@ -2167,7 +2223,10 @@
     }
 
     try {
+      const psnap = await getDoc(doc(db, 'products', productId));
+      const brandId = psnap.exists() ? (psnap.data().brand_id || '') : '';
       await updateDoc(doc(db, 'products', productId), data);
+      await writeActivityLog(brandId, 'product', productId, 'status_changed', null, { approval_status: status });
       showToast('승인 상태를 저장했습니다.');
       openProductDetail(productId);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
@@ -2202,6 +2261,7 @@
         onboarding_status_changed_at: today(),
         updated_at: today()
       });
+      await writeActivityLog(brandId, 'admin_action', brandId, 'status_changed', null, { onboarding_status: status, reason });
       showToast('입점 상태를 변경했습니다.');
       openBrandDetail(brandId);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
