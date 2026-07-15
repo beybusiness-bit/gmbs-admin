@@ -1808,8 +1808,31 @@
   window.setPersonActive = async function(brandId, personId, active) {
     try {
       await updateDoc(doc(db, 'brands', brandId, 'persons', personId), { active, updated_at: today() });
-      loadBrandPersons(brandId);
+      const sec = document.getElementById('brand-persons-section');
+      if (sec) loadBrandPersons(brandId);
     } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
+  };
+
+  function fmtPhone(raw) {
+    const d = (raw || '').replace(/\D/g, '');
+    if (d.length <= 3) return d;
+    if (d.startsWith('02')) {
+      if (d.length <= 5) return d.slice(0,2) + '-' + d.slice(2);
+      if (d.length <= 9) return d.slice(0,2) + '-' + d.slice(2,5) + '-' + d.slice(5);
+      return d.slice(0,2) + '-' + d.slice(2,6) + '-' + d.slice(6,10);
+    }
+    if (d.length <= 6) return d.slice(0,3) + '-' + d.slice(3);
+    if (d.length <= 10) return d.slice(0,3) + '-' + d.slice(3,6) + '-' + d.slice(6);
+    return d.slice(0,3) + '-' + d.slice(3,7) + '-' + d.slice(7,11);
+  }
+
+  window.onPersonPhoneInput = function(el) {
+    const pos = el.selectionStart;
+    const prev = el.value;
+    el.value = fmtPhone(el.value);
+    // 커서 위치 보정 (숫자 추가 시 하이픈이 생겨 밀릴 수 있음)
+    const diff = el.value.length - prev.length;
+    el.setSelectionRange(pos + diff, pos + diff);
   };
 
   window.openPersonModal = async function(brandId, personId) {
@@ -1833,12 +1856,12 @@
       roleOpt('cs') + 'CS</option>' +
       '</select></div>' +
       '<div class="form-group"><label class="form-label">전화번호</label>' +
-      '<input class="form-input" id="person-phone" value="' + esc(p.phone || '') + '" placeholder="010-0000-0000" /></div>' +
+      '<input class="form-input" id="person-phone" value="' + esc(fmtPhone(p.phone || '')) + '" placeholder="010-0000-0000" oninput="onPersonPhoneInput(this)" inputmode="numeric" /></div>' +
       '<div class="form-group"><label class="form-label">이메일</label>' +
       '<input class="form-input" id="person-email" value="' + esc(p.email || '') + '" placeholder="example@email.com" /></div>';
 
     const footerHTML =
-      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      '<button class="btn btn-secondary" onclick="openBrandDetail(\'' + brandId + '\')">취소</button>' +
       '<button class="btn btn-primary" onclick="savePerson(\'' + brandId + '\',\'' + (personId || '') + '\')">' + (isEdit ? '저장' : '추가') + '</button>';
 
     showModal(isEdit ? '담당자 수정' : '담당자 추가', formHTML, footerHTML);
@@ -1850,7 +1873,7 @@
     const data = {
       name,
       role: document.getElementById('person-role').value || '',
-      phone: (document.getElementById('person-phone').value || '').trim(),
+      phone: (document.getElementById('person-phone').value || '').replace(/\D/g, '').replace(/(\d{2,3})(\d{3,4})(\d{4})/, '$1-$2-$3'),
       email: (document.getElementById('person-email').value || '').trim(),
       active: true,
       updated_at: today()
@@ -1862,11 +1885,9 @@
         data.created_at = today();
         await addDoc(collection(db, 'brands', brandId, 'persons'), data);
       }
-      closeModal();
-      // 브랜드 상세 팝업이 열려 있으면 담당자 섹션 갱신
-      const sec = document.getElementById('brand-persons-section');
-      if (sec) loadBrandPersons(brandId);
       showToast(personId ? '담당자를 수정했습니다.' : '담당자를 추가했습니다.');
+      // 브랜드 상세 팝업으로 복귀 (담당자 섹션 자동 갱신됨)
+      openBrandDetail(brandId);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
 
