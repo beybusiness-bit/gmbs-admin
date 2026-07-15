@@ -1206,6 +1206,9 @@
         '<select id="bl-type-filter" onchange="window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="">전체 유형</option><option value="PB">PB</option><option value="위탁">위탁</option><option value="매입">매입</option>' +
         '</select>' +
+        '<select id="bl-onboarding-filter" onchange="window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
+        '<option value="">전체 입점상태</option><option value="심사중">심사중</option><option value="승인">승인</option><option value="거절">거절</option><option value="종료">종료</option>' +
+        '</select>' +
         '<select id="bl-page-size" onchange="window._brandPageSize=parseInt(this.value);window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
         '</select>' +
@@ -1217,7 +1220,7 @@
         '<div class="card"><div class="table-wrap"><table id="bl-table">' +
         '<thead><tr>' +
         '<th style="width:36px;padding-left:16px;"><input type="checkbox" id="bl-chk-all" onchange="toggleAllBrands(this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></th>' +
-        '<th style="width:80px;"></th><th>브랜드코드</th><th>브랜드명</th><th>거래유형</th><th>상태</th><th>마지막 상품번호</th>' +
+        '<th style="width:80px;"></th><th>브랜드코드</th><th>브랜드명</th><th>거래유형</th><th>입점 상태</th><th>활성</th><th>마지막 상품번호</th>' +
         '</tr></thead>' +
         '<tbody id="bl-tbody"></tbody></table></div></div>';
 
@@ -1270,12 +1273,14 @@
   window.filterBrandList = function() {
     const term = ((document.getElementById('bl-search') || {}).value || '').trim().toLowerCase();
     const typeFilter = ((document.getElementById('bl-type-filter') || {}).value || '');
+    const onboardingFilter = ((document.getElementById('bl-onboarding-filter') || {}).value || '');
     const filtered = (window._allBrands || []).filter(function(b) {
       const matchTerm = !term ||
         (b.brand_name || '').toLowerCase().includes(term) ||
         (b.brand_code || '').toLowerCase().includes(term);
       const matchType = !typeFilter || b.brand_type === typeFilter;
-      return matchTerm && matchType;
+      const matchOnboarding = !onboardingFilter || b.onboarding_status === onboardingFilter;
+      return matchTerm && matchType && matchOnboarding;
     });
     window._brandFiltered = filtered;
 
@@ -1296,6 +1301,12 @@
     if (pageItems.length === 0) {
       tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--gray-400);padding:32px;">검색 결과가 없습니다.</td></tr>';
     } else {
+      const onboardingBadge = s => ({
+        '심사중': '<span class="badge badge-yellow">심사중</span>',
+        '승인': '<span class="badge badge-green">승인</span>',
+        '거절': '<span class="badge badge-red">거절</span>',
+        '종료': '<span class="badge badge-gray">종료</span>'
+      }[s] || '<span class="badge badge-gray">미설정</span>');
       tbody.innerHTML = pageItems.map(b => {
         const activeText = b.active !== false ? '<span class="badge badge-green">활성</span>' : '<span class="badge badge-gray">비활성</span>';
         const logoCell = b.logo_url
@@ -1308,6 +1319,7 @@
           '<td class="td-code">' + esc(b.brand_code) + '</td>' +
           '<td style="font-weight:600;">' + esc(b.brand_name) + '</td>' +
           '<td>' + (typeLabel[b.brand_type] || b.brand_type || '-') + '</td>' +
+          '<td>' + onboardingBadge(b.onboarding_status) + '</td>' +
           '<td>' + activeText + '</td>' +
           '<td style="color:var(--gray-400);font-size:12px;">' + (b.last_product_number || '000') + '</td>' +
           '</tr>';
@@ -1704,13 +1716,23 @@
 
       const bizTypeText = si.business_type === 'individual' ? '개인(사업자없음)' : (si.business_type === 'business' ? '사업자' : '');
 
+      const onboardingBadge = s => ({
+        '심사중': '<span class="badge badge-yellow">심사중</span>',
+        '승인': '<span class="badge badge-green">승인</span>',
+        '거절': '<span class="badge badge-red">거절</span>',
+        '종료': '<span class="badge badge-gray">종료</span>'
+      }[s] || '<span class="badge badge-gray">미설정</span>');
+
       const body = '<div>' +
         logoSection +
         '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-bottom:8px;">기본 정보</div>' +
         row('브랜드코드', '<code style="background:var(--blue-light);color:var(--blue);padding:2px 7px;border-radius:4px;">' + esc(b.brand_code) + '</code>') +
         row('브랜드명', '<strong>' + esc(b.brand_name) + '</strong>') +
         row('거래 유형', typeLabel[b.brand_type] || esc(b.brand_type || '')) +
-        row('상태', activeText) +
+        row('활성 상태', activeText) +
+        row('입점 심사', onboardingBadge(b.onboarding_status) +
+          (b.onboarding_status_reason ? ' <span style="font-size:12px;color:var(--gray-500);">— ' + esc(b.onboarding_status_reason) + '</span>' : '') +
+          ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openOnboardingModal(\'' + brandId + '\',\'' + esc(b.onboarding_status || '') + '\')">상태 변경</button>') +
         row('브랜드 소개', esc(b.brand_desc || '')) +
         (ci.phone || ci.email || ci.sns
           ? '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:16px;margin-bottom:8px;">연락처</div>' +
@@ -2058,6 +2080,40 @@
       if (btn) { btn.disabled = false; btn.textContent = contractId ? '저장' : '추가'; }
       showToast('저장 실패: ' + e.message, 'error');
     }
+  };
+
+  /* ════════════════════════════════
+     12단계 입점 심사 워크플로우
+  ════════════════════════════════ */
+  window.openOnboardingModal = function(brandId, currentStatus) {
+    const opts = ['심사중', '승인', '거절', '종료'];
+    const formHTML =
+      '<div class="form-group"><label class="form-label">입점 상태</label>' +
+      '<select class="form-input" id="onboarding-status">' +
+      '<option value="">미설정</option>' +
+      opts.map(o => '<option value="' + o + '"' + (o === currentStatus ? ' selected' : '') + '>' + o + '</option>').join('') +
+      '</select></div>' +
+      '<div class="form-group"><label class="form-label">사유 <span style="font-size:11px;color:var(--gray-400);">(선택 — 거절·종료 시 입력 권장)</span></label>' +
+      '<input class="form-input" id="onboarding-reason" placeholder="상태 변경 사유를 입력하세요" /></div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="openBrandDetail(\'' + brandId + '\')">취소</button>' +
+      '<button class="btn btn-primary" onclick="saveOnboardingStatus(\'' + brandId + '\')">저장</button>';
+    showModal('입점 심사 상태 변경', formHTML, footerHTML);
+  };
+
+  window.saveOnboardingStatus = async function(brandId) {
+    const status = document.getElementById('onboarding-status').value;
+    const reason = (document.getElementById('onboarding-reason').value || '').trim();
+    try {
+      await updateDoc(doc(db, 'brands', brandId), {
+        onboarding_status: status || null,
+        onboarding_status_reason: reason || '',
+        onboarding_status_changed_at: today(),
+        updated_at: today()
+      });
+      showToast('입점 상태를 변경했습니다.');
+      openBrandDetail(brandId);
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
 
   /* ── 파일 업로드 UI ── */
