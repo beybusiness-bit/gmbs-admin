@@ -264,6 +264,12 @@
       <div class="nav-item" data-page="settlement-list" onclick="navigate('settlement-list')">
         <span class="icon">💰</span> 정산
       </div>
+      <div class="nav-item" data-page="notice-list" onclick="navigate('notice-list')">
+        <span class="icon">📢</span> 공지사항
+      </div>
+      <div class="nav-item" data-page="inquiry-list" onclick="navigate('inquiry-list')">
+        <span class="icon">💬</span> 문의
+      </div>
       <div class="nav-item" data-page="settings" onclick="navigate('settings')">
         <span class="icon">⚙️</span> 설정
       </div>
@@ -398,6 +404,8 @@
     barcode: '바코드',
     'brand-list': '브랜드',
     'settlement-list': '정산',
+    'notice-list': '공지사항',
+    'inquiry-list': '문의',
     settings: '설정'
   };
 
@@ -415,6 +423,8 @@
     else if (page === 'product-list') await renderProductList(content);
     else if (page === 'brand-list') await renderBrandList(content);
     else if (page === 'settlement-list') await renderSettlementList(content);
+    else if (page === 'notice-list') await renderNoticeList(content);
+    else if (page === 'inquiry-list') await renderInquiryList(content);
     else if (page === 'barcode') renderBarcodePage(content);
     else if (page === 'settings') await renderSettings(content);
     else renderComingSoon(content, PAGE_TITLES[page] || page);
@@ -3678,6 +3688,206 @@
         showToast('정산을 등록했습니다.');
         openSettlementDetail(newDoc.id);
       }
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  /* ════════════════════════════════
+     16단계 공지사항(Notice) 관리
+  ════════════════════════════════ */
+  async function renderNoticeList(container) {
+    document.getElementById('page-header-actions').innerHTML =
+      '<button class="btn btn-primary" onclick="openNoticeModal(null)">➕ 공지 작성</button>';
+    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+    try {
+      const snap = await getDocs(query(collection(db, 'notices'), orderBy('created_at', 'desc')));
+      const notices = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (notices.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📢</div><div class="empty-state-text">등록된 공지사항이 없습니다.</div></div>';
+        return;
+      }
+      container.innerHTML = '<div class="card"><div class="table-wrap"><table>' +
+        '<thead><tr><th style="width:36px;"></th><th>제목</th><th>상태</th><th>등록일</th><th></th></tr></thead>' +
+        '<tbody>' +
+        notices.map(n =>
+          '<tr style="cursor:pointer;" onclick="openNoticeDetail(\'' + n.id + '\')">' +
+          '<td style="text-align:center;">' + (n.pinned ? '📌' : '') + '</td>' +
+          '<td style="font-weight:600;">' + esc(n.title || '') + '</td>' +
+          '<td>' + (n.status === '공개' ? '<span class="badge badge-green">공개</span>' : '<span class="badge badge-gray">비공개</span>') + '</td>' +
+          '<td style="font-size:12px;color:var(--gray-500);">' + esc(n.created_at || '') + '</td>' +
+          '<td><button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="event.stopPropagation();openNoticeModal(\'' + n.id + '\')">수정</button></td>' +
+          '</tr>'
+        ).join('') +
+        '</tbody></table></div></div>';
+    } catch(e) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
+    }
+  }
+
+  window.openNoticeDetail = async function(noticeId) {
+    const snap = await getDoc(doc(db, 'notices', noticeId));
+    if (!snap.exists()) return;
+    const n = snap.data();
+    const body =
+      '<div style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">' +
+      (n.pinned ? '📌 상단 고정 · ' : '') + esc(n.created_at || '') + ' · ' +
+      (n.status === '공개' ? '<span class="badge badge-green">공개</span>' : '<span class="badge badge-gray">비공개</span>') +
+      '</div>' +
+      '<div style="font-size:14px;line-height:1.7;white-space:pre-wrap;color:var(--gray-800);">' + esc(n.content || '') + '</div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>' +
+      '<button class="btn btn-primary" onclick="openNoticeModal(\'' + noticeId + '\')">✏️ 수정</button>';
+    showModal(esc(n.title || ''), body, footerHTML, 'lg');
+  };
+
+  window.openNoticeModal = async function(noticeId) {
+    let existing = null;
+    if (noticeId) {
+      const snap = await getDoc(doc(db, 'notices', noticeId));
+      if (snap.exists()) existing = { id: snap.id, ...snap.data() };
+    }
+    const isEdit = !!existing;
+    const n = existing || {};
+    const formHTML =
+      '<div class="form-group"><label class="form-label">제목 <span style="color:var(--red);">*</span></label>' +
+      '<input class="form-input" id="notice-title" value="' + esc(n.title || '') + '" placeholder="공지 제목" /></div>' +
+      '<div class="form-group"><label class="form-label">내용</label>' +
+      '<textarea class="form-input" id="notice-content" rows="6" placeholder="공지 내용을 입력하세요" style="resize:vertical;">' + esc(n.content || '') + '</textarea></div>' +
+      '<div style="display:flex;gap:16px;">' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">' +
+      '<input type="checkbox" id="notice-pinned" style="accent-color:var(--blue);"' + (n.pinned ? ' checked' : '') + ' /> 상단 고정</label>' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">' +
+      '<input type="checkbox" id="notice-public" style="accent-color:var(--blue);"' + (n.status !== '비공개' ? ' checked' : '') + ' /> 공개</label>' +
+      '</div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="' + (isEdit ? 'closeModal()' : 'navigate(\'notice-list\')') + '">취소</button>' +
+      (isEdit ? '<button class="btn btn-danger" style="margin-right:auto;" onclick="deleteNotice(\'' + noticeId + '\')">삭제</button>' : '') +
+      '<button class="btn btn-primary" onclick="saveNotice(\'' + (noticeId || '') + '\')">' + (isEdit ? '저장' : '등록') + '</button>';
+    showModal(isEdit ? '공지 수정' : '공지 작성', formHTML, footerHTML);
+  };
+
+  window.saveNotice = async function(noticeId) {
+    const title = (document.getElementById('notice-title').value || '').trim();
+    if (!title) { showToast('제목을 입력해주세요.', 'error'); return; }
+    const data = {
+      title,
+      content: (document.getElementById('notice-content').value || '').trim(),
+      pinned: document.getElementById('notice-pinned').checked,
+      status: document.getElementById('notice-public').checked ? '공개' : '비공개',
+      created_by: (auth.currentUser || {}).email || '',
+      updated_at: today()
+    };
+    try {
+      if (noticeId) {
+        await updateDoc(doc(db, 'notices', noticeId), data);
+        showToast('공지를 수정했습니다.');
+        closeModal();
+      } else {
+        data.created_at = today();
+        await addDoc(collection(db, 'notices'), data);
+        showToast('공지를 등록했습니다.');
+        navigate('notice-list');
+      }
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  window.deleteNotice = async function(noticeId) {
+    if (!confirm('공지를 삭제하시겠습니까?')) return;
+    try {
+      await updateDoc(doc(db, 'notices', noticeId), { status: '비공개', updated_at: today() });
+      showToast('공지를 비공개 처리했습니다.');
+      closeModal();
+      navigate('notice-list');
+    } catch(e) { showToast('처리 실패: ' + e.message, 'error'); }
+  };
+
+  /* ════════════════════════════════
+     17단계 문의(Inquiry) 관리
+  ════════════════════════════════ */
+  async function renderInquiryList(container) {
+    document.getElementById('page-header-actions').innerHTML = '';
+    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+    try {
+      const snap = await getDocs(query(collection(db, 'inquiries'), orderBy('created_at', 'desc')));
+      const inquiries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // 브랜드명 조회용 캐시
+      const brandCache = {};
+      const brandIds = [...new Set(inquiries.map(i => i.brand_id).filter(Boolean))];
+      await Promise.all(brandIds.map(async bid => {
+        try {
+          const bs = await getDoc(doc(db, 'brands', bid));
+          if (bs.exists()) brandCache[bid] = bs.data().brand_name || bid;
+        } catch(e) {}
+      }));
+
+      if (inquiries.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">💬</div><div class="empty-state-text">등록된 문의가 없습니다.</div></div>';
+        return;
+      }
+      container.innerHTML =
+        '<div style="display:flex;gap:10px;margin-bottom:16px;">' +
+        '<select id="inq-status-filter" onchange="filterInquiryList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
+        '<option value="">전체</option><option value="답변대기">답변대기</option><option value="답변완료">답변완료</option>' +
+        '</select></div>' +
+        '<div class="card"><div class="table-wrap"><table id="inq-table">' +
+        '<thead><tr><th>브랜드</th><th>제목</th><th>상태</th><th>등록일</th></tr></thead>' +
+        '<tbody id="inq-tbody"></tbody></table></div></div>';
+
+      window._allInquiries = inquiries.map(i => ({ ...i, brand_name: brandCache[i.brand_id] || i.brand_id || '' }));
+      filterInquiryList();
+    } catch(e) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
+    }
+  }
+
+  window.filterInquiryList = function() {
+    const statusFilter = ((document.getElementById('inq-status-filter') || {}).value || '');
+    const filtered = (window._allInquiries || []).filter(i => !statusFilter || i.status === statusFilter);
+    const tbody = document.getElementById('inq-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = filtered.map(i =>
+      '<tr style="cursor:pointer;" onclick="openInquiryDetail(\'' + i.id + '\')">' +
+      '<td>' + esc(i.brand_name || '-') + '</td>' +
+      '<td style="font-weight:600;">' + esc(i.title || '') + '</td>' +
+      '<td>' + (i.status === '답변완료'
+        ? '<span class="badge badge-green">답변완료</span>'
+        : '<span class="badge badge-yellow">답변대기</span>') + '</td>' +
+      '<td style="font-size:12px;color:var(--gray-500);">' + esc(i.created_at || '') + '</td>' +
+      '</tr>'
+    ).join('');
+  };
+
+  window.openInquiryDetail = async function(inquiryId) {
+    const snap = await getDoc(doc(db, 'inquiries', inquiryId));
+    if (!snap.exists()) return;
+    const i = { id: snap.id, ...snap.data() };
+    const body =
+      '<div style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">' + esc(i.created_at || '') + ' · ' + esc(i.brand_id || '') + '</div>' +
+      '<div style="font-size:14px;line-height:1.7;white-space:pre-wrap;color:var(--gray-800);background:var(--gray-50);border-radius:8px;padding:14px;margin-bottom:20px;">' + esc(i.content || '') + '</div>' +
+      '<div style="font-size:12px;font-weight:700;color:var(--gray-400);margin-bottom:8px;">답변</div>' +
+      (i.answer
+        ? '<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--gray-800);background:var(--blue-light);border-radius:8px;padding:14px;">' + esc(i.answer) + '</div>' +
+          '<div style="font-size:11px;color:var(--gray-400);margin-top:6px;">' + esc(i.answered_by || '') + ' · ' + esc(i.answered_at || '') + '</div>'
+        : '<textarea class="form-input" id="inquiry-answer" rows="5" placeholder="답변을 입력하세요" style="resize:vertical;"></textarea>');
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>' +
+      (!i.answer ? '<button class="btn btn-primary" onclick="saveInquiryAnswer(\'' + inquiryId + '\')">답변 저장</button>' : '');
+    showModal(esc(i.title || '문의'), body, footerHTML, 'lg');
+  };
+
+  window.saveInquiryAnswer = async function(inquiryId) {
+    const answer = (document.getElementById('inquiry-answer').value || '').trim();
+    if (!answer) { showToast('답변 내용을 입력해주세요.', 'error'); return; }
+    try {
+      await updateDoc(doc(db, 'inquiries', inquiryId), {
+        answer,
+        answered_by: (auth.currentUser || {}).email || '',
+        answered_at: today(),
+        status: '답변완료',
+        updated_at: today()
+      });
+      showToast('답변을 저장했습니다.');
+      openInquiryDetail(inquiryId);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
 
