@@ -453,41 +453,38 @@
   ════════════════════════════════ */
   function renderBarcodePage(container) {
     window._bcSelected = {};
-    if (!window._labelLayout) window._labelLayout = [
-      { id:'brand',   label:'브랜드명',     visible:true },
-      { id:'product', label:'상품명',       visible:true },
-      { id:'option',  label:'옵션',         visible:true },
-      { id:'price',   label:'가격',         visible:true },
-      { id:'barcode', label:'바코드 이미지', visible:true },
-      { id:'code',    label:'바코드 문자',   visible:true },
+    if (!window._labelLines) window._labelLines = [
+      [{ id:'brand',   label:'브랜드명',      visible:true }],
+      [{ id:'product', label:'상품명',         visible:true }],
+      [{ id:'option',  label:'옵션',           visible:true }],
+      [{ id:'price',   label:'가격',           visible:true }],
+      [{ id:'barcode', label:'바코드 이미지',  visible:true }],
+      [{ id:'code',    label:'바코드 문자',    visible:true }],
     ];
     if (!window._labelSize) window._labelSize = { w:200, h:120 };
+    if (!window._bcSortKey) window._bcSortKey = 'created_desc';
 
     container.innerHTML =
-      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;">' +
-      '<div style="display:flex;gap:4px;background:#fff;padding:6px;border-radius:10px;border:1px solid var(--gray-200);">' +
-      ['search','recent'].map((id, i) =>
-        '<button id="barcode-tab-' + id + '" onclick="switchBarcodeTab(\'' + id + '\')" style="padding:7px 18px;border-radius:7px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.12s;' + (i===0?'background:var(--blue);color:#fff;':'background:transparent;color:var(--gray-500);') + '">' +
-        (id==='search'?'🔍 검색 · 출력':'🕐 최근 생성') + '</button>'
-      ).join('') +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">' +
+      '<input class="form-input" id="bc-search-input" placeholder="상품명, 상품ID, 브랜드코드 검색..." style="flex:1;min-width:200px;" onkeydown="if(event.key===\'Enter\')runBcSearch()" />' +
+      '<button class="btn btn-primary" onclick="runBcSearch()">검색</button>' +
+      '<select id="bc-sort-sel" onchange="window._bcSortKey=this.value;runBcSearch()" style="border:1px solid var(--gray-200);border-radius:8px;padding:7px 10px;font-size:13px;background:#fff;cursor:pointer;">' +
+      '<option value="created_desc">등록 최신순</option>' +
+      '<option value="name_asc">상품명 ㄱ→ㅎ</option>' +
+      '<option value="id_asc">상품ID 순</option>' +
+      '<option value="brand_asc">브랜드코드 순</option>' +
+      '</select>' +
+      '<button onclick="openBcDefaultSettings()" style="display:flex;align-items:center;gap:5px;padding:7px 12px;border:1px solid var(--gray-200);border-radius:8px;background:#fff;font-size:12px;font-weight:600;color:var(--gray-600);cursor:pointer;white-space:nowrap;">⚙️ 기본 설정</button>' +
       '</div>' +
-      '<button onclick="openBcDefaultSettings()" style="margin-left:auto;display:flex;align-items:center;gap:6px;padding:7px 14px;border:1px solid var(--gray-200);border-radius:8px;background:#fff;font-size:12px;font-weight:600;color:var(--gray-600);cursor:pointer;">⚙️ 기본 설정</button>' +
-      '</div>' +
-      '<div id="barcode-tab-content"></div>';
-    switchBarcodeTab('search');
-  }
+      '<div id="bc-results"></div>' +
+      '<div id="bc-action-bar" class="bc-action-bar" style="display:none;">' +
+      '<div id="bc-action-count" style="flex:1;font-size:13px;font-weight:600;color:var(--gray-700);"></div>' +
+      '<button class="btn btn-secondary" onclick="openLabelPreview()">🔍 미리보기 · 인쇄</button>' +
+      '<button class="btn btn-secondary" onclick="downloadLabels()">📥 다운로드</button>' +
+      '</div>';
 
-  window.switchBarcodeTab = function(tab) {
-    ['search','recent'].forEach(id => {
-      const el = document.getElementById('barcode-tab-' + id);
-      if (!el) return;
-      if (id === tab) { el.style.background='var(--blue)'; el.style.color='#fff'; }
-      else { el.style.background='transparent'; el.style.color='var(--gray-500)'; }
-    });
-    const content = document.getElementById('barcode-tab-content');
-    if (tab === 'search') initBarcodeSearch(content);
-    else initBarcodeRecent(content);
-  };
+    runBcSearch(true);
+  }
 
   /* ── 기본 설정 모달 ── */
   window.openBcDefaultSettings = async function() {
@@ -531,23 +528,6 @@
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
 
-  /* ── 검색 탭 ── */
-  function initBarcodeSearch(content) {
-    window._bcSelected = {};
-    content.innerHTML =
-      '<div style="display:flex;gap:10px;margin-bottom:20px;">' +
-      '<input class="form-input" id="bc-search-input" placeholder="상품명, 상품ID, 브랜드코드로 검색..." style="flex:1;" onkeydown="if(event.key===\'Enter\')runBcSearch()" />' +
-      '<button class="btn btn-primary" onclick="runBcSearch()">검색</button>' +
-      '<button class="btn btn-secondary" onclick="runBcSearch(true)">전체 보기</button>' +
-      '</div>' +
-      '<div id="bc-results"><div class="empty-state"><div class="empty-state-icon">🔍</div><div class="empty-state-text">검색어를 입력하거나 전체 보기를 클릭하세요.</div></div></div>' +
-      '<div id="bc-action-bar" class="bc-action-bar" style="display:none;">' +
-      '<div id="bc-action-count" style="flex:1;font-size:13px;font-weight:600;color:var(--gray-700);"></div>' +
-      '<button class="btn btn-secondary" onclick="openLabelPreview()">🔍 미리보기 · 인쇄</button>' +
-      '<button class="btn btn-secondary" onclick="downloadLabels()">📥 다운로드</button>' +
-      '</div>';
-  }
-
   window.runBcSearch = async function(all) {
     const term = all ? '' : ((document.getElementById('bc-search-input')||{}).value||'').trim().toLowerCase();
     const resultsEl = document.getElementById('bc-results');
@@ -561,7 +541,13 @@
         (p.product_name||'').toLowerCase().includes(term) ||
         (p.brand_code||'').toLowerCase().includes(term)
       );
-      products.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+      const sortKey = (document.getElementById('bc-sort-sel')||{}).value || window._bcSortKey || 'created_desc';
+      products.sort(function(a, b) {
+        if (sortKey === 'name_asc')   return (a.product_name||'').localeCompare(b.product_name||'', 'ko');
+        if (sortKey === 'id_asc')     return a.id.localeCompare(b.id);
+        if (sortKey === 'brand_asc')  return (a.brand_code||'').localeCompare(b.brand_code||'');
+        return (b.created_at||'').localeCompare(a.created_at||''); // created_desc
+      });
 
       if (products.length === 0) {
         resultsEl.innerHTML = '<div class="empty-state"><div class="empty-state-text">검색 결과가 없습니다.</div></div>';
@@ -713,34 +699,6 @@
   }
 
   /* ── 최근 생성 탭 ── */
-  async function initBarcodeRecent(content) {
-    content.innerHTML = '<div class="spinner" style="margin:40px auto;"></div>';
-    try {
-      const snap = await getDocs(collection(db, 'products'));
-      const allSkus = [];
-      await Promise.all(snap.docs.map(async d => {
-        const p = {id:d.id,...d.data()};
-        const skusSnap = await getDocs(collection(db,'products',p.id,'skus'));
-        skusSnap.docs.forEach(s => {
-          const sku = s.data();
-          if (sku.barcode_printed_at) allSkus.push({...sku, id:s.id, productName:p.product_name, brandCode:p.brand_code});
-        });
-      }));
-      allSkus.sort((a,b)=>(b.barcode_printed_at||'').localeCompare(a.barcode_printed_at||''));
-      if (allSkus.length === 0) {
-        content.innerHTML = '<div class="empty-state"><div class="coming-soon-icon">🕐</div><div class="empty-state-text">아직 출력된 바코드가 없습니다.</div></div>';
-        return;
-      }
-      content.innerHTML = '<div class="card"><div class="table-wrap"><table><thead><tr><th>바코드</th><th>상품명</th><th>최근 출력일</th></tr></thead><tbody>' +
-        allSkus.slice(0,50).map(s =>
-          '<tr><td class="td-code">' + esc(s.barcode_value) + '</td><td>' + esc(s.productName) + '</td><td style="font-size:12px;color:var(--gray-400);">' + (s.barcode_printed_at||'').slice(0,16).replace('T',' ') + '</td></tr>'
-        ).join('') +
-        '</tbody></table></div></div>';
-    } catch(e) {
-      content.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
-    }
-  }
-
   /* ════════════════════════════════
      라벨 레이아웃 헬퍼
   ════════════════════════════════ */
@@ -751,59 +709,104 @@
     localStorage.setItem('gmbs_label_presets', JSON.stringify(presets));
   }
 
-  function buildLabelHTML(item, layout, w, h, idPrefix, i) {
-    let html = '<div class="barcode-label" id="' + idPrefix + i + '" style="width:' + w + 'px;min-height:' + h + 'px;">';
-    layout.forEach(function(row) {
-      if (!row.visible) return;
-      if (row.id === 'brand' && item.brandCode) html += '<div class="label-brand">' + esc(item.brandCode) + '</div>';
-      else if (row.id === 'product' && item.productName) html += '<div class="label-product">' + esc(item.productName) + '</div>';
-      else if (row.id === 'option' && item.optLabel && item.optLabel !== '옵션 없음') html += '<div class="label-brand">' + esc(item.optLabel) + '</div>';
-      else if (row.id === 'price' && item.price) html += '<div class="label-price">' + item.price.toLocaleString() + '원</div>';
-      else if (row.id === 'barcode') html += '<svg id="' + idPrefix + 'svg-' + i + '" class="label-svg"></svg>';
-      else if (row.id === 'code') html += '<div class="label-code">' + esc(item.barcodeValue) + '</div>';
+  /* ── 라벨 항목 하나를 HTML로 변환 ── */
+  function labelItemHTML(item, cell, idPrefix, idx, align) {
+    if (!cell.visible) return '';
+    var a = align; // 'left' | 'right' | 'center'
+    var st = 'text-align:' + a + ';';
+    if (cell.id === 'brand' && item.brandCode)
+      return '<div class="label-brand" style="' + st + '">' + esc(item.brandCode) + '</div>';
+    if (cell.id === 'product' && item.productName)
+      return '<div class="label-product" style="' + st + '">' + esc(item.productName) + '</div>';
+    if (cell.id === 'option' && item.optLabel && item.optLabel !== '옵션 없음')
+      return '<div class="label-brand" style="' + st + '">' + esc(item.optLabel) + '</div>';
+    if (cell.id === 'price' && item.price)
+      return '<div class="label-price" style="' + st + '">' + item.price.toLocaleString() + '원</div>';
+    if (cell.id === 'barcode')
+      return '<svg id="' + idPrefix + 'svg-' + idx + '" class="label-svg"></svg>';
+    if (cell.id === 'code')
+      return '<div class="label-code" style="' + st + '">' + esc(item.barcodeValue) + '</div>';
+    return '';
+  }
+
+  /* lines = _labelLines: 줄당 1~2개 셀 배열 */
+  function buildLabelHTML(item, lines, w, h, idPrefix, i) {
+    var html = '<div class="barcode-label" id="' + idPrefix + i + '" style="width:' + w + 'px;min-height:' + h + 'px;">';
+    lines.forEach(function(line) {
+      var vis = line.filter(function(c){ return c.visible; });
+      if (vis.length === 0) return;
+      if (vis.length === 1) {
+        html += labelItemHTML(item, vis[0], idPrefix, i, 'center');
+      } else {
+        /* 2개: 왼쪽 좌측정렬, 오른쪽 우측정렬 */
+        html += '<div style="display:flex;width:100%;align-items:baseline;">' +
+          '<div style="flex:1;">' + labelItemHTML(item, vis[0], idPrefix, i, 'left') + '</div>' +
+          '<div style="flex:1;">' + labelItemHTML(item, vis[1], idPrefix, i, 'right') + '</div>' +
+          '</div>';
+      }
     });
     html += '</div>';
     return html;
   }
 
-  /* canvas에 직접 바코드 + 텍스트 렌더링 (SVG→canvas 변환 없음) */
-  function drawLabelToCanvas(item, layout, w, h) {
-    const scale = 2;
-    const canvas = document.createElement('canvas');
+  /* ── canvas 렌더링 (다운로드용) ── */
+  function drawCellToCanvas(ctx, item, cell, w, y, align) {
+    if (!cell.visible) return 0;
+    var cx = align === 'left' ? 6 : (align === 'right' ? w - 6 : w / 2);
+    ctx.textAlign = align === 'right' ? 'right' : (align === 'left' ? 'left' : 'center');
+    if (cell.id === 'brand' && item.brandCode) {
+      ctx.font = '9px sans-serif'; ctx.fillStyle = '#888';
+      ctx.fillText(String(item.brandCode).slice(0,30), cx, y + 9); return 14;
+    }
+    if (cell.id === 'product' && item.productName) {
+      ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#000';
+      ctx.fillText(String(item.productName).slice(0,30), cx, y + 12); return 17;
+    }
+    if (cell.id === 'option' && item.optLabel && item.optLabel !== '옵션 없음') {
+      ctx.font = '9px sans-serif'; ctx.fillStyle = '#555';
+      ctx.fillText(String(item.optLabel).slice(0,30), cx, y + 9); return 13;
+    }
+    if (cell.id === 'price' && item.price) {
+      ctx.font = '10px sans-serif'; ctx.fillStyle = '#000';
+      ctx.fillText(item.price.toLocaleString() + '원', cx, y + 10); return 15;
+    }
+    if (cell.id === 'barcode') {
+      try {
+        var bcCanvas = document.createElement('canvas');
+        JsBarcode(bcCanvas, item.barcodeValue, { format:'CODE128', width:1.5, height:40, displayValue:false, margin:2 });
+        var bw = Math.min(bcCanvas.width / 2, w - 8);
+        ctx.drawImage(bcCanvas, (w - bw) / 2, y, bw, 42); return 46;
+      } catch(e) { return 0; }
+    }
+    if (cell.id === 'code') {
+      ctx.font = '8px monospace'; ctx.fillStyle = '#555';
+      ctx.fillText(String(item.barcodeValue), cx, y + 8); return 13;
+    }
+    return 0;
+  }
+
+  function drawLabelToCanvas(item, lines, w, h) {
+    var scale = 2;
+    var canvas = document.createElement('canvas');
     canvas.width = w * scale; canvas.height = h * scale;
-    const ctx = canvas.getContext('2d');
+    var ctx = canvas.getContext('2d');
     ctx.scale(scale, scale);
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
-    ctx.textAlign = 'center';
 
-    let y = 8;
-    layout.forEach(function(row) {
-      if (!row.visible) return;
-      if (row.id === 'brand' && item.brandCode) {
-        ctx.font = '9px sans-serif'; ctx.fillStyle = '#888';
-        ctx.fillText(String(item.brandCode).slice(0,30), w/2, y + 9); y += 14;
-      } else if (row.id === 'product' && item.productName) {
-        ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#000';
-        ctx.fillText(String(item.productName).slice(0,30), w/2, y + 12); y += 17;
-      } else if (row.id === 'option' && item.optLabel && item.optLabel !== '옵션 없음') {
-        ctx.font = '9px sans-serif'; ctx.fillStyle = '#555';
-        ctx.fillText(String(item.optLabel).slice(0,30), w/2, y + 9); y += 13;
-      } else if (row.id === 'price' && item.price) {
-        ctx.font = '10px sans-serif'; ctx.fillStyle = '#000';
-        ctx.fillText(item.price.toLocaleString() + '원', w/2, y + 10); y += 15;
-      } else if (row.id === 'barcode') {
-        try {
-          const bcCanvas = document.createElement('canvas');
-          JsBarcode(bcCanvas, item.barcodeValue, { format:'CODE128', width:1.5, height:40, displayValue:false, margin:2 });
-          const bw = Math.min(bcCanvas.width / scale, w - 8);
-          const bh = 44;
-          ctx.drawImage(bcCanvas, (w - bw) / 2, y, bw, bh - 4);
-          y += bh;
-        } catch(e) {}
-      } else if (row.id === 'code') {
-        ctx.font = '8px monospace'; ctx.fillStyle = '#555';
-        ctx.fillText(String(item.barcodeValue), w/2, y + 8); y += 13;
+    var y = 8;
+    lines.forEach(function(line) {
+      var vis = line.filter(function(c){ return c.visible; });
+      if (vis.length === 0) return;
+      var dy = 0;
+      if (vis.length === 1) {
+        dy = drawCellToCanvas(ctx, item, vis[0], w, y, 'center');
+      } else {
+        /* 2개: 왼쪽 절반 좌측정렬, 오른쪽 절반 우측정렬 */
+        var dy0 = drawCellToCanvas(ctx, item, vis[0], w, y, 'left');
+        var dy1 = drawCellToCanvas(ctx, item, vis[1], w, y, 'right');
+        dy = Math.max(dy0, dy1);
       }
+      y += dy;
     });
     return canvas;
   }
@@ -842,7 +845,7 @@
       '<div style="min-width:220px;">' +
       '<div style="font-size:12px;font-weight:700;color:var(--gray-700);margin-bottom:8px;">라벨 항목 · 순서</div>' +
       '<div id="lbl-layout-editor" style="background:var(--gray-50);border-radius:8px;padding:8px 12px;"></div>' +
-      '<div style="font-size:11px;color:var(--gray-400);margin-top:6px;">↑↓으로 순서 변경, 체크로 표시 여부 선택</div>' +
+      '<div style="font-size:11px;color:var(--gray-400);margin-top:6px;">↑↓ 순서 변경 · 체크 표시 여부 · → 한 줄 합치기 · ↔ 분리</div>' +
       '</div>' +
       '<div style="flex:1;min-width:200px;">' +
       '<div style="font-size:12px;font-weight:700;color:var(--gray-700);margin-bottom:8px;">미리보기</div>' +
@@ -863,26 +866,64 @@
   function renderLayoutEditor() {
     const editor = document.getElementById('lbl-layout-editor');
     if (!editor) return;
-    const layout = window._labelLayout;
-    editor.innerHTML = layout.map(function(row, i) {
-      return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--gray-200);">' +
-        '<input type="checkbox" ' + (row.visible?'checked':'') + ' onchange="updateLayoutRow(' + i + ',this.checked);rerenderLabels()" style="width:14px;height:14px;accent-color:var(--blue);cursor:pointer;" />' +
-        '<span style="flex:1;font-size:13px;color:var(--gray-700);">' + esc(row.label) + '</span>' +
-        (i > 0 ? '<button onclick="moveLayoutRow(' + i + ',-1)" title="위로" style="border:none;background:var(--gray-200);border-radius:4px;padding:2px 7px;cursor:pointer;font-size:13px;line-height:1;">↑</button>' : '<span style="width:26px;display:inline-block;"></span>') +
-        (i < layout.length - 1 ? '<button onclick="moveLayoutRow(' + i + ',1)" title="아래로" style="border:none;background:var(--gray-200);border-radius:4px;padding:2px 7px;cursor:pointer;font-size:13px;line-height:1;">↓</button>' : '<span style="width:26px;display:inline-block;"></span>') +
+    const lines = window._labelLines;
+    const btnSt = 'border:none;background:var(--gray-200);border-radius:4px;padding:2px 6px;cursor:pointer;font-size:12px;line-height:1;';
+    editor.innerHTML = lines.map(function(line, li) {
+      const vis = line.map(function(cell, ci) {
+        return '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;">' +
+          '<input type="checkbox" ' + (cell.visible?'checked':'') + ' onchange="toggleLineCell(' + li + ',' + ci + ',this.checked)" style="width:13px;height:13px;accent-color:var(--blue);" />' +
+          '<span style="font-size:12px;color:var(--gray-700);">' + esc(cell.label) + '</span>' +
+          '</label>';
+      }).join('<span style="font-size:11px;color:var(--gray-400);padding:0 4px;">|</span>');
+
+      var mergeBtn = '', splitBtn = '';
+      if (line.length === 1) {
+        /* 아래 줄과 합치기 (두 줄 모두 단일 셀일 때만) */
+        if (li < lines.length - 1 && lines[li+1].length === 1) {
+          mergeBtn = '<button onclick="mergeLines(' + li + ')" title="아래 줄과 합치기(→)" style="' + btnSt + '">→</button>';
+        }
+      } else {
+        splitBtn = '<button onclick="splitLine(' + li + ')" title="분리(↔)" style="' + btnSt + '">↔</button>';
+      }
+
+      const upBtn   = li > 0               ? '<button onclick="moveLine(' + li + ',-1)" title="위로" style="' + btnSt + '">↑</button>' : '<span style="width:22px;display:inline-block;"></span>';
+      const downBtn = li < lines.length - 1 ? '<button onclick="moveLine(' + li + ',1)" title="아래로" style="' + btnSt + '">↓</button>'  : '<span style="width:22px;display:inline-block;"></span>';
+
+      return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--gray-200);">' +
+        '<div style="flex:1;display:flex;align-items:center;gap:6px;">' + vis + '</div>' +
+        mergeBtn + splitBtn + upBtn + downBtn +
         '</div>';
     }).join('');
   }
 
-  window.updateLayoutRow = function(i, checked) {
-    window._labelLayout[i].visible = checked;
+  window.toggleLineCell = function(li, ci, checked) {
+    window._labelLines[li][ci].visible = checked;
+    rerenderLabels();
   };
 
-  window.moveLayoutRow = function(i, dir) {
-    const arr = window._labelLayout;
-    const j = i + dir;
+  window.moveLine = function(li, dir) {
+    const arr = window._labelLines;
+    const j = li + dir;
     if (j < 0 || j >= arr.length) return;
-    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    const tmp = arr[li]; arr[li] = arr[j]; arr[j] = tmp;
+    renderLayoutEditor();
+    rerenderLabels();
+  };
+
+  /* 같은 줄 두 단일 셀을 하나의 2-셀 줄로 합치기 */
+  window.mergeLines = function(li) {
+    const arr = window._labelLines;
+    if (li >= arr.length - 1 || arr[li].length !== 1 || arr[li+1].length !== 1) return;
+    arr.splice(li, 2, [arr[li][0], arr[li+1][0]]);
+    renderLayoutEditor();
+    rerenderLabels();
+  };
+
+  /* 2-셀 줄을 두 줄로 분리 */
+  window.splitLine = function(li) {
+    const arr = window._labelLines;
+    if (arr[li].length < 2) return;
+    arr.splice(li, 1, [arr[li][0]], [arr[li][1]]);
     renderLayoutEditor();
     rerenderLabels();
   };
@@ -892,7 +933,7 @@
     if (!sel || !sel.value) { showToast('불러올 프리셋을 선택하세요.', 'error'); return; }
     const preset = getLabelPresets().find(function(p) { return p.name === sel.value; });
     if (!preset) return;
-    window._labelLayout = JSON.parse(JSON.stringify(preset.layout));
+    window._labelLines = JSON.parse(JSON.stringify(preset.layout));
     window._labelSize = preset.size;
     const lw = document.getElementById('lbl-w');
     const lh = document.getElementById('lbl-h');
@@ -910,7 +951,7 @@
     const lw = parseInt((document.getElementById('lbl-w')||{}).value || window._labelSize.w, 10);
     const lh = parseInt((document.getElementById('lbl-h')||{}).value || window._labelSize.h, 10);
     const presets = getLabelPresets().filter(function(p) { return p.name !== n; });
-    presets.push({ name: n, layout: JSON.parse(JSON.stringify(window._labelLayout)), size: { w:lw, h:lh } });
+    presets.push({ name: n, layout: JSON.parse(JSON.stringify(window._labelLines)), size: { w:lw, h:lh } });
     saveLabelPresetsStore(presets);
     /* 셀렉터 새로고침 */
     const sel = document.getElementById('lbl-preset-sel');
@@ -940,7 +981,7 @@
     const w = parseInt((document.getElementById('lbl-w')||{}).value || window._labelSize.w, 10);
     const h = parseInt((document.getElementById('lbl-h')||{}).value || window._labelSize.h, 10);
     window._labelSize = { w, h };
-    const layout = window._labelLayout;
+    const layout = window._labelLines;
 
     const items = Object.values(window._bcSelected);
     const allLabels = items.reduce(function(acc, item) {
@@ -967,7 +1008,7 @@
     const items = Object.values(window._bcSelected);
     if (items.length === 0) { showToast('선택된 항목이 없습니다.', 'error'); return; }
 
-    const layout = window._labelLayout;
+    const layout = window._labelLines;
     const w = parseInt((document.getElementById('lbl-w')||{}).value || window._labelSize.w, 10);
     const h = parseInt((document.getElementById('lbl-h')||{}).value || window._labelSize.h, 10);
 
@@ -1006,7 +1047,7 @@
     const items = Object.values(window._bcSelected);
     if (items.length === 0) { showToast('선택된 항목이 없습니다.', 'error'); return; }
 
-    const layout = window._labelLayout;
+    const layout = window._labelLines;
     const w = parseInt((document.getElementById('lbl-w')||{}).value || window._labelSize.w, 10);
     const h = parseInt((document.getElementById('lbl-h')||{}).value || window._labelSize.h, 10);
 
@@ -1998,18 +2039,6 @@
   async function renderSettings(container) {
     container.innerHTML =
       '<div style="max-width:660px;">' +
-
-      /* ── 바코드 설정 링크 안내 ── */
-      '<div class="card" style="margin-bottom:20px;background:var(--blue-light);border:1px solid #bfdbfe;">' +
-      '<div style="display:flex;align-items:center;gap:12px;">' +
-      '<span style="font-size:24px;">⚙️</span>' +
-      '<div>' +
-      '<div style="font-size:14px;font-weight:700;color:var(--blue);">번호 자릿수 · 라벨 기본 크기</div>' +
-      '<div style="font-size:12px;color:var(--gray-600);margin-top:2px;">바코드 페이지의 <b>기본 설정</b> 버튼에서 변경할 수 있습니다.</div>' +
-      '</div>' +
-      '<button onclick="navigate(\'barcode\')" class="btn btn-primary" style="margin-left:auto;">바코드 페이지로 →</button>' +
-      '</div>' +
-      '</div>' +
 
       /* ── 데이터 내보내기 ── */
       '<div class="card" style="margin-bottom:20px;">' +
