@@ -508,6 +508,7 @@
   function renderBarcodePage(container) {
     window._bcSelected = {};
     if (!window._labelLines) window._labelLines = [
+      [{ id:'image',   label:'상품 사진',      visible:false }],
       [{ id:'brand',   label:'브랜드명',      visible:true }],
       [{ id:'product', label:'상품명',         visible:true }],
       [{ id:'option',  label:'옵션',           visible:true }],
@@ -630,7 +631,7 @@
           const optLabel = sku.option_number==='00' ? '옵션 없음'
             : [1,2,3].map(i=>sku['option_'+i+'_name']?sku['option_'+i+'_name']+': '+sku['option_'+i+'_value']:'').filter(Boolean).join(' / ');
           const itemKey = sku.id;
-          window._bcAllItems[itemKey] = { barcodeValue: sku.barcode_value, productName: p.product_name, brandCode: p.brand_code, optLabel, price: sku.price||p.base_price||0, type:'sku', productId:p.id, skuId:sku.id, isIndividual };
+          window._bcAllItems[itemKey] = { barcodeValue: sku.barcode_value, productName: p.product_name, brandCode: p.brand_code, optLabel, price: sku.price||p.base_price||0, type:'sku', productId:p.id, skuId:sku.id, isIndividual, imageUrl: sku.image_url || p.image_url || '' };
 
           const chkOnchange = isIndividual
             ? 'toggleBcParentSku(\'' + p.id + '\',\'' + sku.id + '\',this.checked)'
@@ -688,7 +689,7 @@
     wrap.dataset.loaded = '1';
     wrap.innerHTML = units.map(u => {
       const key = u.id;
-      window._bcAllItems[key] = { barcodeValue: u.barcode_value, productName: skuItem.productName, brandCode: skuItem.brandCode, optLabel: (skuItem.optLabel||'') + ' #' + u.unit_number, price: skuItem.price||0, type:'unit', productId, skuId, unitId:u.id };
+      window._bcAllItems[key] = { barcodeValue: u.barcode_value, productName: skuItem.productName, brandCode: skuItem.brandCode, optLabel: (skuItem.optLabel||'') + ' #' + u.unit_number, price: skuItem.price||0, type:'unit', productId, skuId, unitId:u.id, imageUrl: u.image_url || skuItem.imageUrl || '' };
       return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;">' +
         '<input type="checkbox" id="bc-chk-' + key + '" onchange="toggleBcItem(\'' + key + '\');syncParentChk(\'' + skuId + '\')" style="width:14px;height:14px;cursor:pointer;accent-color:var(--blue);" />' +
         '<code style="font-size:11px;color:var(--blue);">' + esc(u.barcode_value) + '</code>' +
@@ -776,6 +777,8 @@
     if (!cell.visible) return '';
     var a = align; // 'left' | 'right' | 'center'
     var st = 'text-align:' + a + ';';
+    if (cell.id === 'image' && item.imageUrl)
+      return '<div style="text-align:center;margin:2px 0;"><img src="' + esc(item.imageUrl) + '" style="max-width:100%;max-height:40px;object-fit:contain;" /></div>';
     if (cell.id === 'brand' && item.brandCode)
       return '<div class="label-brand" style="' + st + '">' + esc(item.brandCode) + '</div>';
     if (cell.id === 'product' && item.productName)
@@ -1172,7 +1175,11 @@
         const activeText = b.active !== false
           ? '<span class="badge badge-green">활성</span>'
           : '<span class="badge badge-gray">비활성</span>';
+        const logoCell = b.logo_url
+          ? '<img src="' + esc(b.logo_url) + '" style="width:32px;height:32px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200);" />'
+          : '<div style="width:32px;height:32px;border-radius:6px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:14px;">🏬</div>';
         return '<tr>' +
+          '<td style="padding:8px 8px 8px 16px;">' + logoCell + '</td>' +
           '<td class="td-code">' + esc(b.brand_code) + '</td>' +
           '<td style="font-weight:600;">' + esc(b.brand_name) + '</td>' +
           '<td>' + (typeLabel[b.brand_type] || b.brand_type) + '</td>' +
@@ -1183,7 +1190,7 @@
       }).join('');
 
       container.innerHTML = '<div class="card"><div class="table-wrap"><table>' +
-        '<thead><tr><th>브랜드코드</th><th>브랜드명</th><th>거래유형</th><th>상태</th><th>마지막 상품번호</th><th></th></tr></thead>' +
+        '<thead><tr><th style="width:48px;"></th><th>브랜드코드</th><th>브랜드명</th><th>거래유형</th><th>상태</th><th>마지막 상품번호</th><th></th></tr></thead>' +
         '<tbody>' + rows + '</tbody></table></div></div>';
     } catch (e) {
       container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
@@ -1226,22 +1233,48 @@
       this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
       this.setSelectionRange(pos, pos);
     });
+    const descEl = document.getElementById('f-brand-desc');
+    if (descEl) {
+      descEl.addEventListener('input', function() {
+        const cnt = document.getElementById('brand-desc-count');
+        if (cnt) cnt.textContent = this.value.length + '/100';
+      });
+    }
+    window.onBizTypeChange = function() {
+      const isInd = document.getElementById('f-biz-individual') && document.getElementById('f-biz-individual').checked;
+      const noticeEl = document.getElementById('section-individual-notice');
+      const resEl = document.getElementById('section-resident');
+      const bizEl = document.getElementById('section-business-fields');
+      if (noticeEl) noticeEl.style.display = isInd ? '' : 'none';
+      if (resEl) resEl.style.display = isInd ? '' : 'none';
+      if (bizEl) bizEl.style.display = isInd ? 'none' : '';
+    };
+    window.onTaxationTypeChange = function() {
+      const val = document.getElementById('f-taxation-type') && document.getElementById('f-taxation-type').value;
+      const vatEl = document.getElementById('section-vat-notice');
+      if (vatEl) vatEl.style.display = val ? '' : 'none';
+    };
+    setupFileUpload('upload-brand-logo', 'preview-brand-logo', 'input-brand-logo');
     setupFileUpload('upload-id-card', 'preview-id-card', 'input-id-card');
     setupFileUpload('upload-bank-book', 'preview-bank-book', 'input-bank-book');
     document.getElementById('btn-save-brand').addEventListener('click', () => saveBrand(brandId, existing));
   };
 
   function buildBrandFormHTML(existing, si, fi) {
-    const v = (key, def) => existing ? (existing[key] || def || '') : (def || '');
+    const v = (key, def) => existing ? (existing[key] !== undefined ? existing[key] : (def || '')) : (def || '');
     const bType = v('brand_type', 'PB');
     const showSI = bType === '위탁' || bType === '매입';
+    const contact = (existing && existing.contact_info) ? existing.contact_info : {};
+    const bizType = si.business_type || 'business';
+    const taxType = si.taxation_type || '';
 
     return [
-      /* 기본 정보 */
+      /* ── 기본 정보 ── */
       '<div class="form-section">',
       '<div class="form-section-title">기본 정보</div>',
       '<div class="form-row">',
-      formGroup('브랜드명', 'f-brand-name', '<input class="form-input" id="f-brand-name" type="text" placeholder="예: 온기" value="' + esc(v('brand_name')) + '" required />', true),
+      formGroup('브랜드명', 'f-brand-name',
+        '<input class="form-input" id="f-brand-name" type="text" placeholder="예: 온기" value="' + esc(v('brand_name')) + '" required />', true),
       formGroup('브랜드코드', 'f-brand-code',
         '<input class="form-input" id="f-brand-code" type="text" placeholder="예: ONG" maxlength="10" value="' + esc(v('brand_code')) + '" ' + (existing ? 'style="font-family:monospace;font-weight:700;"' : '') + ' />' +
         '<div class="form-hint">영문 대문자+숫자, 최대 10자. 등록 후 변경 자제.</div>', true),
@@ -1261,7 +1294,36 @@
       '</div>',
       '</div>',
 
-      /* 수수료 정보 (위탁/매입만) */
+      /* ── 브랜드 소개 ── */
+      '<div class="form-section">',
+      '<div class="form-section-title">브랜드 소개 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택사항</span></div>',
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">',
+      '<div style="flex:0 0 auto;">',
+      '<label class="form-label">대표 사진 (로고)</label>',
+      fileUploadArea('upload-brand-logo', 'preview-brand-logo', 'input-brand-logo', v('logo_url')),
+      '</div>',
+      '<div style="flex:1;min-width:200px;">',
+      '<label class="form-label" for="f-brand-desc">브랜드 간단 소개 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">최대 100자</span></label>',
+      '<textarea class="form-input" id="f-brand-desc" rows="4" maxlength="100" placeholder="브랜드를 한 줄로 소개해주세요." style="resize:vertical;">' + esc(v('brand_desc')) + '</textarea>',
+      '<div class="form-hint" id="brand-desc-count">' + String(v('brand_desc')).length + '/100</div>',
+      '</div>',
+      '</div>',
+      '</div>',
+
+      /* ── 연락처 정보 ── */
+      '<div class="form-section">',
+      '<div class="form-section-title">연락처 정보 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택사항</span></div>',
+      '<div class="form-row">',
+      formGroup('연락처', 'f-contact-phone',
+        '<input class="form-input" id="f-contact-phone" type="tel" placeholder="010-0000-0000" value="' + esc(contact.phone || '') + '" />'),
+      formGroup('이메일', 'f-contact-email',
+        '<input class="form-input" id="f-contact-email" type="email" placeholder="example@email.com" value="' + esc(contact.email || '') + '" />'),
+      '</div>',
+      formGroup('SNS', 'f-contact-sns',
+        '<input class="form-input" id="f-contact-sns" type="text" placeholder="@인스타그램아이디 또는 링크" value="' + esc(contact.sns || '') + '" />'),
+      '</div>',
+
+      /* ── 수수료 정보 (위탁/매입만) ── */
       '<div class="form-section" id="section-fee" style="' + (showSI ? '' : 'display:none;') + '">',
       '<div class="form-section-title">수수료 정보</div>',
       '<div class="form-row">',
@@ -1274,22 +1336,66 @@
       '</div>',
       '</div>',
 
-      /* 정산 정보 (위탁/매입만) */
+      /* ── 정산 정보 (위탁/매입만) ── */
       '<div class="form-section" id="section-settlement" style="' + (showSI ? '' : 'display:none;') + '">',
       '<div class="form-section-title">정산 정보 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택사항 — 나중에 추가해도 됩니다</span></div>',
 
-      '<div class="form-row">',
-      formGroup('주민등록번호', 'f-resident',
-        '<input class="form-input" id="f-resident" type="text" placeholder="000000-0000000" value="' + esc(si.resident_number || '') + '" />' +
-        '<div class="form-hint">사업소득/기타소득 세금계산 목적으로만 사용됩니다.</div>'),
-      formGroup('소득 유형', 'f-income-type',
-        '<select class="form-select" id="f-income-type">' +
-        opt('기타소득', '기타소득', si.income_type || '기타소득') +
-        opt('사업소득', '사업소득', si.income_type || '기타소득') +
-        '</select>'),
+      /* 사업자 여부 */
+      '<div class="form-group" style="margin-bottom:16px;">',
+      '<label class="form-label">사업자 여부</label>',
+      '<div style="display:flex;gap:10px;">',
+      '<label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border:1px solid var(--gray-300);border-radius:8px;cursor:pointer;flex:1;transition:all 0.12s;" id="lbl-biz-business">',
+      '<input type="radio" name="biz-type" id="f-biz-business" value="business"' + (bizType !== 'individual' ? ' checked' : '') + ' onchange="onBizTypeChange()" style="accent-color:var(--blue);" />',
+      '<div><div style="font-weight:600;font-size:13px;">사업자</div><div style="font-size:11px;color:var(--gray-400);">사업자등록번호 보유</div></div>',
+      '</label>',
+      '<label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border:1px solid var(--gray-300);border-radius:8px;cursor:pointer;flex:1;transition:all 0.12s;" id="lbl-biz-individual">',
+      '<input type="radio" name="biz-type" id="f-biz-individual" value="individual"' + (bizType === 'individual' ? ' checked' : '') + ' onchange="onBizTypeChange()" style="accent-color:var(--blue);" />',
+      '<div><div style="font-weight:600;font-size:13px;">개인 (사업자 없음)</div><div style="font-size:11px;color:var(--gray-400);">3.3% 원천징수 적용</div></div>',
+      '</label>',
+      '</div>',
       '</div>',
 
-      '<div class="form-section-title" style="font-size:13px;margin-top:8px;">통장 정보</div>',
+      /* 개인 안내 문구 */
+      '<div id="section-individual-notice" style="' + (bizType === 'individual' ? '' : 'display:none;') + 'background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px 14px;margin-bottom:14px;">',
+      '<div style="font-size:12px;color:#c2410c;line-height:2.0;">',
+      '공급가액에서 3.3% 원천징수 후 정산되며, 직접 종합소득세 신고를 하셔야 합니다.<br>',
+      '원칙적으로 사업자 없이 상품 판매를 할 수가 없기에, 상품 판매건수나 판매금액이 많아지면 세무 안정성을 위해 사업자 등록이 필요할 수 있습니다.',
+      '</div>',
+      '</div>',
+
+      /* 개인: 주민등록번호 */
+      '<div id="section-resident" style="' + (bizType === 'individual' ? '' : 'display:none;') + '">',
+      '<div class="form-row" style="margin-bottom:16px;">',
+      formGroup('주민등록번호', 'f-resident',
+        '<input class="form-input" id="f-resident" type="text" placeholder="000000-0000000" value="' + esc(si.resident_number || '') + '" />' +
+        '<div class="form-hint">세금 신고 목적으로만 사용됩니다.</div>'),
+      '</div>',
+      '</div>',
+
+      /* 사업자: 사업자등록번호 + 과세유형 */
+      '<div id="section-business-fields" style="' + (bizType === 'individual' ? 'display:none;' : '') + '">',
+      '<div class="form-row" style="margin-bottom:4px;">',
+      formGroup('사업자등록번호', 'f-biz-reg-num',
+        '<input class="form-input" id="f-biz-reg-num" type="text" placeholder="000-00-00000" value="' + esc(si.business_reg_number || '') + '" />'),
+      formGroup('과세 유형', 'f-taxation-type',
+        '<select class="form-select" id="f-taxation-type" onchange="onTaxationTypeChange()">' +
+        '<option value=""' + (!taxType ? ' selected' : '') + '>선택 안 함</option>' +
+        '<option value="일반"' + (taxType === '일반' ? ' selected' : '') + '>일반 과세</option>' +
+        '<option value="간이"' + (taxType === '간이' ? ' selected' : '') + '>간이 과세</option>' +
+        '</select>' +
+        '<div class="form-hint">사업자 유형에 맞게 선택하세요.</div>'),
+      '</div>',
+      /* 부가세 안내 */
+      '<div id="section-vat-notice" style="' + (taxType ? '' : 'display:none;') + 'background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 14px;margin-bottom:14px;">',
+      '<div style="font-size:12px;color:#1d4ed8;line-height:2.0;">',
+      '상품의 판매가격 × 판매건으로 부가세 신고 및 납부처리해주셔야 합니다.<br>',
+      'GMBS에서 수취한 중개수수료에 해당하는 금액은 GMBS에서 브랜드로 적격증빙을 발행해 해당 금액만큼 부가세 공제를 받을 수 있습니다.',
+      '</div>',
+      '</div>',
+      '</div>',
+
+      /* 통장 정보 */
+      '<div class="form-section-title" style="font-size:13px;margin-top:8px;margin-bottom:12px;">통장 정보</div>',
       '<div class="form-row">',
       formGroup('은행', 'f-bank-name',
         '<input class="form-input" id="f-bank-name" type="text" placeholder="예: 국민은행" value="' + esc(si.bank_name || '') + '" />'),
@@ -1301,7 +1407,8 @@
       '<input class="form-input" id="f-account-number" type="text" placeholder="- 없이 숫자만 입력" value="' + esc(si.account_number || '') + '" />',
       '</div>',
 
-      '<div class="form-section-title" style="font-size:13px;margin-top:8px;">서류 이미지</div>',
+      /* 서류 이미지 */
+      '<div class="form-section-title" style="font-size:13px;margin-top:8px;margin-bottom:12px;">서류 이미지</div>',
       '<div class="form-row">',
       '<div class="form-group">',
       '<label class="form-label">신분증 사본</label>',
@@ -1341,18 +1448,39 @@
     btn.innerHTML = '<div class="spinner spinner-sm"></div> 저장 중...';
 
     try {
+      const now = new Date().toISOString();
       const data = {
         brand_name: brandName,
         brand_code: brandCode,
         brand_type: brandType,
         active: active,
-        updated_at: new Date().toISOString()
+        updated_at: now
       };
 
       if (!brandId) {
         data.last_product_number = '000';
-        data.created_at = new Date().toISOString();
+        data.created_at = now;
       }
+
+      /* 브랜드 소개 */
+      data.brand_desc = (document.getElementById('f-brand-desc') || {}).value || '';
+
+      /* 연락처 정보 */
+      data.contact_info = {
+        phone: ((document.getElementById('f-contact-phone') || {}).value || '').trim(),
+        email: ((document.getElementById('f-contact-email') || {}).value || '').trim(),
+        sns: ((document.getElementById('f-contact-sns') || {}).value || '').trim()
+      };
+
+      /* 로고 이미지 업로드 */
+      let logoUrl = existing ? (existing.logo_url || '') : '';
+      const logoFile = document.getElementById('input-brand-logo') && document.getElementById('input-brand-logo').files[0];
+      if (logoFile) {
+        const path = 'brands/' + brandCode + '/logo_' + Date.now();
+        const snapFile = await uploadBytes(ref(storage, path), logoFile);
+        logoUrl = await getDownloadURL(snapFile.ref);
+      }
+      data.logo_url = logoUrl;
 
       /* 정산/수수료 정보 (위탁/매입만) */
       if (brandType === '위탁' || brandType === '매입') {
@@ -1360,6 +1488,9 @@
           commission_rate: parseFloat(document.getElementById('f-commission').value) || 10,
           tax_rate: parseFloat(document.getElementById('f-tax-rate').value) || 5
         };
+
+        const bizInd = document.getElementById('f-biz-individual');
+        const bizType = (bizInd && bizInd.checked) ? 'individual' : 'business';
 
         /* 이미지 업로드 */
         let idCardUrl = existing && existing.settlement_info ? (existing.settlement_info.id_card_url || '') : '';
@@ -1380,11 +1511,13 @@
         }
 
         data.settlement_info = {
-          resident_number: document.getElementById('f-resident').value.trim(),
-          income_type: document.getElementById('f-income-type').value,
-          bank_name: document.getElementById('f-bank-name').value.trim(),
-          account_holder: document.getElementById('f-account-holder').value.trim(),
-          account_number: document.getElementById('f-account-number').value.trim(),
+          business_type: bizType,
+          resident_number: bizType === 'individual' ? ((document.getElementById('f-resident') || {}).value || '').trim() : '',
+          business_reg_number: bizType === 'business' ? ((document.getElementById('f-biz-reg-num') || {}).value || '').trim() : '',
+          taxation_type: bizType === 'business' ? ((document.getElementById('f-taxation-type') || {}).value || '') : '',
+          bank_name: ((document.getElementById('f-bank-name') || {}).value || '').trim(),
+          account_holder: ((document.getElementById('f-account-holder') || {}).value || '').trim(),
+          account_number: ((document.getElementById('f-account-number') || {}).value || '').trim(),
           id_card_url: idCardUrl,
           bank_book_url: bankBookUrl
         };
@@ -1463,7 +1596,7 @@
         '</div>' +
         '<div id="pl-count" style="font-size:13px;color:var(--gray-500);margin-bottom:10px;"></div>' +
         '<div class="card"><div class="table-wrap"><table id="pl-table">' +
-        '<thead><tr><th>상품 ID</th><th>상품명</th><th>브랜드</th><th>관리방식</th><th>판매가</th><th>상태</th><th>등록일</th></tr></thead>' +
+        '<thead><tr><th style="width:48px;"></th><th>상품 ID</th><th>상품명</th><th>브랜드</th><th>관리방식</th><th>판매가</th><th>상태</th><th>등록일</th></tr></thead>' +
         '<tbody id="pl-tbody"></tbody></table></div></div>';
 
       filterProductList();
@@ -1494,8 +1627,12 @@
     if (products.length === 0) {
       tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--gray-400);padding:32px;">검색 결과가 없습니다.</td></tr>';
     } else {
-      tbody.innerHTML = products.map(p =>
-        '<tr style="cursor:pointer;" onclick="openProductDetail(\'' + p.id + '\')">' +
+      tbody.innerHTML = products.map(p => {
+        const thumb = p.image_url
+          ? '<img src="' + esc(p.image_url) + '" style="width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200);" />'
+          : '<div style="width:36px;height:36px;border-radius:6px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:16px;">📦</div>';
+        return '<tr style="cursor:pointer;" onclick="openProductDetail(\'' + p.id + '\')">' +
+        '<td style="padding:8px 8px 8px 16px;">' + thumb + '</td>' +
         '<td class="td-code">' + esc(p.id) + '</td>' +
         '<td style="font-weight:600;">' + esc(p.product_name) + '</td>' +
         '<td>' + esc(p.brand_code) + '</td>' +
@@ -1503,8 +1640,8 @@
         '<td>' + (p.base_price || 0).toLocaleString() + '원</td>' +
         '<td>' + (statusLabel[p.status] || p.status) + '</td>' +
         '<td style="color:var(--gray-400);font-size:12px;">' + (p.created_at ? p.created_at.slice(0,10) : '-') + '</td>' +
-        '</tr>'
-      ).join('');
+        '</tr>';
+      }).join('');
     }
     if (countEl) countEl.innerHTML = '총 <strong>' + (window._allProducts || []).length + '</strong>개 중 <strong>' + products.length + '</strong>개 표시';
   };
@@ -1527,7 +1664,11 @@
       const skuRows = skus.map(s => {
         const optLabel = s.option_number === '00' ? '옵션 없음'
           : [1,2,3].map(i => s['option_' + i + '_name'] ? s['option_' + i + '_name'] + ': ' + s['option_' + i + '_value'] : '').filter(Boolean).join(' / ');
+        const skuThumb = s.image_url
+          ? '<img src="' + esc(s.image_url) + '" style="width:32px;height:32px;object-fit:cover;border-radius:4px;border:1px solid var(--gray-200);cursor:pointer;" onclick="uploadSkuImage(\'' + productId + '\',\'' + s.id + '\')" title="클릭하면 사진 변경" />'
+          : '<button onclick="uploadSkuImage(\'' + productId + '\',\'' + s.id + '\')" style="width:32px;height:32px;border:1px dashed var(--gray-300);border-radius:4px;background:var(--gray-50);cursor:pointer;font-size:14px;" title="사진 추가">📷</button>';
         return '<tr>' +
+          '<td style="padding:6px 8px;">' + skuThumb + '</td>' +
           '<td class="td-code" style="font-size:12px;">' + esc(s.barcode_value) + '</td>' +
           '<td style="font-size:13px;">' + esc(optLabel) + '</td>' +
           '<td>' + (s.price || p.base_price || 0).toLocaleString() + '원</td>' +
@@ -1536,8 +1677,14 @@
           '</tr>';
       }).join('');
 
+      const mainImgHTML = p.image_url
+        ? '<img src="' + esc(p.image_url) + '" style="width:80px;height:80px;object-fit:cover;border-radius:10px;border:1px solid var(--gray-200);margin-right:16px;flex-shrink:0;" />'
+        : '';
+
       const body =
-        '<div style="background:var(--gray-50);border-radius:10px;padding:16px;margin-bottom:20px;">' +
+        '<div style="display:flex;align-items:flex-start;margin-bottom:20px;">' +
+        mainImgHTML +
+        '<div style="flex:1;background:var(--gray-50);border-radius:10px;padding:16px;">' +
         '<div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13px;">' +
         row('상품 ID', '<span style="font-family:monospace;font-weight:700;color:var(--blue);">' + esc(productId) + '</span>') +
         row('상품명', '<strong>' + esc(p.product_name) + '</strong>') +
@@ -1548,12 +1695,16 @@
         row('관리방식', p.tracking_type === 'quantity' ? '수량 관리' : '개체 관리') +
         row('상태', p.status || '-') +
         (p.memo ? row('메모', esc(p.memo)) : '') +
-        '</div></div>' +
-        '<div style="font-size:13px;font-weight:700;margin-bottom:10px;">SKU / 옵션 (' + skus.length + '개)</div>' +
+        '</div></div></div>' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">' +
+        '<div style="font-size:13px;font-weight:700;">SKU / 옵션 (' + skus.length + '개)</div>' +
+        '<div style="font-size:12px;color:var(--gray-400);">📷 아이콘 클릭 → 옵션별 사진 추가/변경</div>' +
+        '</div>' +
         '<div class="table-wrap"><table>' +
-        '<thead><tr><th>바코드</th><th>옵션</th><th>판매가</th><th>상태</th>' +
+        '<thead><tr><th style="width:40px;"></th><th>바코드</th><th>옵션</th><th>판매가</th><th>상태</th>' +
         (p.tracking_type === 'individual' ? '<th></th>' : '') + '</tr></thead>' +
-        '<tbody>' + skuRows + '</tbody></table></div>';
+        '<tbody>' + skuRows + '</tbody></table></div>' +
+        '<input type="file" id="sku-img-input" accept="image/*" style="display:none;" />';
 
       const footerHTML =
         '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>' +
@@ -1562,6 +1713,26 @@
         (p.status === '판매중' ? '판매중지' : '판매 재개') + '</button>';
 
       showModal('상품 상세 — ' + esc(p.product_name), body, footerHTML, 'lg');
+
+      /* SKU 이미지 업로드 핸들러 */
+      window.uploadSkuImage = function(pid, sid) {
+        const input = document.getElementById('sku-img-input');
+        if (!input) return;
+        input.onchange = async function() {
+          const file = this.files[0];
+          if (!file) return;
+          try {
+            const path = 'products/' + pid + '/skus/' + sid + '/img_' + Date.now();
+            const snap = await uploadBytes(ref(storage, path), file);
+            const url = await getDownloadURL(snap.ref);
+            await updateDoc(doc(db, 'products', pid, 'skus', sid), { image_url: url, updated_at: new Date().toISOString() });
+            showToast('사진이 저장됐습니다.', 'success');
+            await openProductDetail(pid);
+          } catch(e) { showToast('사진 업로드 실패: ' + e.message, 'error'); }
+        };
+        input.value = '';
+        input.click();
+      };
     } catch(e) {
       document.querySelector('#modal-container .modal-body').innerHTML =
         '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
@@ -1636,6 +1807,9 @@
         '<input class="form-input" id="edit-p-price" type="number" min="0" step="100" value="' + basePrice + '" /></div>' +
         '<div class="form-group"><label class="form-label" for="edit-p-memo">메모</label>' +
         '<input class="form-input" id="edit-p-memo" type="text" value="' + esc(p.memo || '') + '" /></div>' +
+        '<div class="form-group"><label class="form-label">상품 대표 사진 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택</span></label>' +
+        fileUploadArea('upload-edit-product-img', 'preview-edit-product-img', 'input-edit-product-img', p.image_url || '') +
+        '</div>' +
         /* SKU 가격 + 순서: 옵션 있는 상품(2개 이상 SKU)만 표시 */
         (skus.length > 1 ?
           '<div style="background:var(--blue-light);border:1px solid #bfdbfe;border-radius:10px;padding:16px;">' +
@@ -1651,6 +1825,7 @@
         '<button class="btn btn-primary" onclick="saveProductEdit()">💾 저장</button>';
 
       showModal('상품 수정 — ' + esc(p.product_name), body, footerHTML, 'lg');
+      setupFileUpload('upload-edit-product-img', 'preview-edit-product-img', 'input-edit-product-img');
       calcEditSalePrice();
     } catch(e) {
       document.querySelector('#modal-container .modal-body').innerHTML =
@@ -1710,6 +1885,17 @@
       const updates = { product_name: name, base_price: basePrice, memo, updated_at: now };
       if (supplyPrice !== undefined) updates.supply_price = supplyPrice;
       if (commissionRate !== undefined) updates.commission_rate = commissionRate;
+
+      /* 상품 대표 사진 업로드 */
+      const imgFile = document.getElementById('input-edit-product-img') && document.getElementById('input-edit-product-img').files[0];
+      if (imgFile) {
+        try {
+          const path = 'products/' + productId + '/main_' + Date.now();
+          const snap = await uploadBytes(ref(storage, path), imgFile);
+          updates.image_url = await getDownloadURL(snap.ref);
+        } catch(imgErr) { console.warn('이미지 업로드 실패:', imgErr); }
+      }
+
       await updateDoc(doc(db, 'products', productId), updates);
 
       /* SKU 가격 + 순서 일괄 업데이트 */
@@ -1744,9 +1930,13 @@
       const statusColors = { '판매중':'badge-green','판매완료':'badge-blue','분실':'badge-red','폐기':'badge-gray' };
 
       const unitRows = units.length === 0
-        ? '<tr><td colspan="4" style="text-align:center;color:var(--gray-400);padding:24px;">등록된 개체가 없습니다.</td></tr>'
-        : units.map(u =>
-          '<tr>' +
+        ? '<tr><td colspan="5" style="text-align:center;color:var(--gray-400);padding:24px;">등록된 개체가 없습니다.</td></tr>'
+        : units.map(u => {
+          const uThumb = u.image_url
+            ? '<img src="' + esc(u.image_url) + '" style="width:30px;height:30px;object-fit:cover;border-radius:4px;border:1px solid var(--gray-200);cursor:pointer;" onclick="uploadUnitImage(\'' + productId + '\',\'' + skuId + '\',\'' + u.id + '\')" title="클릭하면 사진 변경" />'
+            : '<button onclick="uploadUnitImage(\'' + productId + '\',\'' + skuId + '\',\'' + u.id + '\')" style="width:30px;height:30px;border:1px dashed var(--gray-300);border-radius:4px;background:var(--gray-50);cursor:pointer;font-size:12px;" title="사진 추가">📷</button>';
+          return '<tr>' +
+          '<td style="padding:6px 8px;">' + uThumb + '</td>' +
           '<td class="td-code" style="font-size:12px;">' + esc(u.barcode_value) + '</td>' +
           '<td style="font-size:13px;color:var(--gray-500);">' + esc(u.unit_number) + '</td>' +
           '<td><span class="badge ' + (statusColors[u.unit_status] || 'badge-gray') + '">' + esc(u.unit_status) + '</span></td>' +
@@ -1754,8 +1944,8 @@
           'style="border:1px solid var(--gray-200);border-radius:6px;padding:4px 6px;font-size:12px;">' +
           statusOpts.map(s => '<option' + (s === u.unit_status ? ' selected' : '') + '>' + s + '</option>').join('') +
           '</select></td>' +
-          '</tr>'
-        ).join('');
+          '</tr>';
+        }).join('');
 
       const body =
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">' +
@@ -1767,10 +1957,30 @@
         '<button class="btn btn-primary" style="padding:6px 14px;font-size:13px;" onclick="addUnitsToSku(\'' + productId + '\',\'' + skuId + '\')">➕ 개체 추가</button>' +
         '</div></div>' +
         '<div class="table-wrap"><table>' +
-        '<thead><tr><th>개체 바코드</th><th>개체번호</th><th>상태</th><th>상태 변경</th></tr></thead>' +
-        '<tbody>' + unitRows + '</tbody></table></div>';
+        '<thead><tr><th style="width:40px;"></th><th>개체 바코드</th><th>개체번호</th><th>상태</th><th>상태 변경</th></tr></thead>' +
+        '<tbody>' + unitRows + '</tbody></table></div>' +
+        '<input type="file" id="unit-img-input" accept="image/*" style="display:none;" />';
 
       showModal('개체 목록 — ' + esc(skuId), body, '<button class="btn btn-secondary" onclick="openProductDetail(\'' + productId + '\')">← 상품으로</button>', 'lg');
+
+      window.uploadUnitImage = function(pid, sid, uid) {
+        const input = document.getElementById('unit-img-input');
+        if (!input) return;
+        input.onchange = async function() {
+          const file = this.files[0];
+          if (!file) return;
+          try {
+            const path = 'products/' + pid + '/skus/' + sid + '/units/' + uid + '/img_' + Date.now();
+            const snap = await uploadBytes(ref(storage, path), file);
+            const url = await getDownloadURL(snap.ref);
+            await updateDoc(doc(db, 'products', pid, 'skus', sid, 'units', uid), { image_url: url, updated_at: new Date().toISOString() });
+            showToast('사진이 저장됐습니다.', 'success');
+            await openUnitList(pid, sid);
+          } catch(e) { showToast('사진 업로드 실패: ' + e.message, 'error'); }
+        };
+        input.value = '';
+        input.click();
+      };
     } catch(e) {
       document.querySelector('#modal-container .modal-body').innerHTML =
         '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
@@ -1922,9 +2132,15 @@
       '</div>',
       '</div>',
       '</div>',
+      '<div class="form-row">',
       '<div class="form-group">',
       '<label class="form-label" for="p-memo">메모 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택</span></label>',
       '<input class="form-input" id="p-memo" type="text" placeholder="내부 메모 (선택)" />',
+      '</div>',
+      '<div class="form-group">',
+      '<label class="form-label">상품 대표 사진 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택</span></label>',
+      fileUploadArea('upload-product-main-img', 'preview-product-main-img', 'input-product-main-img', ''),
+      '</div>',
       '</div>',
       '</div>',
 
@@ -2051,6 +2267,8 @@
       document.getElementById('lbl-has-opt').style.borderColor = 'var(--blue)';
       rebuildCombos();
     });
+
+    setupFileUpload('upload-product-main-img', 'preview-product-main-img', 'input-product-main-img');
   }
 
   /* ── 옵션 태그 입력 ── */
@@ -2214,7 +2432,9 @@
       }));
     }
 
-    window._pendingProduct = { brandId, brandCode, nextProductNum, productName, supplyPrice, commissionRate, basePrice, trackingType, optionMode, memo, skus };
+    const mainImgInput = document.getElementById('input-product-main-img');
+    const mainImgFile = mainImgInput && mainImgInput.files[0] ? mainImgInput.files[0] : null;
+    window._pendingProduct = { brandId, brandCode, nextProductNum, productName, supplyPrice, commissionRate, basePrice, trackingType, optionMode, memo, skus, mainImgFile };
     showProductConfirm();
   };
 
@@ -2291,6 +2511,18 @@
     if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner spinner-sm"></div> 저장 중...'; }
 
     try {
+      /* 대표 이미지 업로드 (트랜잭션 전에) */
+      let mainImageUrl = '';
+      if (d.mainImgFile) {
+        try {
+          const tmpId = d.brandCode + '-' + d.nextProductNum;
+          const path = 'products/' + tmpId + '/main_' + Date.now();
+          const snapFile = await uploadBytes(ref(storage, path), d.mainImgFile);
+          mainImageUrl = await getDownloadURL(snapFile.ref);
+        } catch(imgErr) { console.warn('이미지 업로드 실패:', imgErr); }
+      }
+      d.mainImageUrl = mainImageUrl;
+
       const productId = await runProductTransaction(d);
       closeModal();
       showToast('상품이 등록됐습니다: ' + productId, 'success');
@@ -2336,6 +2568,7 @@
         tracking_type: d.trackingType,
         status: '판매중',
         memo: d.memo || '',
+        image_url: d.mainImageUrl || '',
         last_option_number: d.optionMode === 'none' ? '00' : String(d.skus.length).padStart(2, '0'),
         created_at: now,
         updated_at: now
