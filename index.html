@@ -637,8 +637,13 @@
             ? 'toggleBcParentSku(\'' + p.id + '\',\'' + sku.id + '\',this.checked)'
             : 'toggleBcItem(\'' + itemKey + '\')';
 
+          const skuImg = sku.image_url || p.image_url || '';
+          const skuThumb = skuImg
+            ? '<img src="' + esc(skuImg) + '" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200);flex-shrink:0;" />'
+            : '<div style="width:44px;height:44px;border-radius:6px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">📦</div>';
           return '<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--gray-100);" id="bc-row-' + itemKey + '">' +
             '<input type="checkbox" id="bc-chk-' + itemKey + '" onchange="' + chkOnchange + '" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue);" />' +
+            skuThumb +
             '<div style="flex:1;">' +
             '<div style="font-size:13px;font-weight:500;">' + esc(optLabel) + '</div>' +
             '<code style="font-size:11px;color:var(--gray-400);">' + esc(sku.barcode_value) + '</code>' +
@@ -652,12 +657,17 @@
             (isIndividual ? '<div id="bc-units-' + sku.id + '" style="display:none;background:var(--gray-50);border-left:3px solid var(--blue);padding:8px 16px 8px 32px;"></div>' : '');
         }).join('');
 
+        const productThumb = p.image_url
+          ? '<img src="' + esc(p.image_url) + '" style="width:48px;height:48px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);flex-shrink:0;" />'
+          : '';
         return '<div style="margin-bottom:20px;">' +
-          '<div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:8px;display:flex;align-items:center;gap:8px;">' +
+          '<div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:8px;display:flex;align-items:center;gap:10px;">' +
+          productThumb +
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
           '<code style="font-size:11px;background:var(--blue-light);color:var(--blue);padding:2px 6px;border-radius:4px;">' + esc(p.id) + '</code>' +
           esc(p.product_name) +
           '<span class="badge ' + (isIndividual?'badge-yellow':'badge-blue') + '">' + (isIndividual?'개체':'수량') + '</span>' +
-          '</div>' +
+          '</div></div>' +
           '<div class="card"><div style="padding:0;">' + skuRows + '</div></div></div>';
       }).join('');
 
@@ -690,8 +700,13 @@
     wrap.innerHTML = units.map(u => {
       const key = u.id;
       window._bcAllItems[key] = { barcodeValue: u.barcode_value, productName: skuItem.productName, brandCode: skuItem.brandCode, optLabel: (skuItem.optLabel||'') + ' #' + u.unit_number, price: skuItem.price||0, type:'unit', productId, skuId, unitId:u.id, imageUrl: u.image_url || skuItem.imageUrl || '' };
+      const unitImg = u.image_url || skuItem.imageUrl || '';
+      const unitThumb = unitImg
+        ? '<img src="' + esc(unitImg) + '" style="width:36px;height:36px;object-fit:cover;border-radius:5px;border:1px solid var(--gray-200);flex-shrink:0;" />'
+        : '<div style="width:36px;height:36px;border-radius:5px;background:var(--gray-200);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">📦</div>';
       return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;">' +
         '<input type="checkbox" id="bc-chk-' + key + '" onchange="toggleBcItem(\'' + key + '\');syncParentChk(\'' + skuId + '\')" style="width:14px;height:14px;cursor:pointer;accent-color:var(--blue);" />' +
+        unitThumb +
         '<code style="font-size:11px;color:var(--blue);">' + esc(u.barcode_value) + '</code>' +
         '<span style="font-size:11px;color:var(--gray-500);">#' + u.unit_number + '</span>' +
         '<span class="badge ' + (u.unit_status==='판매중'?'badge-green':'badge-gray') + '" style="font-size:10px;">' + esc(u.unit_status) + '</span>' +
@@ -1176,16 +1191,16 @@
           ? '<span class="badge badge-green">활성</span>'
           : '<span class="badge badge-gray">비활성</span>';
         const logoCell = b.logo_url
-          ? '<img src="' + esc(b.logo_url) + '" style="width:32px;height:32px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200);" />'
-          : '<div style="width:32px;height:32px;border-radius:6px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:14px;">🏬</div>';
-        return '<tr>' +
+          ? '<img src="' + esc(b.logo_url) + '" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);" />'
+          : '<div style="width:56px;height:56px;border-radius:8px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:20px;">🏬</div>';
+        return '<tr style="cursor:pointer;" onclick="openBrandDetail(\'' + d.id + '\')">' +
           '<td style="padding:8px 8px 8px 16px;">' + logoCell + '</td>' +
           '<td class="td-code">' + esc(b.brand_code) + '</td>' +
           '<td style="font-weight:600;">' + esc(b.brand_name) + '</td>' +
           '<td>' + (typeLabel[b.brand_type] || b.brand_type) + '</td>' +
           '<td>' + activeText + '</td>' +
           '<td style="color:var(--gray-400);font-size:12px;">' + (b.last_product_number || '000') + '</td>' +
-          '<td><button class="btn btn-secondary" style="padding:5px 12px;font-size:12px;" onclick="openBrandModal(\'' + d.id + '\')">수정</button></td>' +
+          '<td onclick="event.stopPropagation()"><button class="btn btn-secondary" style="padding:5px 12px;font-size:12px;" onclick="openBrandModal(\'' + d.id + '\')">수정</button></td>' +
           '</tr>';
       }).join('');
 
@@ -1357,9 +1372,9 @@
 
       /* 개인 안내 문구 */
       '<div id="section-individual-notice" style="' + (bizType === 'individual' ? '' : 'display:none;') + 'background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px 14px;margin-bottom:14px;">',
-      '<div style="font-size:12px;color:#c2410c;line-height:2.0;">',
-      '공급가액에서 3.3% 원천징수 후 정산되며, 직접 종합소득세 신고를 하셔야 합니다.<br>',
-      '원칙적으로 사업자 없이 상품 판매를 할 수가 없기에, 상품 판매건수나 판매금액이 많아지면 세무 안정성을 위해 사업자 등록이 필요할 수 있습니다.',
+      '<div style="font-size:11px;color:#92400e;line-height:1.8;">',
+      '⚠️ 공급가액에서 3.3% 원천징수 후 정산되며, 직접 종합소득세 신고를 하셔야 합니다.<br>',
+      '⚠️ 원칙적으로 사업자 없이 상품 판매를 할 수가 없기에, 상품 판매건수나 판매금액이 많아지면 세무 안정성을 위해 사업자 등록이 필요할 수 있습니다.',
       '</div>',
       '</div>',
 
@@ -1386,10 +1401,10 @@
         '<div class="form-hint">사업자 유형에 맞게 선택하세요.</div>'),
       '</div>',
       /* 부가세 안내 */
-      '<div id="section-vat-notice" style="' + (taxType ? '' : 'display:none;') + 'background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 14px;margin-bottom:14px;">',
-      '<div style="font-size:12px;color:#1d4ed8;line-height:2.0;">',
-      '상품의 판매가격 × 판매건으로 부가세 신고 및 납부처리해주셔야 합니다.<br>',
-      'GMBS에서 수취한 중개수수료에 해당하는 금액은 GMBS에서 브랜드로 적격증빙을 발행해 해당 금액만큼 부가세 공제를 받을 수 있습니다.',
+      '<div id="section-vat-notice" style="' + (taxType ? '' : 'display:none;') + 'background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px 14px;margin-bottom:14px;">',
+      '<div style="font-size:11px;color:#92400e;line-height:1.8;">',
+      '⚠️ 상품의 판매가격 × 판매건으로 부가세 신고 및 납부처리해주셔야 합니다.<br>',
+      '⚠️ GMBS에서 수취한 중개수수료에 해당하는 금액은 GMBS에서 브랜드로 적격증빙을 발행해 해당 금액만큼 부가세 공제를 받을 수 있습니다.',
       '</div>',
       '</div>',
       '</div>',
@@ -1541,6 +1556,70 @@
     }
   }
 
+  /* ── 브랜드 상세 보기 ── */
+  window.openBrandDetail = async function(brandId) {
+    showModal('브랜드 정보', '<div class="spinner" style="margin:40px auto;"></div>', null, 'lg');
+    try {
+      const snap = await getDoc(doc(db, 'brands', brandId));
+      if (!snap.exists()) { showToast('브랜드를 찾을 수 없습니다.', 'error'); closeModal(); return; }
+      const b = { id: snap.id, ...snap.data() };
+      const si = b.settlement_info || {};
+      const fi = b.fee_info || {};
+      const ci = b.contact_info || {};
+      const typeLabel = { PB: '<span class="badge badge-blue">PB</span>', '위탁': '<span class="badge badge-yellow">위탁</span>', '매입': '<span class="badge badge-green">매입</span>' };
+      const activeText = b.active !== false ? '<span class="badge badge-green">활성</span>' : '<span class="badge badge-gray">비활성</span>';
+
+      function row(label, value) {
+        if (!value) return '';
+        return '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--gray-100);">' +
+          '<div style="min-width:110px;font-size:12px;color:var(--gray-500);padding-top:1px;">' + label + '</div>' +
+          '<div style="flex:1;font-size:13px;color:var(--gray-800);">' + value + '</div></div>';
+      }
+
+      const logoSection = b.logo_url
+        ? '<div style="text-align:center;margin-bottom:20px;"><img src="' + esc(b.logo_url) + '" style="max-height:100px;max-width:200px;object-fit:contain;border-radius:8px;border:1px solid var(--gray-200);" /></div>'
+        : '';
+
+      const bizTypeText = si.business_type === 'individual' ? '개인(사업자없음)' : (si.business_type === 'business' ? '사업자' : '');
+
+      const body = '<div>' +
+        logoSection +
+        '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-bottom:8px;">기본 정보</div>' +
+        row('브랜드코드', '<code style="background:var(--blue-light);color:var(--blue);padding:2px 7px;border-radius:4px;">' + esc(b.brand_code) + '</code>') +
+        row('브랜드명', '<strong>' + esc(b.brand_name) + '</strong>') +
+        row('거래 유형', typeLabel[b.brand_type] || esc(b.brand_type || '')) +
+        row('상태', activeText) +
+        row('브랜드 소개', esc(b.brand_desc || '')) +
+        (ci.phone || ci.email || ci.sns
+          ? '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:16px;margin-bottom:8px;">연락처</div>' +
+            row('전화번호', esc(ci.phone || '')) +
+            row('이메일', esc(ci.email || '')) +
+            row('SNS', esc(ci.sns || '')) : '') +
+        (fi.commission !== undefined || fi.tax_rate !== undefined
+          ? '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:16px;margin-bottom:8px;">수수료</div>' +
+            row('중개수수료', fi.commission !== undefined ? fi.commission + '%' : '') +
+            row('소득세율', fi.tax_rate !== undefined ? fi.tax_rate + '%' : '') : '') +
+        (bizTypeText
+          ? '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:16px;margin-bottom:8px;">정산 정보</div>' +
+            row('사업자 유형', bizTypeText) +
+            row('사업자등록번호', esc(si.business_reg_number || '')) +
+            row('과세 유형', esc(si.taxation_type || '')) +
+            row('예금주', esc(si.account_holder || '')) +
+            row('은행', esc(si.bank_name || '')) +
+            row('계좌번호', esc(si.account_number || '')) : '') +
+        '</div>';
+
+      const footer =
+        '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>' +
+        '<button class="btn btn-primary" onclick="openBrandModal(\'' + brandId + '\')">✏️ 수정</button>';
+
+      showModal('브랜드 정보 — ' + esc(b.brand_name), body, footer, 'lg');
+    } catch(e) {
+      document.querySelector('#modal-container .modal-body').innerHTML =
+        '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
+    }
+  };
+
   /* ── 파일 업로드 UI ── */
   function fileUploadArea(areaId, previewId, inputId, existingUrl) {
     const existing = existingUrl
@@ -1629,8 +1708,8 @@
     } else {
       tbody.innerHTML = products.map(p => {
         const thumb = p.image_url
-          ? '<img src="' + esc(p.image_url) + '" style="width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200);" />'
-          : '<div style="width:36px;height:36px;border-radius:6px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:16px;">📦</div>';
+          ? '<img src="' + esc(p.image_url) + '" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);" />'
+          : '<div style="width:64px;height:64px;border-radius:8px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:22px;">📦</div>';
         return '<tr style="cursor:pointer;" onclick="openProductDetail(\'' + p.id + '\')">' +
         '<td style="padding:8px 8px 8px 16px;">' + thumb + '</td>' +
         '<td class="td-code">' + esc(p.id) + '</td>' +
@@ -1792,10 +1871,20 @@
 
       const body =
         '<div style="display:grid;gap:16px;">' +
-        '<div class="form-group"><label class="form-label">상품 ID</label>' +
+        '<div style="display:flex;gap:16px;align-items:flex-start;">' +
+        '<div style="flex:0 0 auto;">' +
+        (p.image_url
+          ? '<img id="edit-product-img-preview" src="' + esc(p.image_url) + '" style="width:72px;height:72px;object-fit:cover;border-radius:10px;border:1px solid var(--gray-200);cursor:pointer;" onclick="document.getElementById(\'input-edit-product-img\').click()" title="클릭해서 사진 변경" />'
+          : '<div id="edit-product-img-preview" onclick="document.getElementById(\'input-edit-product-img\').click()" style="width:72px;height:72px;border-radius:10px;border:2px dashed var(--gray-300);background:var(--gray-50);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:4px;">' +
+            '<span style="font-size:22px;">📷</span><span style="font-size:10px;color:var(--gray-400);">사진 추가</span></div>') +
+        '<input type="file" id="input-edit-product-img" accept="image/*" style="display:none;" onchange="(function(f){if(!f)return;var r=new FileReader();r.onload=function(e){var el=document.getElementById(\'edit-product-img-preview\');el.outerHTML=\'<img id=\\\'edit-product-img-preview\\\' src=\\\'\'+e.target.result+\'\\\' style=\\\'width:72px;height:72px;object-fit:cover;border-radius:10px;border:1px solid var(--gray-200);cursor:pointer;\\\' onclick=\\\'document.getElementById(\\\\\\\'input-edit-product-img\\\\\\\').click()\\\' title=\\\'클릭해서 사진 변경\\\' />\';};r.readAsDataURL(f);})(this.files[0])" />' +
+        '</div>' +
+        '<div style="flex:1;display:grid;gap:12px;">' +
+        '<div class="form-group" style="margin:0;"><label class="form-label">상품 ID</label>' +
         '<div style="padding:9px 12px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;font-family:monospace;font-weight:700;color:var(--blue);">' + esc(productId) + '</div></div>' +
-        '<div class="form-group"><label class="form-label" for="edit-p-name">상품명 <span class="required">*</span></label>' +
+        '<div class="form-group" style="margin:0;"><label class="form-label" for="edit-p-name">상품명 <span class="required">*</span></label>' +
         '<input class="form-input" id="edit-p-name" type="text" value="' + esc(p.product_name) + '" /></div>' +
+        '</div></div>' +
         /* 공급가격 + 수수료 + 판매가 */
         '<div class="form-row">' +
         '<div class="form-group"><label class="form-label" for="edit-p-supply">공급가격</label>' +
@@ -1807,9 +1896,6 @@
         '<input class="form-input" id="edit-p-price" type="number" min="0" step="100" value="' + basePrice + '" /></div>' +
         '<div class="form-group"><label class="form-label" for="edit-p-memo">메모</label>' +
         '<input class="form-input" id="edit-p-memo" type="text" value="' + esc(p.memo || '') + '" /></div>' +
-        '<div class="form-group"><label class="form-label">상품 대표 사진 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택</span></label>' +
-        fileUploadArea('upload-edit-product-img', 'preview-edit-product-img', 'input-edit-product-img', p.image_url || '') +
-        '</div>' +
         /* SKU 가격 + 순서: 옵션 있는 상품(2개 이상 SKU)만 표시 */
         (skus.length > 1 ?
           '<div style="background:var(--blue-light);border:1px solid #bfdbfe;border-radius:10px;padding:16px;">' +
@@ -1825,7 +1911,6 @@
         '<button class="btn btn-primary" onclick="saveProductEdit()">💾 저장</button>';
 
       showModal('상품 수정 — ' + esc(p.product_name), body, footerHTML, 'lg');
-      setupFileUpload('upload-edit-product-img', 'preview-edit-product-img', 'input-edit-product-img');
       calcEditSalePrice();
     } catch(e) {
       document.querySelector('#modal-container .modal-body').innerHTML =
