@@ -470,9 +470,13 @@
       '<button class="btn btn-primary" onclick="runBcSearch()">검색</button>' +
       '<select id="bc-sort-sel" onchange="window._bcSortKey=this.value;runBcSearch()" style="border:1px solid var(--gray-200);border-radius:8px;padding:7px 10px;font-size:13px;background:#fff;cursor:pointer;">' +
       '<option value="created_desc">등록 최신순</option>' +
+      '<option value="created_asc">등록 오래된순</option>' +
       '<option value="name_asc">상품명 ㄱ→ㅎ</option>' +
-      '<option value="id_asc">상품ID 순</option>' +
-      '<option value="brand_asc">브랜드코드 순</option>' +
+      '<option value="name_desc">상품명 ㅎ→ㄱ</option>' +
+      '<option value="id_asc">상품ID 오름차순</option>' +
+      '<option value="id_desc">상품ID 내림차순</option>' +
+      '<option value="brand_asc">브랜드코드 A→Z</option>' +
+      '<option value="brand_desc">브랜드코드 Z→A</option>' +
       '</select>' +
       '<button onclick="openBcDefaultSettings()" style="display:flex;align-items:center;gap:5px;padding:7px 12px;border:1px solid var(--gray-200);border-radius:8px;background:#fff;font-size:12px;font-weight:600;color:var(--gray-600);cursor:pointer;white-space:nowrap;">⚙️ 기본 설정</button>' +
       '</div>' +
@@ -543,9 +547,13 @@
       );
       const sortKey = (document.getElementById('bc-sort-sel')||{}).value || window._bcSortKey || 'created_desc';
       products.sort(function(a, b) {
+        if (sortKey === 'created_asc') return (a.created_at||'').localeCompare(b.created_at||'');
         if (sortKey === 'name_asc')   return (a.product_name||'').localeCompare(b.product_name||'', 'ko');
+        if (sortKey === 'name_desc')  return (b.product_name||'').localeCompare(a.product_name||'', 'ko');
         if (sortKey === 'id_asc')     return a.id.localeCompare(b.id);
+        if (sortKey === 'id_desc')    return b.id.localeCompare(a.id);
         if (sortKey === 'brand_asc')  return (a.brand_code||'').localeCompare(b.brand_code||'');
+        if (sortKey === 'brand_desc') return (b.brand_code||'').localeCompare(a.brand_code||'');
         return (b.created_at||'').localeCompare(a.created_at||''); // created_desc
       });
 
@@ -1457,7 +1465,9 @@
         row('상품 ID', '<span style="font-family:monospace;font-weight:700;color:var(--blue);">' + esc(productId) + '</span>') +
         row('상품명', '<strong>' + esc(p.product_name) + '</strong>') +
         row('브랜드', esc(p.brand_code)) +
-        row('기본 판매가', (p.base_price || 0).toLocaleString() + '원') +
+        (p.supply_price ? row('공급가격', (p.supply_price).toLocaleString() + '원') : '') +
+        (p.commission_rate !== undefined ? row('중개수수료', p.commission_rate + '%') : '') +
+        row('판매가격', (p.base_price || 0).toLocaleString() + '원') +
         row('관리방식', p.tracking_type === 'quantity' ? '수량 관리' : '개체 관리') +
         row('상태', p.status || '-') +
         (p.memo ? row('메모', esc(p.memo)) : '') +
@@ -1470,6 +1480,7 @@
 
       const footerHTML =
         '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>' +
+        '<button class="btn btn-secondary" onclick="openProductEdit(\'' + productId + '\')">✏️ 수정</button>' +
         '<button class="btn btn-danger" onclick="toggleProductStatus(\'' + productId + '\',\'' + p.status + '\')">' +
         (p.status === '판매중' ? '판매중지' : '판매 재개') + '</button>';
 
@@ -1488,6 +1499,153 @@
       closeModal();
       await renderProductList(document.getElementById('page-content'));
     } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
+  };
+
+  /* ── 상품 수정 ── */
+  window.openProductEdit = async function(productId) {
+    showModal('상품 수정', '<div class="spinner" style="margin:40px auto;"></div>', null, 'lg');
+    try {
+      const [pSnap, skusSnap] = await Promise.all([
+        getDoc(doc(db, 'products', productId)),
+        getDocs(collection(db, 'products', productId, 'skus'))
+      ]);
+      if (!pSnap.exists()) { showToast('상품을 찾을 수 없습니다.', 'error'); closeModal(); return; }
+      const p = pSnap.data();
+      const skus = skusSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.option_sort_order ?? 99) - (b.option_sort_order ?? 99));
+
+      const supplyPrice = p.supply_price !== undefined ? p.supply_price : '';
+      const commRate = p.commission_rate !== undefined ? p.commission_rate : '';
+      const basePrice = p.base_price || 0;
+
+      /* SKU 행 */
+      const skuRows = skus.map((s, i) => {
+        const optLabel = s.option_number === '00' ? '옵션 없음'
+          : [1,2,3].map(j => s['option_' + j + '_name'] ? s['option_' + j + '_name'] + ': ' + s['option_' + j + '_value'] : '').filter(Boolean).join(' / ');
+        return '<tr>' +
+          '<td style="font-size:11px;font-family:monospace;">' + esc(s.barcode_value) + '</td>' +
+          '<td style="font-size:12px;">' + esc(optLabel) + '</td>' +
+          '<td><input type="number" min="0" step="100" value="' + (s.price || basePrice) + '" ' +
+            'style="width:100px;border:1px solid var(--gray-300);border-radius:6px;padding:4px 7px;font-size:12px;" ' +
+            'onchange="window._editSkuPrices[\'' + s.id + '\']=parseInt(this.value)||0" /></td>' +
+          '<td style="text-align:center;">' +
+            (i > 0 ? '<button onclick="moveEditSku(' + i + ',-1)" style="border:none;background:var(--gray-100);border-radius:4px;padding:2px 6px;cursor:pointer;">↑</button> ' : '') +
+            (i < skus.length - 1 ? '<button onclick="moveEditSku(' + i + ',1)" style="border:none;background:var(--gray-100);border-radius:4px;padding:2px 6px;cursor:pointer;">↓</button>' : '') +
+          '</td>' +
+          '</tr>';
+      }).join('');
+
+      window._editSkuPrices = {};
+      skus.forEach(s => { window._editSkuPrices[s.id] = s.price || basePrice; });
+      window._editSkuOrder = skus.map(s => s.id);
+      window._editProductId = productId;
+      window._editProductData = p;
+      window._editSkus = skus;
+
+      const body =
+        '<div style="display:grid;gap:16px;">' +
+        '<div class="form-group"><label class="form-label">상품 ID</label>' +
+        '<div style="padding:9px 12px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;font-family:monospace;font-weight:700;color:var(--blue);">' + esc(productId) + '</div></div>' +
+        '<div class="form-group"><label class="form-label" for="edit-p-name">상품명 <span class="required">*</span></label>' +
+        '<input class="form-input" id="edit-p-name" type="text" value="' + esc(p.product_name) + '" /></div>' +
+        /* 공급가격 + 수수료 + 판매가 */
+        '<div class="form-row">' +
+        '<div class="form-group"><label class="form-label" for="edit-p-supply">공급가격</label>' +
+        '<input class="form-input" id="edit-p-supply" type="number" min="0" step="100" value="' + supplyPrice + '" oninput="calcEditSalePrice()" /></div>' +
+        '<div class="form-group"><label class="form-label" for="edit-p-commission">중개수수료 (%)</label>' +
+        '<input class="form-input" id="edit-p-commission" type="number" min="0" max="100" step="0.1" value="' + commRate + '" oninput="calcEditSalePrice()" /></div>' +
+        '</div>' +
+        '<div class="form-group"><label class="form-label">판매가격 <span style="font-size:11px;color:var(--gray-400);font-weight:400;">(자동 계산 또는 직접 입력)</span></label>' +
+        '<input class="form-input" id="edit-p-price" type="number" min="0" step="100" value="' + basePrice + '" /></div>' +
+        '<div class="form-group"><label class="form-label" for="edit-p-memo">메모</label>' +
+        '<input class="form-input" id="edit-p-memo" type="text" value="' + esc(p.memo || '') + '" /></div>' +
+        /* SKU 가격 + 순서 */
+        (skus.length > 0 ? '<div><div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:8px;">SKU별 판매가 · 표시 순서</div>' +
+        '<div id="edit-sku-table-wrap" class="table-wrap"><table>' +
+        '<thead><tr><th>바코드</th><th>옵션</th><th>판매가</th><th>순서</th></tr></thead>' +
+        '<tbody id="edit-sku-tbody">' + skuRows + '</tbody></table></div></div>' : '') +
+        '</div>';
+
+      const footerHTML =
+        '<button class="btn btn-secondary" onclick="openProductDetail(\'' + productId + '\')">← 돌아가기</button>' +
+        '<button class="btn btn-primary" onclick="saveProductEdit()">💾 저장</button>';
+
+      showModal('상품 수정 — ' + esc(p.product_name), body, footerHTML, 'lg');
+      calcEditSalePrice();
+    } catch(e) {
+      document.querySelector('#modal-container .modal-body').innerHTML =
+        '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
+    }
+  };
+
+  /* 수정 화면 판매가 역산 */
+  window.calcEditSalePrice = function() {
+    const supply = parseFloat((document.getElementById('edit-p-supply') || {}).value || '');
+    const commission = parseFloat((document.getElementById('edit-p-commission') || {}).value || '');
+    if (!isNaN(supply) && !isNaN(commission) && commission < 100) {
+      const salePrice = Math.round(supply / (1 - commission / 100));
+      const el = document.getElementById('edit-p-price');
+      if (el) el.value = salePrice;
+    }
+  };
+
+  /* SKU 순서 변경 */
+  window.moveEditSku = function(i, dir) {
+    const j = i + dir;
+    const arr = window._editSkus;
+    if (j < 0 || j >= arr.length) return;
+    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    window._editSkuOrder = arr.map(s => s.id);
+    const basePrice = parseInt((document.getElementById('edit-p-price') || {}).value || '0') || 0;
+    const skuRows = arr.map((s, idx) => {
+      const optLabel = s.option_number === '00' ? '옵션 없음'
+        : [1,2,3].map(k => s['option_' + k + '_name'] ? s['option_' + k + '_name'] + ': ' + s['option_' + k + '_value'] : '').filter(Boolean).join(' / ');
+      return '<tr>' +
+        '<td style="font-size:11px;font-family:monospace;">' + esc(s.barcode_value) + '</td>' +
+        '<td style="font-size:12px;">' + esc(optLabel) + '</td>' +
+        '<td><input type="number" min="0" step="100" value="' + (window._editSkuPrices[s.id] || basePrice) + '" ' +
+          'style="width:100px;border:1px solid var(--gray-300);border-radius:6px;padding:4px 7px;font-size:12px;" ' +
+          'onchange="window._editSkuPrices[\'' + s.id + '\']=parseInt(this.value)||0" /></td>' +
+        '<td style="text-align:center;">' +
+          (idx > 0 ? '<button onclick="moveEditSku(' + idx + ',-1)" style="border:none;background:var(--gray-100);border-radius:4px;padding:2px 6px;cursor:pointer;">↑</button> ' : '') +
+          (idx < arr.length - 1 ? '<button onclick="moveEditSku(' + idx + ',1)" style="border:none;background:var(--gray-100);border-radius:4px;padding:2px 6px;cursor:pointer;">↓</button>' : '') +
+        '</td></tr>';
+    }).join('');
+    document.getElementById('edit-sku-tbody').innerHTML = skuRows;
+  };
+
+  /* 상품 수정 저장 */
+  window.saveProductEdit = async function() {
+    const productId = window._editProductId;
+    if (!productId) return;
+    const name = (document.getElementById('edit-p-name').value || '').trim();
+    if (!name) { showToast('상품명을 입력해주세요.', 'error'); return; }
+    const supplyPrice = parseFloat((document.getElementById('edit-p-supply') || {}).value || '') || undefined;
+    const commissionRate = parseFloat((document.getElementById('edit-p-commission') || {}).value || '') || undefined;
+    const basePrice = parseInt((document.getElementById('edit-p-price') || {}).value || '0') || 0;
+    const memo = (document.getElementById('edit-p-memo').value || '').trim();
+    const now = new Date().toISOString();
+
+    try {
+      const updates = { product_name: name, base_price: basePrice, memo, updated_at: now };
+      if (supplyPrice !== undefined) updates.supply_price = supplyPrice;
+      if (commissionRate !== undefined) updates.commission_rate = commissionRate;
+      await updateDoc(doc(db, 'products', productId), updates);
+
+      /* SKU 가격 + 순서 일괄 업데이트 */
+      await Promise.all(window._editSkus.map(async (s, i) => {
+        const skuUpdates = {
+          price: window._editSkuPrices[s.id] || basePrice,
+          option_sort_order: window._editSkuOrder.indexOf(s.id),
+          updated_at: now
+        };
+        await updateDoc(doc(db, 'products', productId, 'skus', s.id), skuUpdates);
+      }));
+
+      showToast('상품이 수정됐습니다.', 'success');
+      closeModal();
+      await renderProductList(document.getElementById('page-content'));
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
 
   /* ── 개체 목록 (개체관리 상품) ── */
@@ -1573,7 +1731,7 @@
 
   function buildProductNewHTML(brands) {
     const brandOptions = brands.map(b =>
-      '<option value="' + b.id + '" data-code="' + esc(b.brand_code) + '" data-last="' + esc(b.last_product_number || '000') + '">' + esc(b.brand_name) + ' (' + esc(b.brand_code) + ')</option>'
+      '<option value="' + b.id + '" data-code="' + esc(b.brand_code) + '" data-last="' + esc(b.last_product_number || '000') + '" data-commission="' + (b.commission_rate !== undefined ? b.commission_rate : 10) + '">' + esc(b.brand_name) + ' (' + esc(b.brand_code) + ')</option>'
     ).join('');
 
     return [
@@ -1595,10 +1753,24 @@
       '<label class="form-label" for="p-name">상품명 <span class="required">*</span></label>',
       '<input class="form-input" id="p-name" type="text" placeholder="예: 체크 파우치" />',
       '</div>',
+      /* ── 가격 정보 ── */
       '<div class="form-row">',
       '<div class="form-group">',
-      '<label class="form-label" for="p-price">기본 판매가 <span class="required">*</span></label>',
-      '<input class="form-input" id="p-price" type="number" min="0" step="100" placeholder="0" />',
+      '<label class="form-label" for="p-supply-price">공급가격 <span class="required">*</span></label>',
+      '<input class="form-input" id="p-supply-price" type="number" min="0" step="100" placeholder="0" oninput="calcSalePrice()" />',
+      '<div class="form-hint">브랜드가 공급하고 받는 금액</div>',
+      '</div>',
+      '<div class="form-group">',
+      '<label class="form-label" for="p-commission">중개수수료 (%) <span class="required">*</span></label>',
+      '<input class="form-input" id="p-commission" type="number" min="0" max="100" step="0.1" placeholder="10" oninput="calcSalePrice()" />',
+      '<div class="form-hint">브랜드 기본값 자동 입력, 상품별 수정 가능</div>',
+      '</div>',
+      '</div>',
+      '<div class="form-row">',
+      '<div class="form-group">',
+      '<label class="form-label">판매가격 <span style="font-size:11px;color:var(--gray-400);font-weight:400;">(자동 계산)</span></label>',
+      '<div id="p-price-display" style="padding:9px 12px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-weight:700;color:var(--gray-400);">공급가격 · 수수료 입력 후 표시</div>',
+      '<div class="form-hint">공급가격 ÷ (1 - 수수료율)</div>',
       '</div>',
       '<div class="form-group">',
       '<label class="form-label">관리 방식 <span class="required">*</span></label>',
@@ -1676,12 +1848,34 @@
   }
 
   /* ── 상품 등록 폼 초기화 ── */
+  /* 공급가격 + 수수료 → 판매가 역산 */
+  window.calcSalePrice = function() {
+    const supply = parseFloat((document.getElementById('p-supply-price') || {}).value || '');
+    const commission = parseFloat((document.getElementById('p-commission') || {}).value || '');
+    const disp = document.getElementById('p-price-display');
+    if (!disp) return;
+    if (isNaN(supply) || isNaN(commission) || commission >= 100) {
+      disp.textContent = '공급가격 · 수수료 입력 후 표시';
+      disp.style.color = 'var(--gray-400)';
+      disp.style.fontWeight = '700';
+      return;
+    }
+    const salePrice = Math.round(supply / (1 - commission / 100));
+    disp.textContent = salePrice.toLocaleString() + '원';
+    disp.style.color = 'var(--blue)';
+    disp.style.fontWeight = '700';
+    disp.dataset.value = salePrice;
+    /* 수수료 입력을 직접 건드린 경우 autoFilled 해제 */
+    const commInput = document.getElementById('p-commission');
+    if (commInput && commInput.dataset.autoFilled) commInput.dataset.autoFilled = '';
+  };
+
   function initProductNewForm(brands) {
     window._pBrands = brands;
     window._optTags = { 1: [], 2: [], 3: [] };
     window._activeAxes = 1;
 
-    /* 브랜드 선택 → 상품ID 미리보기 */
+    /* 브랜드 선택 → 상품ID 미리보기 + 수수료 기본값 */
     document.getElementById('p-brand').addEventListener('change', function() {
       const opt = this.options[this.selectedIndex];
       const code = opt.dataset.code;
@@ -1691,6 +1885,13 @@
       const next = String(parseInt(last, 10) + 1).padStart(3, '0');
       preview.textContent = code + '-' + next;
       preview.style.color = 'var(--blue)';
+      /* 브랜드 수수료 자동 입력 */
+      const commInput = document.getElementById('p-commission');
+      if (commInput && (commInput.value === '' || commInput.dataset.autoFilled === 'true')) {
+        commInput.value = opt.dataset.commission !== undefined ? opt.dataset.commission : 10;
+        commInput.dataset.autoFilled = 'true';
+        calcSalePrice();
+      }
     });
 
     /* 관리방식 라디오 스타일 */
@@ -1843,15 +2044,22 @@
     if (!brandSel || !brandSel.value) { showToast('브랜드를 선택해주세요.', 'error'); return; }
     const productName = (document.getElementById('p-name').value || '').trim();
     if (!productName) { showToast('상품명을 입력해주세요.', 'error'); return; }
-    const priceVal = document.getElementById('p-price').value;
-    if (priceVal === '' || parseInt(priceVal) < 0) { showToast('판매가를 입력해주세요.', 'error'); return; }
+    const supplyVal = (document.getElementById('p-supply-price') || {}).value || '';
+    if (supplyVal === '' || parseInt(supplyVal) < 0) { showToast('공급가격을 입력해주세요.', 'error'); return; }
+    const commissionVal = (document.getElementById('p-commission') || {}).value || '';
+    if (commissionVal === '') { showToast('중개수수료를 입력해주세요.', 'error'); return; }
+    const salePriceEl = document.getElementById('p-price-display');
+    const salePriceRaw = salePriceEl ? parseInt(salePriceEl.dataset.value || '') : NaN;
+    if (isNaN(salePriceRaw) || salePriceRaw <= 0) { showToast('공급가격과 수수료를 먼저 입력해주세요.', 'error'); return; }
 
     const brandOpt = brandSel.options[brandSel.selectedIndex];
     const brandId = brandSel.value;
     const brandCode = brandOpt.dataset.code;
     const lastProductNum = brandOpt.dataset.last || '000';
     const nextProductNum = String(parseInt(lastProductNum, 10) + 1).padStart(3, '0');
-    const basePrice = parseInt(priceVal) || 0;
+    const supplyPrice = parseInt(supplyVal) || 0;
+    const commissionRate = parseFloat(commissionVal) || 0;
+    const basePrice = salePriceRaw;
     const trackingType = (document.querySelector('input[name="tracking"]:checked') || {}).value || 'quantity';
     const optionMode = (document.querySelector('input[name="opt-mode"]:checked') || {}).value || 'none';
     const memo = (document.getElementById('p-memo').value || '').trim();
@@ -1870,7 +2078,7 @@
       }));
     }
 
-    window._pendingProduct = { brandId, brandCode, nextProductNum, productName, basePrice, trackingType, optionMode, memo, skus };
+    window._pendingProduct = { brandId, brandCode, nextProductNum, productName, supplyPrice, commissionRate, basePrice, trackingType, optionMode, memo, skus };
     showProductConfirm();
   };
 
@@ -1901,7 +2109,9 @@
       row('상품 ID', '<span style="font-family:monospace;font-weight:700;color:var(--blue);">' + esc(productId) + '</span>') +
       row('브랜드코드', esc(d.brandCode)) +
       row('상품명', esc(d.productName)) +
-      row('기본 판매가', d.basePrice.toLocaleString() + '원') +
+      row('공급가격', d.supplyPrice.toLocaleString() + '원') +
+      row('중개수수료', d.commissionRate + '%') +
+      row('판매가격', d.basePrice.toLocaleString() + '원') +
       row('관리방식', d.trackingType === 'quantity' ? '수량 관리' : '개체 관리') +
       row('옵션', d.optionMode === 'none' ? '없음' : d.skus.length + '가지 조합') +
       (d.memo ? row('메모', esc(d.memo)) : '') +
@@ -1984,6 +2194,8 @@
         brand_code: brandCode,
         product_number: productNum,
         product_name: d.productName,
+        supply_price: d.supplyPrice,
+        commission_rate: d.commissionRate,
         base_price: d.basePrice,
         tracking_type: d.trackingType,
         status: '판매중',
