@@ -1,7 +1,5 @@
-const CACHE_NAME = 'gmbs-admin-v1';
+const CACHE_NAME = 'gmbs-admin-v4';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
   '/manifest.json',
 ];
 
@@ -26,6 +24,15 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== location.origin) return;
 
+  /* index.html은 항상 네트워크에서 받아 최신 버전 유지 */
+  if (url.pathname === '/' || url.pathname === '/index.html') {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
+
+  /* 나머지 정적 파일은 캐시 우선 */
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const fetchPromise = fetch(event.request).then((response) => {
