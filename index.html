@@ -309,7 +309,7 @@
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
   import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-  import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, collection, getDocs, query, where, orderBy, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+  import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, collection, getDocs, query, where, orderBy, runTransaction, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
   import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
 
   const firebaseConfig = {
@@ -4606,6 +4606,143 @@
   };
 
   /* ── 이메일 알림 페이지 렌더 ── */
+  const EMAIL_TPL_SAMPLES = {
+    to_name: '김민지',
+    to_email: 'minji.kim@example.com',
+    brand_name: '온기 핸드메이드',
+    reason: '서류 검토 완료, 계약 조건 합의 확인',
+    rejection_reason: '사업자등록증 미제출',
+    reply_to: 'noreply@gmbs.kr',
+  };
+  const EMAIL_VARS = [
+    { v: '{{to_email}}',   desc: '수신자 이메일' },
+    { v: '{{to_name}}',    desc: '수신자 이름' },
+    { v: '{{brand_name}}', desc: '브랜드명' },
+    { v: '{{reason}}',     desc: '승인/거절 사유' },
+    { v: '{{reply_to}}',   desc: '답장 이메일' },
+  ];
+
+  function renderTplPreview(body) {
+    if (!body) return '<span style="color:var(--gray-300);">본문을 작성하면 미리보기가 표시됩니다.</span>';
+    return esc(body
+      .replace(/\{\{to_name\}\}/g, EMAIL_TPL_SAMPLES.to_name)
+      .replace(/\{\{to_email\}\}/g, EMAIL_TPL_SAMPLES.to_email)
+      .replace(/\{\{brand_name\}\}/g, EMAIL_TPL_SAMPLES.brand_name)
+      .replace(/\{\{reason\}\}/g, EMAIL_TPL_SAMPLES.reason)
+      .replace(/\{\{rejection_reason\}\}/g, EMAIL_TPL_SAMPLES.rejection_reason)
+      .replace(/\{\{reply_to\}\}/g, EMAIL_TPL_SAMPLES.reply_to)
+    );
+  }
+
+  function emailSettingsBodyHTML(settings, configs) {
+    const hasKeys = !!(settings.public_key && settings.service_id);
+    const sentCount = settings.sent_count || 0;
+    const FREE_QUOTA = 200;
+    var html = '';
+
+    // 연동 상태 카드
+    html += '<div class="card" style="padding:16px 24px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">' +
+      '<div style="flex:1;min-width:200px;">' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:2px;">연동 상태</div>' +
+      '<div style="font-size:13px;font-weight:600;">' +
+        (hasKeys
+          ? '✅ EmailJS 연동 완료 <span style="color:var(--gray-400);font-weight:400;">(Service ID: ' + esc(settings.service_id || '') + ')</span>'
+          : '⚠️ EmailJS 연동 미설정') +
+      '</div>' +
+      '</div>' +
+      '<div style="text-align:center;padding:0 16px;border-left:1px solid var(--gray-100);border-right:1px solid var(--gray-100);">' +
+      '<div style="font-size:11px;color:var(--gray-400);margin-bottom:2px;">이번 달 발송 (추정)</div>' +
+      '<div style="font-size:20px;font-weight:700;color:' + (sentCount > FREE_QUOTA * 0.8 ? 'var(--red)' : 'var(--blue)') + ';">' + sentCount + ' <span style="font-size:12px;color:var(--gray-400);font-weight:400;">/ ' + FREE_QUOTA + '</span></div>' +
+      '<div style="font-size:11px;color:var(--gray-400);">무료 플랜 월 한도</div>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px;">' +
+      '<button onclick="openEmailJsSettingsModal()" class="btn btn-secondary" style="white-space:nowrap;font-size:12px;">⚙️ EmailJS 연동 설정</button>' +
+      '<a href="https://www.emailjs.com/" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:none;text-align:center;">EmailJS 대시보드 →</a>' +
+      '</div>' +
+      '</div>';
+
+    // 이메일 발송 설정 카드
+    const varChips = EMAIL_VARS.map(function(x) {
+      return '<span onclick="copyEmailVar(\'' + x.v + '\')" title="클릭해서 복사" style="display:inline-flex;align-items:center;gap:4px;background:#e0e7ff;color:#3730a3;border-radius:5px;padding:3px 8px;font-size:11px;font-family:monospace;cursor:pointer;user-select:none;" onmouseover="this.style.background=\'#c7d2fe\'" onmouseout="this.style.background=\'#e0e7ff\'">' +
+        x.v + ' <span style="font-family:sans-serif;font-size:10px;color:#6366f1;">📋</span> ' +
+        '<span style="font-family:sans-serif;color:#6366f1;font-size:10px;">' + x.desc + '</span>' +
+        '</span>';
+    }).join(' ');
+
+    html += '<div class="card" style="padding:24px;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
+      '<div style="font-size:15px;font-weight:700;color:var(--gray-900);">이메일 발송 설정</div>' +
+      '<button onclick="saveAllEmailSettings()" class="btn btn-primary" style="font-size:13px;">전체 저장</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">각 이벤트별로 활성화 여부, EmailJS 템플릿 ID, 템플릿 초안을 관리합니다.</div>';
+
+    EMAIL_TRIGGERS.forEach(function(t) {
+      var cfg = configs[t.id] || {};
+      var isEnabled = !!(cfg.enabled && cfg.template_id);
+      var tplSubject = cfg.tpl_subject || '';
+      var tplBody = cfg.tpl_body || '';
+      var expandId = 'tpl-expand-' + t.id;
+
+      html += '<div style="border:1px solid var(--gray-100);border-radius:10px;padding:16px;margin-bottom:12px;">' +
+
+        // 헤더 행: 토글 + 이름 + template_id
+        '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">' +
+
+        // 토글
+        '<label style="position:relative;display:inline-block;width:40px;height:22px;cursor:pointer;flex-shrink:0;">' +
+        '<input type="checkbox" id="chk-' + t.id + '" ' + (isEnabled ? 'checked' : '') + ' style="opacity:0;width:0;height:0;" onchange="onTriggerToggle(\'' + t.id + '\',this.checked)" />' +
+        '<span style="position:absolute;inset:0;border-radius:11px;background:' + (isEnabled ? 'var(--blue)' : 'var(--gray-300)') + ';transition:background .2s;" id="trk-' + t.id + '">' +
+        '<span style="position:absolute;top:3px;left:' + (isEnabled ? '21px' : '3px') + ';width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;" id="thb-' + t.id + '"></span>' +
+        '</span>' +
+        '</label>' +
+
+        '<div style="flex:1;min-width:150px;">' +
+        '<div style="font-weight:600;font-size:13px;">' + esc(t.label) + '</div>' +
+        '<div style="font-size:11px;color:var(--gray-400);">' + esc(t.desc) + '</div>' +
+        '</div>' +
+
+        '<input id="tpl-' + t.id + '" class="form-input" type="text" placeholder="template_xxxxxxx" value="' + esc(cfg.template_id || '') + '" style="width:190px;" />' +
+        '<button onclick="toggleTplEditor(\'' + expandId + '\')" class="btn btn-secondary" style="white-space:nowrap;font-size:12px;">📝 템플릿 초안</button>' +
+        '</div>' +
+
+        // 템플릿 초안 패널
+        '<div id="' + expandId + '" style="display:none;margin-top:14px;border-top:1px solid var(--gray-100);padding-top:14px;">' +
+
+        '<div style="margin-bottom:10px;line-height:2;">' +
+        '<b style="font-size:12px;color:var(--gray-700);">사용 가능한 변수</b> <span style="font-size:11px;color:var(--gray-400);">— 클릭하면 클립보드에 복사됩니다</span><br>' +
+        varChips +
+        '</div>' +
+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+        '<div>' +
+        '<div style="font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:6px;">이메일 제목</div>' +
+        '<input id="tpl-subj-' + t.id + '" class="form-input" type="text" placeholder="예: [GMBS] {{brand_name}} 입점 신청이 승인되었습니다." value="' + esc(tplSubject) + '" style="margin-bottom:10px;" />' +
+        '<div style="font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:6px;">이메일 본문</div>' +
+        '<textarea id="tpl-body-' + t.id + '" class="form-input" rows="8" placeholder="안녕하세요, {{to_name}}님.\n\n{{brand_name}} 브랜드의 입점이 승인되었습니다.\n\n사유: {{reason}}\n\n감사합니다." style="font-family:monospace;font-size:12px;resize:vertical;" oninput="updateTplPreview(\'' + t.id + '\')">' + esc(tplBody) + '</textarea>' +
+        '</div>' +
+        '<div>' +
+        '<div style="font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:6px;">미리보기 <span style="font-weight:400;color:var(--gray-400);">(가상 샘플 데이터 적용)</span></div>' +
+        '<div id="tpl-preview-' + t.id + '" style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;padding:14px;font-size:12px;line-height:1.7;white-space:pre-wrap;min-height:180px;color:var(--gray-800);">' +
+        renderTplPreview(tplBody) +
+        '</div>' +
+        '</div>' +
+        '</div>' +
+
+        '<div style="margin-top:10px;font-size:11px;color:var(--gray-500);background:var(--gray-50);border-radius:6px;padding:8px 10px;">' +
+        '⚠️ 여기에 작성한 내용은 "전체 저장" 시 Firestore에 보관됩니다. EmailJS 발송에 실제로 반영하려면 EmailJS 대시보드 템플릿에도 동일하게 붙여넣고 저장해야 합니다.' +
+        '</div>' +
+
+        '</div>' + // expandId
+        '</div>'; // trigger card
+    });
+
+    html += '<div style="display:flex;justify-content:flex-end;margin-top:16px;">' +
+      '<button onclick="saveAllEmailSettings()" class="btn btn-primary">전체 저장</button>' +
+      '</div>';
+    html += '</div>'; // 발송 설정 card
+    return html;
+  }
+
   async function renderEmailSettings(container) {
     container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
     try {
@@ -4617,21 +4754,16 @@
       const configs = {};
       configsSnap.docs.forEach(function(d) { if (d.id !== '_settings') configs[d.id] = d.data(); });
       window._emailJsCurrentSettings = settings;
+      window._emailJsCurrentConfigs = configs;
 
       const isGloballyEnabled = !!settings.globally_enabled;
-      const hasKeys = !!(settings.public_key && settings.service_id);
-      const sentCount = settings.sent_count || 0;
-      const FREE_QUOTA = 200;
 
-      // 전체 토글
       var html = '<div style="max-width:860px;">';
 
-      // 전체 사용 토글 카드
+      // 전체 토글 카드
       html += '<div class="card" style="padding:20px 24px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">' +
-        '<div>' +
-        '<div style="font-size:15px;font-weight:700;color:var(--gray-900);">이메일 알림 사용</div>' +
-        '<div style="font-size:12px;color:var(--gray-500);margin-top:3px;">비활성화하면 모든 자동 이메일 발송이 중단됩니다.</div>' +
-        '</div>' +
+        '<div><div style="font-size:15px;font-weight:700;color:var(--gray-900);">이메일 알림 사용</div>' +
+        '<div style="font-size:12px;color:var(--gray-500);margin-top:3px;">비활성화하면 모든 자동 이메일 발송이 중단됩니다.</div></div>' +
         '<label style="position:relative;display:inline-block;width:48px;height:26px;cursor:pointer;">' +
         '<input type="checkbox" id="ejs-global-toggle" ' + (isGloballyEnabled ? 'checked' : '') + ' style="opacity:0;width:0;height:0;" onchange="toggleEmailGlobal(this.checked)" />' +
         '<span style="position:absolute;inset:0;border-radius:13px;background:' + (isGloballyEnabled ? 'var(--blue)' : 'var(--gray-300)') + ';transition:background .2s;" id="ejs-global-track">' +
@@ -4640,128 +4772,29 @@
         '</label>' +
         '</div>';
 
-      if (!isGloballyEnabled) {
-        html += '<div style="background:var(--gray-50);border:1px dashed var(--gray-200);border-radius:12px;padding:40px;text-align:center;color:var(--gray-400);font-size:13px;">이메일 알림이 꺼져 있습니다. 위 토글을 켜면 설정 화면이 나타납니다.</div>';
-      } else {
-        // 연동 상태 + 사용량 + 연동 설정 버튼
-        html += '<div class="card" style="padding:16px 24px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">' +
-          '<div style="flex:1;min-width:200px;">' +
-          '<div style="font-size:12px;color:var(--gray-500);margin-bottom:2px;">연동 상태</div>' +
-          '<div style="font-size:13px;font-weight:600;">' +
-            (hasKeys
-              ? '✅ EmailJS 연동 완료 <span style="color:var(--gray-400);font-weight:400;">(Service ID: ' + esc(settings.service_id || '') + ')</span>'
-              : '⚠️ EmailJS 연동 미설정') +
-          '</div>' +
-          '</div>' +
-          '<div style="text-align:center;padding:0 16px;border-left:1px solid var(--gray-100);border-right:1px solid var(--gray-100);">' +
-          '<div style="font-size:11px;color:var(--gray-400);margin-bottom:2px;">이번 달 발송 (추정)</div>' +
-          '<div style="font-size:20px;font-weight:700;color:' + (sentCount > FREE_QUOTA * 0.8 ? 'var(--red)' : 'var(--blue)') + ';">' + sentCount + ' <span style="font-size:12px;color:var(--gray-400);font-weight:400;">/ ' + FREE_QUOTA + '</span></div>' +
-          '<div style="font-size:11px;color:var(--gray-400);">무료 플랜 월 한도</div>' +
-          '</div>' +
-          '<div style="display:flex;flex-direction:column;gap:6px;">' +
-          '<button onclick="openEmailJsSettingsModal()" class="btn btn-secondary" style="white-space:nowrap;font-size:12px;">⚙️ EmailJS 연동 설정</button>' +
-          '<a href="https://www.emailjs.com/" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:none;text-align:center;">EmailJS 대시보드 →</a>' +
-          '</div>' +
-          '</div>';
+      // 설정 본문 (항상 렌더, show/hide만 토글)
+      html += '<div id="email-settings-body" style="display:' + (isGloballyEnabled ? '' : 'none') + ';">' +
+        emailSettingsBodyHTML(settings, configs) +
+        '</div>';
 
-        // 이메일 발송 설정 카드
-        const VARS = ['{{to_email}}', '{{to_name}}', '{{brand_name}}', '{{reason}}', '{{reply_to}}'];
-        const VAR_DESC = { '{{to_email}}': '수신자 이메일', '{{to_name}}': '수신자 이름', '{{brand_name}}': '브랜드명', '{{reason}}': '승인/거절 사유', '{{reply_to}}': '답장 이메일' };
+      html += '<div id="email-settings-off-hint" style="display:' + (isGloballyEnabled ? 'none' : '') + ';">' +
+        '<div style="background:var(--gray-50);border:1px dashed var(--gray-200);border-radius:12px;padding:40px;text-align:center;color:var(--gray-400);font-size:13px;">이메일 알림이 꺼져 있습니다. 위 토글을 켜면 설정 화면이 나타납니다.</div>' +
+        '</div>';
 
-        html += '<div class="card" style="padding:24px;">' +
-          '<div style="font-size:15px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">이메일 발송 설정</div>' +
-          '<div style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">각 이벤트별로 활성화 여부, EmailJS 템플릿 ID, 템플릿 초안을 관리합니다.</div>';
-
-        EMAIL_TRIGGERS.forEach(function(t) {
-          const cfg = configs[t.id] || {};
-          const isEnabled = !!(cfg.enabled && cfg.template_id);
-          const tplSubject = cfg.tpl_subject || '';
-          const tplBody = cfg.tpl_body || '';
-          const tplAreaId = 'tpl-body-' + t.id;
-          const previewId = 'tpl-preview-' + t.id;
-          const expandId = 'tpl-expand-' + t.id;
-
-          html += '<div style="border:1px solid var(--gray-100);border-radius:10px;padding:16px;margin-bottom:12px;">' +
-
-            // 헤더 행: 토글 + 이름 + template_id + 저장 버튼
-            '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">' +
-
-            // 활성/비활성 토글
-            '<label style="position:relative;display:inline-block;width:40px;height:22px;cursor:pointer;flex-shrink:0;">' +
-            '<input type="checkbox" id="chk-' + t.id + '" ' + (isEnabled ? 'checked' : '') + ' style="opacity:0;width:0;height:0;" onchange="onTriggerToggle(\'' + t.id + '\',this.checked)" />' +
-            '<span style="position:absolute;inset:0;border-radius:11px;background:' + (isEnabled ? 'var(--blue)' : 'var(--gray-300)') + ';transition:background .2s;" id="trk-' + t.id + '">' +
-            '<span style="position:absolute;top:3px;left:' + (isEnabled ? '21px' : '3px') + ';width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;" id="thb-' + t.id + '"></span>' +
-            '</span>' +
-            '</label>' +
-
-            '<div style="flex:1;min-width:150px;">' +
-            '<div style="font-weight:600;font-size:13px;">' + esc(t.label) + '</div>' +
-            '<div style="font-size:11px;color:var(--gray-400);">' + esc(t.desc) + '</div>' +
-            '</div>' +
-
-            '<input id="tpl-' + t.id + '" class="form-input" type="text" placeholder="template_xxxxxxx" value="' + esc(cfg.template_id || '') + '" style="width:190px;" />' +
-            '<button onclick="saveTriggerConfig(\'' + t.id + '\')" class="btn btn-secondary" style="white-space:nowrap;font-size:12px;">저장</button>' +
-            '<button onclick="toggleTplEditor(\'' + expandId + '\')" class="btn btn-secondary" style="white-space:nowrap;font-size:12px;">📝 템플릿 초안</button>' +
-            '</div>' +
-
-            // 템플릿 초안 패널 (접혀 있음)
-            '<div id="' + expandId + '" style="display:none;margin-top:14px;border-top:1px solid var(--gray-100);padding-top:14px;">' +
-
-            '<div style="font-size:12px;color:var(--gray-500);margin-bottom:10px;background:var(--blue-light);border-radius:8px;padding:10px 12px;line-height:1.8;">' +
-            '<b>사용 가능한 변수</b> — EmailJS 템플릿에 그대로 붙여넣기하세요<br>' +
-            VARS.map(function(v) { return '<code>' + v + '</code> ' + VAR_DESC[v]; }).join(' &nbsp;·&nbsp; ') +
-            '</div>' +
-
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
-
-            // 작성 영역
-            '<div>' +
-            '<div style="font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:6px;">이메일 제목</div>' +
-            '<input id="tpl-subj-' + t.id + '" class="form-input" type="text" placeholder="예: [GMBS] {{brand_name}} 입점 신청이 승인되었습니다." value="' + esc(tplSubject) + '" style="margin-bottom:10px;" />' +
-            '<div style="font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:6px;">이메일 본문</div>' +
-            '<textarea id="' + tplAreaId + '" class="form-input" rows="8" placeholder="안녕하세요, {{to_name}}님.\n\n{{brand_name}} 브랜드의 입점이 승인되었습니다.\n\n사유: {{reason}}" style="font-family:monospace;font-size:12px;resize:vertical;" oninput="updateTplPreview(\'' + t.id + '\')">' + esc(tplBody) + '</textarea>' +
-            '<button onclick="saveTplDraft(\'' + t.id + '\')" class="btn btn-primary" style="margin-top:8px;font-size:12px;">Firestore에 초안 저장</button>' +
-            '</div>' +
-
-            // 미리보기 영역
-            '<div>' +
-            '<div style="font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:6px;">미리보기 <span style="font-weight:400;color:var(--gray-400);">(샘플 데이터 적용)</span></div>' +
-            '<div id="' + previewId + '" style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;padding:14px;font-size:12px;line-height:1.7;white-space:pre-wrap;min-height:180px;color:var(--gray-800);">' +
-            renderTplPreview(tplBody) +
-            '</div>' +
-            '</div>' +
-
-            '</div>' + // grid
-
-            '<div style="margin-top:10px;font-size:11px;color:var(--gray-400);background:var(--gray-50);border-radius:6px;padding:8px 10px;">' +
-            '⚠️ 여기에 저장한 초안은 Firestore에 보관됩니다. EmailJS 발송에 실제로 반영하려면 EmailJS 대시보드에서도 동일하게 저장해야 합니다.' +
-            '</div>' +
-
-            '</div>' + // expandId
-            '</div>'; // trigger card
-        });
-
-        html += '</div>'; // 이메일 발송 설정 card
-      }
-
-      html += '</div>'; // max-width
+      html += '</div>';
       container.innerHTML = html;
     } catch(e) {
       container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">불러오지 못했습니다: ' + esc(e.message) + '</div></div>';
     }
   }
 
-  function renderTplPreview(body) {
-    if (!body) return '<span style="color:var(--gray-300);">본문을 작성하면 여기에 미리보기가 표시됩니다.</span>';
-    return esc(body
-      .replace(/\{\{to_name\}\}/g, '홍길동')
-      .replace(/\{\{to_email\}\}/g, 'example@gmail.com')
-      .replace(/\{\{brand_name\}\}/g, '온기')
-      .replace(/\{\{reason\}\}/g, '서류가 모두 확인되었습니다.')
-      .replace(/\{\{rejection_reason\}\}/g, '서류 미비')
-      .replace(/\{\{reply_to\}\}/g, 'noreply@gmbs.kr')
-    );
-  }
+  window.copyEmailVar = function(v) {
+    navigator.clipboard.writeText(v).then(function() {
+      showToast(v + ' 복사됨', 'success');
+    }).catch(function() {
+      showToast('복사 실패 — 직접 선택 후 복사하세요', 'error');
+    });
+  };
 
   window.toggleTplEditor = function(expandId) {
     var el = document.getElementById(expandId);
@@ -4782,32 +4815,57 @@
     if (bodyEl && previewEl) previewEl.innerHTML = renderTplPreview(bodyEl.value);
   };
 
-  window.saveTplDraft = async function(triggerId) {
-    var subjEl = document.getElementById('tpl-subj-' + triggerId);
-    var bodyEl = document.getElementById('tpl-body-' + triggerId);
-    var subject = subjEl ? subjEl.value.trim() : '';
-    var body = bodyEl ? bodyEl.value.trim() : '';
-    try {
-      await setDoc(doc(db, 'email_configs', triggerId), {
-        tpl_subject: subject,
-        tpl_body: body,
-        updated_at: new Date().toISOString(),
-      }, { merge: true });
-      showToast('초안 저장 완료', 'success');
-    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
-  };
-
   window.toggleEmailGlobal = async function(enabled) {
+    // 즉시 UI 반영 (Firestore 저장 전)
+    var trk = document.getElementById('ejs-global-track');
+    var thb = document.getElementById('ejs-global-thumb');
+    var body = document.getElementById('email-settings-body');
+    var hint = document.getElementById('email-settings-off-hint');
+    if (trk) trk.style.background = enabled ? 'var(--blue)' : 'var(--gray-300)';
+    if (thb) thb.style.left = enabled ? '25px' : '3px';
+    if (body) body.style.display = enabled ? '' : 'none';
+    if (hint) hint.style.display = enabled ? 'none' : '';
     try {
-      var trk = document.getElementById('ejs-global-track');
-      var thb = document.getElementById('ejs-global-thumb');
-      if (trk) trk.style.background = enabled ? 'var(--blue)' : 'var(--gray-300)';
-      if (thb) thb.style.left = enabled ? '25px' : '3px';
       await setDoc(doc(db, 'email_configs', '_settings'), { globally_enabled: enabled, updated_at: new Date().toISOString() }, { merge: true });
       showToast(enabled ? '이메일 알림 활성화' : '이메일 알림 비활성화', 'success');
-      var mainContent = document.getElementById('main-content');
-      if (mainContent) renderEmailSettings(mainContent);
-    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+    } catch(e) {
+      // 실패 시 되돌리기
+      if (trk) trk.style.background = enabled ? 'var(--gray-300)' : 'var(--blue)';
+      if (thb) thb.style.left = enabled ? '3px' : '25px';
+      if (body) body.style.display = enabled ? 'none' : '';
+      if (hint) hint.style.display = enabled ? '' : 'none';
+      showToast('저장 실패: ' + e.message, 'error');
+    }
+  };
+
+  window.saveAllEmailSettings = async function() {
+    var btn = event && event.target;
+    if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
+    try {
+      const batch = writeBatch(db);
+      EMAIL_TRIGGERS.forEach(function(t) {
+        var chkEl = document.getElementById('chk-' + t.id);
+        var tplEl = document.getElementById('tpl-' + t.id);
+        var subjEl = document.getElementById('tpl-subj-' + t.id);
+        var bodyEl = document.getElementById('tpl-body-' + t.id);
+        var templateId = tplEl ? tplEl.value.trim() : '';
+        var enabled = !!(chkEl && chkEl.checked && templateId);
+        batch.set(doc(db, 'email_configs', t.id), {
+          trigger_event: t.id,
+          template_id: templateId,
+          enabled: enabled,
+          tpl_subject: subjEl ? subjEl.value.trim() : '',
+          tpl_body: bodyEl ? bodyEl.value.trim() : '',
+          updated_at: new Date().toISOString(),
+        }, { merge: true });
+      });
+      await batch.commit();
+      showToast('전체 저장 완료', 'success');
+    } catch(e) {
+      showToast('저장 실패: ' + e.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '전체 저장'; }
+    }
   };
 
   window.openEmailJsSettingsModal = function() {
@@ -4836,26 +4894,11 @@
     if (!publicKey || !serviceId) { showToast('Public Key와 Service ID를 모두 입력하세요.', 'error'); return; }
     try {
       await setDoc(doc(db, 'email_configs', '_settings'), { public_key: publicKey, service_id: serviceId, updated_at: new Date().toISOString() }, { merge: true });
+      if (window._emailJsCurrentSettings) { window._emailJsCurrentSettings.public_key = publicKey; window._emailJsCurrentSettings.service_id = serviceId; }
       showToast('EmailJS 설정 저장 완료', 'success');
       closeModal();
       var mainContent = document.getElementById('main-content');
       if (mainContent) renderEmailSettings(mainContent);
-    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
-  };
-
-  window.saveTriggerConfig = async function(triggerId) {
-    var tplEl = document.getElementById('tpl-' + triggerId);
-    var chkEl = document.getElementById('chk-' + triggerId);
-    var templateId = tplEl ? tplEl.value.trim() : '';
-    var enabled = chkEl ? chkEl.checked : false;
-    try {
-      await setDoc(doc(db, 'email_configs', triggerId), {
-        trigger_event: triggerId,
-        template_id: templateId,
-        enabled: enabled && !!templateId,
-        updated_at: new Date().toISOString(),
-      }, { merge: true });
-      showToast('저장 완료', 'success');
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
 
