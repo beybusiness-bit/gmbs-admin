@@ -54,34 +54,52 @@
     #app.visible { display: flex; }
 
     /* ── 사이드바 ── */
-    #sidebar { width: var(--sidebar-w); min-height: 100vh; background: #1e293b; display: flex; flex-direction: column; flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; }
-    .sidebar-header { padding: 20px 16px 16px; border-bottom: 1px solid #334155; }
-    .sidebar-brand { font-size: 16px; font-weight: 800; color: #fff; letter-spacing: -0.3px; }
-    .sidebar-brand-sub { font-size: 11px; color: #94a3b8; margin-top: 2px; }
-    .sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; }
-    .nav-section-label { font-size: 10px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; padding: 10px 16px 4px; }
-    .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 16px; color: #94a3b8; cursor: pointer; transition: all 0.12s; font-size: 13.5px; font-weight: 500; border-left: 3px solid transparent; margin: 1px 0; }
+    :root { --sidebar-w: 220px; --sidebar-collapsed-w: 60px; }
+    #sidebar { width: var(--sidebar-w); min-height: 100vh; background: #1e293b; display: flex; flex-direction: column; flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; transition: width 0.2s ease; overflow: hidden; }
+    #sidebar.collapsed { width: var(--sidebar-collapsed-w); }
+    .sidebar-header { padding: 14px 12px 12px; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; min-height: 56px; }
+    .sidebar-brand-wrap { display: flex; flex-direction: column; overflow: hidden; }
+    .sidebar-brand { font-size: 15px; font-weight: 800; color: #fff; letter-spacing: -0.3px; white-space: nowrap; }
+    #sidebar.collapsed .sidebar-brand-wrap { display: none; }
+    .sidebar-collapse-btn { width: 28px; height: 28px; border: none; background: #334155; border-radius: 7px; color: #94a3b8; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; transition: all 0.12s; }
+    .sidebar-collapse-btn:hover { background: #475569; color: #e2e8f0; }
+    #sidebar.collapsed .sidebar-collapse-btn { margin: 0 auto; }
+    .sidebar-nav { flex: 1; padding: 8px 0; overflow-y: auto; overflow-x: hidden; }
+    .nav-section-label { font-size: 10px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; padding: 12px 16px 4px; white-space: nowrap; transition: opacity 0.15s; }
+    #sidebar.collapsed .nav-section-label { opacity: 0; height: 0; padding: 0; overflow: hidden; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px 9px 16px; color: #94a3b8; cursor: pointer; transition: all 0.12s; font-size: 13.5px; font-weight: 500; border-left: 3px solid transparent; margin: 1px 0; white-space: nowrap; position: relative; }
     .nav-item:hover { color: #e2e8f0; background: #334155; }
     .nav-item.active { color: #fff; background: #2563eb22; border-left-color: var(--blue); }
     .nav-item .icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
-    .nav-item { position: relative; }
-    .nav-badge { position: absolute; top: 6px; right: 10px; min-width: 18px; height: 18px; border-radius: 9px; background: #ef4444; color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
-    .sidebar-footer { padding: 12px 16px; border-top: 1px solid #334155; }
-    .user-info { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; cursor: pointer; transition: background 0.12s; }
+    .nav-item .nav-label { transition: opacity 0.15s; }
+    #sidebar.collapsed .nav-item .nav-label { opacity: 0; width: 0; overflow: hidden; }
+    #sidebar.collapsed .nav-item { justify-content: center; padding: 9px 0; border-left-color: transparent !important; }
+    #sidebar.collapsed .nav-item.active { border-left: none; background: #2563eb33; border-radius: 8px; margin: 1px 8px; }
+    .nav-badge { position: absolute; top: 6px; right: 8px; min-width: 18px; height: 18px; border-radius: 9px; background: #ef4444; color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+    #sidebar.collapsed .nav-badge { top: 2px; right: 2px; min-width: 14px; height: 14px; font-size: 8px; }
+    .sidebar-footer { padding: 10px 12px; border-top: 1px solid #334155; }
+    .user-info { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; cursor: pointer; transition: background 0.12s; overflow: hidden; }
     .user-info:hover { background: #334155; }
+    #sidebar.collapsed .user-info { justify-content: center; }
+    #sidebar.collapsed .user-text { display: none; }
     .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--blue); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0; overflow: hidden; }
     .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
     .user-name { font-size: 12px; color: #cbd5e1; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .user-email { font-size: 11px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .btn-logout { margin-top: 8px; width: 100%; padding: 7px; border: 1px solid #334155; border-radius: 7px; background: transparent; color: #94a3b8; font-size: 12px; cursor: pointer; transition: all 0.12s; }
+    .sidebar-footer-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    #sidebar.collapsed .sidebar-footer-actions { flex-direction: column; gap: 6px; }
+    .btn-logout { width: 100%; padding: 7px; border: 1px solid #334155; border-radius: 7px; background: transparent; color: #94a3b8; font-size: 12px; cursor: pointer; transition: all 0.12s; white-space: nowrap; }
     .btn-logout:hover { background: #334155; color: #e2e8f0; }
+    #sidebar.collapsed .btn-logout { font-size: 0; padding: 7px 10px; }
+    #sidebar.collapsed .btn-logout::before { content: '⬡'; font-size: 14px; }
 
     /* ── 모바일 ── */
     #sidebar-toggle { display: none; position: fixed; top: 12px; left: 12px; z-index: 200; width: 40px; height: 40px; border-radius: 10px; background: #1e293b; border: none; color: #fff; font-size: 20px; cursor: pointer; align-items: center; justify-content: center; }
     #sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 99; }
 
     /* ── 메인 ── */
-    #main { margin-left: var(--sidebar-w); flex: 1; min-height: 100vh; display: flex; flex-direction: column; }
+    #main { margin-left: var(--sidebar-w); flex: 1; min-height: 100vh; display: flex; flex-direction: column; transition: margin-left 0.2s ease; }
+    #main.sidebar-collapsed { margin-left: var(--sidebar-collapsed-w); }
     .page-header { background: #fff; border-bottom: 1px solid var(--gray-200); padding: 0 28px; height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 16px; position: sticky; top: 0; z-index: 50; }
     .page-header-title { font-size: 17px; font-weight: 700; color: var(--gray-900); }
     .page-content { padding: 28px; flex: 1; }
@@ -249,46 +267,55 @@
 <div id="app">
   <nav id="sidebar">
     <div class="sidebar-header">
-      <div class="sidebar-brand">GMBS 관리</div>
+      <div class="sidebar-brand-wrap">
+        <div class="sidebar-brand">GMBS 관리</div>
+      </div>
+      <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="사이드바 접기/펼치기">◀</button>
     </div>
     <div class="sidebar-nav">
       <div class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
-        <span class="icon">📊</span> 대시보드
+        <span class="icon">📊</span><span class="nav-label"> 대시보드</span>
+      </div>
+
+      <div class="nav-section-label">입점 관리</div>
+      <div class="nav-item" data-page="brand-list" onclick="navigate('brand-list')">
+        <span class="icon">🏬</span><span class="nav-label"> 브랜드</span>
       </div>
       <div class="nav-item" data-page="product-list" onclick="navigate('product-list')">
-        <span class="icon">📦</span> 상품
-      </div>
-      <div class="nav-item" data-page="barcode" onclick="navigate('barcode')">
-        <span class="icon">🔍</span> 바코드
-      </div>
-      <div class="nav-item" data-page="brand-list" onclick="navigate('brand-list')">
-        <span class="icon">🏬</span> 브랜드
+        <span class="icon">📦</span><span class="nav-label"> 상품</span>
       </div>
       <div class="nav-item" data-page="application-review" onclick="navigate('application-review')">
-        <span class="icon">📋</span> 승인 관리
+        <span class="icon">✅</span><span class="nav-label"> 승인</span>
       </div>
+
+      <div class="nav-section-label">판매 및 정산</div>
       <div class="nav-item" data-page="settlement-list" onclick="navigate('settlement-list')">
-        <span class="icon">💰</span> 정산
+        <span class="icon">💰</span><span class="nav-label"> 정산</span>
       </div>
+      <div class="nav-item" data-page="barcode" onclick="navigate('barcode')">
+        <span class="icon">🔍</span><span class="nav-label"> 바코드</span>
+      </div>
+
+      <div class="nav-section-label">고객 지원</div>
       <div class="nav-item" data-page="info-management" onclick="navigate('info-management')">
-        <span class="icon">📋</span> 안내 관리
+        <span class="icon">📋</span><span class="nav-label"> 안내</span>
       </div>
       <div class="nav-item" data-page="inquiry-list" onclick="navigate('inquiry-list')">
-        <span class="icon">💬</span> 문의
+        <span class="icon">💬</span><span class="nav-label"> 문의</span>
       </div>
       <div class="nav-item" data-page="email-settings" onclick="navigate('email-settings')">
-        <span class="icon">✉️</span> 이메일 알림
+        <span class="icon">✉️</span><span class="nav-label"> 이메일 알림</span>
       </div>
     </div>
     <div class="sidebar-footer">
       <div class="user-info">
         <div class="user-avatar" id="user-avatar">?</div>
-        <div>
+        <div class="user-text">
           <div class="user-name" id="user-display-name">-</div>
           <div class="user-email" id="user-email-display">-</div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+      <div class="sidebar-footer-actions">
         <button class="btn-logout" style="flex:1;" onclick="signOut()">로그아웃</button>
         <button title="설정" onclick="navigate('settings')" data-page="settings" style="background:none;border:1px solid #475569;color:#94a3b8;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:14px;flex-shrink:0;" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='none'">⚙️</button>
       </div>
@@ -532,6 +559,37 @@
       /* 최근 등록 상품 5개 */
       const recentProducts = products.slice().sort((a, b) => (b.created_at||'').localeCompare(a.created_at||'')).slice(0, 5);
 
+      /* 처리할 업무 집계 */
+      const [appSnap, joinSnap, inquirySnap, settlementSnap] = await Promise.all([
+        getDocs(query(collection(db, 'brand_applications'), where('status', '==', '제출됨'))),
+        getDocs(query(collection(db, 'brand_join_requests'), where('status', '==', '제출됨'))),
+        getDocs(query(collection(db, 'inquiries'), where('status', '==', '답변대기'))),
+        getDocs(query(collection(db, 'settlements'), where('pay_status', 'in', ['예정', '검토중']))),
+      ]);
+      const todoItems = [
+        { count: appSnap.size + joinSnap.size, label: '신규·합류 신청 승인 대기', icon: '✅', page: 'application-review', detail: '브랜드 입점 신청이 검토를 기다리고 있습니다.' },
+        { count: pendingProducts, label: '상품 승인 대기', icon: '📦', page: 'product-list', detail: '등록/수정 요청된 상품을 검토해주세요.' },
+        { count: inquirySnap.size, label: '미답변 문의', icon: '💬', page: 'inquiry-list', detail: '답변이 필요한 문의가 있습니다.' },
+        { count: settlementSnap.size, label: '정산 처리 필요', icon: '💰', page: 'settlement-list', detail: '확정 또는 지급 처리가 필요한 정산 내역입니다.' },
+      ].filter(t => t.count > 0);
+
+      const todoSection = todoItems.length > 0 ? [
+        '<div class="section-title" style="margin-bottom:12px;">처리할 업무</div>',
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:28px;">',
+        todoItems.map(t =>
+          '<div style="background:#fff;border:1px solid var(--gray-200);border-radius:12px;padding:16px 20px;cursor:pointer;transition:box-shadow .12s;display:flex;align-items:flex-start;gap:14px;" onclick="navigate(\'' + t.page + '\')" onmouseover="this.style.boxShadow=\'0 2px 12px rgba(0,0,0,0.08)\'" onmouseout="this.style.boxShadow=\'none\'">' +
+          '<div style="width:40px;height:40px;border-radius:10px;background:var(--blue-light);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">' + t.icon + '</div>' +
+          '<div style="flex:1;">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
+          '<span style="font-size:13px;font-weight:700;color:var(--gray-900);">' + esc(t.label) + '</span>' +
+          '<span style="min-width:22px;height:22px;border-radius:11px;background:#ef4444;color:#fff;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0 6px;">' + t.count + '</span>' +
+          '</div>' +
+          '<div style="font-size:12px;color:var(--gray-500);">' + esc(t.detail) + '</div>' +
+          '</div></div>'
+        ).join(''),
+        '</div>'
+      ].join('') : '',
+
       container.innerHTML = [
         '<div class="dashboard-grid">',
         statCard('브랜드', brands.length, '승인 완료 ' + approvedBrands + '개'),
@@ -539,6 +597,7 @@
         statCard('SKU (옵션 조합)', totalSkus, '개체관리 상품 ' + indivProducts + '개 포함'),
         statCard('오늘 바코드 출력', todayPrinted, todayStr + ' 기준'),
         '</div>',
+        todoSection,
 
         /* 최근 등록 상품 */
         recentProducts.length > 0 ? [
@@ -4061,17 +4120,18 @@
   };
 
   async function renderNoticeTab(container) {
-    document.getElementById('page-header-actions').innerHTML =
-      '<button class="btn btn-primary" onclick="openNoticeModal(null)">➕ 공지 작성</button>';
+    document.getElementById('page-header-actions').innerHTML = '';
     container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
     try {
       const snap = await getDocs(query(collection(db, 'notices'), orderBy('created_at', 'desc')));
       const notices = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const addBtn = '<div style="display:flex;justify-content:flex-end;margin-bottom:14px;"><button class="btn btn-primary" onclick="openNoticeModal(null)">➕ 공지 작성</button></div>';
       if (notices.length === 0) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📢</div><div class="empty-state-text">등록된 공지사항이 없습니다.</div></div>';
+        container.innerHTML = addBtn + '<div class="empty-state"><div class="empty-state-icon">📢</div><div class="empty-state-text">등록된 공지사항이 없습니다.</div></div>';
         return;
       }
-      container.innerHTML = '<div class="card"><div class="table-wrap"><table>' +
+      container.innerHTML = addBtn +
+        '<div class="card"><div class="table-wrap"><table>' +
         '<thead><tr><th style="width:36px;"></th><th>제목</th><th>상태</th><th>등록일</th><th></th></tr></thead>' +
         '<tbody>' +
         notices.map(n =>
@@ -4095,7 +4155,7 @@
   async function renderOnboardingTab(container) {
     document.getElementById('page-header-actions').innerHTML = '';
     container.innerHTML =
-      '<div style="display:flex;gap:8px;margin-bottom:16px;">' +
+      '<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;">' +
       '<button id="ob-tab-public" onclick="switchObAudience(\'public\')" class="btn btn-secondary" style="font-size:13px;">가입 전 안내</button>' +
       '<button id="ob-tab-member" onclick="switchObAudience(\'member\')" class="btn btn-secondary" style="font-size:13px;">가입 후 안내</button>' +
       '<button onclick="openCardModal(null)" class="btn btn-primary" style="margin-left:auto;font-size:13px;">➕ 카드 추가</button>' +
@@ -4255,8 +4315,6 @@
   };
 
   async function uploadCardImage(file) {
-    const { getStorage, ref, uploadBytes, getDownloadURL } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js');
-    const storage = getStorage();
     const ext = file.name.split('.').pop();
     const path = 'onboarding_cards/' + Date.now() + '.' + ext;
     const storageRef = ref(storage, path);
@@ -4278,14 +4336,15 @@
   const FAQ_CATEGORIES = ['입점신청','상품등록입고','진열판매','정산세무','교환환불회수','시스템이용','정책계약'];
 
   async function renderFaqTab(container) {
-    document.getElementById('page-header-actions').innerHTML =
-      '<button class="btn btn-primary" onclick="openFaqModal(null)" style="font-size:13px;">➕ FAQ 추가</button>';
-    container.innerHTML = '<div class="spinner" style="margin:40px auto;"></div>';
+    document.getElementById('page-header-actions').innerHTML = '';
+    const addBtnHtml = '<div style="display:flex;justify-content:flex-end;margin-bottom:14px;"><button class="btn btn-primary" onclick="openFaqModal(null)" style="font-size:13px;">➕ FAQ 추가</button></div>';
+    container.innerHTML = addBtnHtml + '<div id="faq-list-content"><div class="spinner" style="margin:40px auto;"></div></div>';
+    const listEl = container.querySelector('#faq-list-content');
     try {
       const snap = await getDocs(query(collection(db, 'faq_items'), orderBy('order', 'asc')));
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       if (all.length === 0) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❓</div><div class="empty-state-text">등록된 FAQ가 없습니다.</div></div>';
+        listEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❓</div><div class="empty-state-text">등록된 FAQ가 없습니다.</div></div>';
         return;
       }
       const grouped = {};
@@ -4299,7 +4358,7 @@
       FAQ_CATEGORIES.forEach(cat => {
         const items = grouped[cat];
         if (!items || items.length === 0) return;
-        html += '<div class="card" style="margin-bottom:16px;">' +
+        html += '<div class="card" style="margin-bottom:16px;padding:16px;">' +
           '<div style="font-weight:700;font-size:15px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--gray-200);">' + esc(cat) + ' <span style="font-size:12px;font-weight:400;color:var(--gray-500);">(' + items.length + '개)</span></div>';
         items.forEach((item, i) => {
           html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;' + (i < items.length - 1 ? 'border-bottom:1px solid var(--gray-100);' : '') + '">' +
@@ -4311,7 +4370,7 @@
             '<div style="font-weight:600;font-size:13px;margin-bottom:4px;">' + esc(item.question || '') + '</div>' +
             '<div style="font-size:12px;color:var(--gray-600);white-space:pre-wrap;">' + esc((item.answer || '').substring(0,100)) + (item.answer && item.answer.length > 100 ? '…' : '') + '</div>' +
             '</div>' +
-            '<div style="display:flex;gap:6px;flex-shrink:0;">' +
+            '<div style="display:flex;gap:6px;flex-shrink:0;align-items:center;">' +
             '<span class="badge ' + (item.active ? 'badge-green' : 'badge-gray') + '">' + (item.active ? '활성' : '비활성') + '</span>' +
             '<button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="openFaqModal(\'' + item.id + '\')">수정</button>' +
             '<button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;color:var(--red);" onclick="deleteFaq(\'' + item.id + '\')">삭제</button>' +
@@ -4319,9 +4378,9 @@
         });
         html += '</div>';
       });
-      container.innerHTML = html || '<div class="empty-state"><div class="empty-state-icon">❓</div><div class="empty-state-text">등록된 FAQ가 없습니다.</div></div>';
+      listEl.innerHTML = html || '<div class="empty-state"><div class="empty-state-icon">❓</div><div class="empty-state-text">등록된 FAQ가 없습니다.</div></div>';
     } catch(e) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
+      listEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
     }
   }
 
@@ -5445,6 +5504,28 @@
     document.getElementById('sidebar').classList.remove('open');
     document.getElementById('sidebar-backdrop').classList.remove('open');
   }
+  function toggleSidebarCollapse() {
+    const sidebar = document.getElementById('sidebar');
+    const main = document.getElementById('main');
+    const collapsed = sidebar.classList.toggle('collapsed');
+    main.classList.toggle('sidebar-collapsed', collapsed);
+    const btn = sidebar.querySelector('.sidebar-collapse-btn');
+    if (btn) btn.textContent = collapsed ? '▶' : '◀';
+    try { localStorage.setItem('sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {}
+  }
+  // 저장된 상태 복원
+  (function() {
+    try {
+      if (localStorage.getItem('sidebar_collapsed') === '1') {
+        const sidebar = document.getElementById('sidebar');
+        const main = document.getElementById('main');
+        if (sidebar) { sidebar.classList.add('collapsed'); }
+        if (main) { main.classList.add('sidebar-collapsed'); }
+        const btn = sidebar && sidebar.querySelector('.sidebar-collapse-btn');
+        if (btn) btn.textContent = '▶';
+      }
+    } catch(e) {}
+  })();
   function showToast(msg, type) {
     type = type || 'info';
     const el = document.createElement('div');
