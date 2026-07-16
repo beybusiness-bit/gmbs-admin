@@ -64,6 +64,8 @@
     .nav-item:hover { color: #e2e8f0; background: #334155; }
     .nav-item.active { color: #fff; background: #2563eb22; border-left-color: var(--blue); }
     .nav-item .icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+    .nav-item { position: relative; }
+    .nav-badge { position: absolute; top: 6px; right: 10px; min-width: 18px; height: 18px; border-radius: 9px; background: #ef4444; color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
     .sidebar-footer { padding: 12px 16px; border-top: 1px solid #334155; }
     .user-info { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; cursor: pointer; transition: background 0.12s; }
     .user-info:hover { background: #334155; }
@@ -332,6 +334,12 @@
   window._storage = storage;
   window._currentUser = null;
 
+  /* ── 날짜 헬퍼 ── */
+  function today() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
   /* ── 로그인 ── */
   document.getElementById('btn-google-login').addEventListener('click', async () => {
     try {
@@ -379,6 +387,7 @@
         });
       }
       navigate('dashboard');
+      refreshSidebarBadges();
     } else {
       window._currentUser = null;
       loading.style.display = 'none';
@@ -402,6 +411,44 @@
       '<div class="modal-body">' + bodyHTML + '</div>' +
       (footerHTML ? '<div class="modal-footer">' + footerHTML + '</div>' : '') +
       '</div></div>';
+  }
+
+  /* ── 사이드바 배지 ── */
+  async function refreshSidebarBadges() {
+    try {
+      const [appSnap, joinSnap, productSnap, inquirySnap, settlementSnap] = await Promise.all([
+        getDocs(query(collection(db, 'brand_applications'), where('status', '==', '제출됨'))),
+        getDocs(query(collection(db, 'brand_join_requests'), where('status', '==', '제출됨'))),
+        getDocs(query(collection(db, 'products'), where('approval_status', '==', '승인대기'))),
+        getDocs(query(collection(db, 'inquiries'), where('status', '==', '답변대기'))),
+        getDocs(query(collection(db, 'settlements'), where('pay_status', 'in', ['예정', '검토중']))),
+      ]);
+
+      const badges = {
+        'application-review': appSnap.size + joinSnap.size,
+        'product-list': productSnap.size,
+        'inquiry-list': inquirySnap.size,
+        'settlement-list': settlementSnap.size,
+      };
+
+      Object.entries(badges).forEach(([page, count]) => {
+        const item = document.querySelector('.nav-item[data-page="' + page + '"]');
+        if (!item) return;
+        let badge = item.querySelector('.nav-badge');
+        if (count > 0) {
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'nav-badge';
+            item.appendChild(badge);
+          }
+          badge.textContent = count > 99 ? '99+' : count;
+        } else {
+          if (badge) badge.remove();
+        }
+      });
+    } catch(e) {
+      // 배지 오류는 무시
+    }
   }
 
   /* ── 라우터 ── */
@@ -439,6 +486,7 @@
     else if (page === 'settings') await renderSettings(content);
     else if (page === 'email-settings') await renderEmailSettings(content);
     else renderComingSoon(content, PAGE_TITLES[page] || page);
+    refreshSidebarBadges();
   };
 
   /* ════════════════════════════════
@@ -467,10 +515,7 @@
       const totalSkus = skuCounts.reduce((a, b) => a + b, 0);
 
       /* 오늘 출력된 바코드 수: barcode_printed_at이 오늘 날짜인 SKU 수 */
-      const today = (function() {
-        const d = new Date();
-        return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-      })();
+      const todayStr = today();
 
       /* 모든 SKU의 barcode_printed_at 확인 */
       const allSkusSnap = await Promise.all(
@@ -480,7 +525,7 @@
       allSkusSnap.forEach(snap => {
         snap.docs.forEach(d => {
           const at = d.data().barcode_printed_at;
-          if (at && at.slice(0, 10) === today) todayPrinted++;
+          if (at && at.slice(0, 10) === todayStr) todayPrinted++;
         });
       });
 
@@ -492,7 +537,7 @@
         statCard('브랜드', activeBrands, '총 ' + brands.length + '개 (승인 완료 기준)'),
         statCard('상품', activeProducts, '승인 · 판매중지 ' + stoppedProducts + '개'),
         statCard('SKU (옵션 조합)', totalSkus, '개체관리 상품 ' + indivProducts + '개 포함'),
-        statCard('오늘 바코드 출력', todayPrinted, today + ' 기준'),
+        statCard('오늘 바코드 출력', todayPrinted, todayStr + ' 기준'),
         '</div>',
 
         /* 최근 등록 상품 */
@@ -2325,6 +2370,7 @@
       await updateDoc(doc(db, 'products', productId), data);
       await writeActivityLog(brandId, 'product', productId, 'status_changed', null, { approval_status: status });
       showToast('승인 상태를 저장했습니다.');
+      refreshSidebarBadges();
       openProductDetail(productId);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
@@ -4085,6 +4131,7 @@
         updated_at: today()
       });
       showToast('답변을 저장했습니다.');
+      refreshSidebarBadges();
       openInquiryDetail(inquiryId);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
@@ -4574,6 +4621,7 @@
       showToast('승인 처리가 완료되었습니다.');
       closeModal();
       await renderApplicationReview(document.getElementById('page-content'));
+      refreshSidebarBadges();
     } catch(e) {
       showToast('승인 실패: ' + e.message, 'error');
     }
@@ -4600,6 +4648,7 @@
       showToast('거절 처리가 완료되었습니다.');
       closeModal();
       await renderApplicationReview(document.getElementById('page-content'));
+      refreshSidebarBadges();
     } catch(e) {
       showToast('거절 실패: ' + e.message, 'error');
     }
