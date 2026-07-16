@@ -270,8 +270,8 @@
       <div class="nav-item" data-page="settlement-list" onclick="navigate('settlement-list')">
         <span class="icon">💰</span> 정산
       </div>
-      <div class="nav-item" data-page="notice-list" onclick="navigate('notice-list')">
-        <span class="icon">📢</span> 공지사항
+      <div class="nav-item" data-page="info-management" onclick="navigate('info-management')">
+        <span class="icon">📋</span> 안내 관리
       </div>
       <div class="nav-item" data-page="inquiry-list" onclick="navigate('inquiry-list')">
         <span class="icon">💬</span> 문의
@@ -459,7 +459,7 @@
     'brand-list': '브랜드',
     'application-review': '승인 관리',
     'settlement-list': '정산',
-    'notice-list': '공지사항',
+    'info-management': '안내 관리',
     'inquiry-list': '문의',
     settings: '설정',
     'email-settings': '이메일 알림'
@@ -480,7 +480,7 @@
     else if (page === 'brand-list') await renderBrandList(content);
     else if (page === 'application-review') await renderApplicationReview(content);
     else if (page === 'settlement-list') await renderSettlementList(content);
-    else if (page === 'notice-list') await renderNoticeList(content);
+    else if (page === 'info-management') await renderInfoManagement(content);
     else if (page === 'inquiry-list') await renderInquiryList(content);
     else if (page === 'barcode') renderBarcodePage(content);
     else if (page === 'settings') await renderSettings(content);
@@ -3955,9 +3955,49 @@
   };
 
   /* ════════════════════════════════
-     16단계 공지사항(Notice) 관리
+     16단계 안내 관리 (공지사항 + 안내 페이지 + FAQ)
   ════════════════════════════════ */
-  async function renderNoticeList(container) {
+  let _infoTab = 'notice'; // 현재 탭 상태 유지
+
+  async function renderInfoManagement(container) {
+    document.getElementById('page-header-actions').innerHTML = '';
+    const tabs = [
+      { id: 'notice', label: '공지사항' },
+      { id: 'onboarding', label: '안내 페이지 작성' },
+      { id: 'faq', label: '자주하는 질문 정리' }
+    ];
+    container.innerHTML =
+      '<div style="display:flex;gap:0;border-bottom:2px solid var(--gray-200);margin-bottom:20px;">' +
+      tabs.map(t =>
+        '<button id="info-tab-' + t.id + '" onclick="switchInfoTab(\'' + t.id + '\')" style="padding:10px 20px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:var(--gray-500);border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .15s;">' +
+        t.label + '</button>'
+      ).join('') +
+      '</div>' +
+      '<div id="info-tab-content"></div>';
+    switchInfoTab(_infoTab);
+  }
+
+  window.switchInfoTab = function(tabId) {
+    _infoTab = tabId;
+    ['notice','onboarding','faq'].forEach(id => {
+      const btn = document.getElementById('info-tab-' + id);
+      if (!btn) return;
+      if (id === tabId) {
+        btn.style.color = 'var(--blue)';
+        btn.style.borderBottomColor = 'var(--blue)';
+      } else {
+        btn.style.color = 'var(--gray-500)';
+        btn.style.borderBottomColor = 'transparent';
+      }
+    });
+    const content = document.getElementById('info-tab-content');
+    if (!content) return;
+    if (tabId === 'notice') renderNoticeTab(content);
+    else if (tabId === 'onboarding') renderOnboardingTab(content);
+    else if (tabId === 'faq') renderFaqTab(content);
+  };
+
+  async function renderNoticeTab(container) {
     document.getElementById('page-header-actions').innerHTML =
       '<button class="btn btn-primary" onclick="openNoticeModal(null)">➕ 공지 작성</button>';
     container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
@@ -3985,6 +4025,323 @@
       container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
     }
   }
+
+  /* ── 안내 페이지 작성 (onboarding_cards) ── */
+  let _obAudience = 'public'; // 'public' | 'member'
+
+  async function renderOnboardingTab(container) {
+    document.getElementById('page-header-actions').innerHTML = '';
+    container.innerHTML =
+      '<div style="display:flex;gap:8px;margin-bottom:16px;">' +
+      '<button id="ob-tab-public" onclick="switchObAudience(\'public\')" class="btn btn-secondary" style="font-size:13px;">가입 전 안내</button>' +
+      '<button id="ob-tab-member" onclick="switchObAudience(\'member\')" class="btn btn-secondary" style="font-size:13px;">가입 후 안내</button>' +
+      '<button onclick="openCardModal(null)" class="btn btn-primary" style="margin-left:auto;font-size:13px;">➕ 카드 추가</button>' +
+      '</div>' +
+      '<div id="ob-card-list"><div class="spinner" style="margin:40px auto;"></div></div>';
+    switchObAudience(_obAudience);
+  }
+
+  window.switchObAudience = async function(audience) {
+    _obAudience = audience;
+    ['public','member'].forEach(id => {
+      const btn = document.getElementById('ob-tab-' + id);
+      if (!btn) return;
+      btn.className = id === audience ? 'btn btn-primary' : 'btn btn-secondary';
+      btn.style.fontSize = '13px';
+    });
+    await loadCardList();
+  };
+
+  async function loadCardList() {
+    const wrap = document.getElementById('ob-card-list');
+    if (!wrap) return;
+    wrap.innerHTML = '<div class="spinner" style="margin:40px auto;"></div>';
+    try {
+      const snap = await getDocs(query(
+        collection(db, 'onboarding_cards'),
+        where('audience', '==', _obAudience),
+        orderBy('order', 'asc')
+      ));
+      const cards = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (cards.length === 0) {
+        wrap.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🃏</div><div class="empty-state-text">카드가 없습니다. 카드를 추가해보세요.</div></div>';
+        return;
+      }
+      wrap.innerHTML = cards.map((c, i) =>
+        '<div class="card" style="margin-bottom:10px;display:flex;align-items:flex-start;gap:14px;" data-card-id="' + c.id + '">' +
+        '<div style="display:flex;flex-direction:column;gap:4px;padding-top:4px;">' +
+        (i > 0 ? '<button onclick="moveCard(\'' + c.id + '\',-1)" style="border:none;background:none;cursor:pointer;font-size:16px;padding:0;">▲</button>' : '<span style="font-size:16px;opacity:0;">▲</span>') +
+        (i < cards.length - 1 ? '<button onclick="moveCard(\'' + c.id + '\',1)" style="border:none;background:none;cursor:pointer;font-size:16px;padding:0;">▼</button>' : '<span style="font-size:16px;opacity:0;">▼</span>') +
+        '</div>' +
+        (c.image_url ? '<img src="' + esc(c.image_url) + '" alt="' + esc(c.image_alt || '') + '" style="width:90px;height:51px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200);">' : '<div style="width:90px;height:51px;border-radius:6px;border:1px dashed var(--gray-300);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--gray-400);">이미지 없음</div>') +
+        '<div style="flex:1;">' +
+        '<div style="font-weight:700;font-size:14px;margin-bottom:4px;">' + esc(c.title || '') + '</div>' +
+        '<div style="font-size:12px;color:var(--gray-600);margin-bottom:6px;white-space:pre-wrap;">' + esc((c.body || '').substring(0, 80)) + (c.body && c.body.length > 80 ? '…' : '') + '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<span class="badge ' + (c.active ? 'badge-green' : 'badge-gray') + '">' + (c.active ? '활성' : '비활성') + '</span>' +
+        '<span class="badge badge-blue" style="background:var(--blue-bg);color:var(--blue);">' + ctaLabel(c.cta_type) + '</span>' +
+        '</div></div>' +
+        '<div style="display:flex;flex-direction:column;gap:6px;">' +
+        '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openCardModal(\'' + c.id + '\')">수정</button>' +
+        '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--red);" onclick="deleteCard(\'' + c.id + '\')">삭제</button>' +
+        '</div></div>'
+      ).join('');
+    } catch(e) {
+      wrap.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
+    }
+  }
+
+  function ctaLabel(type) {
+    return ({ none:'CTA 없음', apply:'입점 신청하기', faq_link:'FAQ 보기', continue:'계속하기' })[type] || '없음';
+  }
+
+  window.moveCard = async function(cardId, dir) {
+    try {
+      const snap = await getDocs(query(
+        collection(db, 'onboarding_cards'),
+        where('audience', '==', _obAudience),
+        orderBy('order', 'asc')
+      ));
+      const cards = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const idx = cards.findIndex(c => c.id === cardId);
+      if (idx < 0) return;
+      const swapIdx = idx + dir;
+      if (swapIdx < 0 || swapIdx >= cards.length) return;
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'onboarding_cards', cards[idx].id), { order: swapIdx });
+      batch.update(doc(db, 'onboarding_cards', cards[swapIdx].id), { order: idx });
+      await batch.commit();
+      await loadCardList();
+    } catch(e) { showToast('순서 변경 실패: ' + e.message, 'error'); }
+  };
+
+  window.openCardModal = async function(cardId) {
+    let existing = null;
+    if (cardId) {
+      const snap = await getDoc(doc(db, 'onboarding_cards', cardId));
+      if (snap.exists()) existing = { id: snap.id, ...snap.data() };
+    }
+    const isEdit = !!existing;
+    const c = existing || { audience: _obAudience, active: true, cta_type: 'none' };
+    const formHTML =
+      '<div class="form-group"><label class="form-label">제목 <span style="color:var(--red);">*</span></label>' +
+      '<input class="form-input" id="card-title" value="' + esc(c.title || '') + '" placeholder="카드 제목" /></div>' +
+      '<div class="form-group"><label class="form-label">본문</label>' +
+      '<textarea class="form-input" id="card-body" rows="4" style="resize:vertical;">' + esc(c.body || '') + '</textarea></div>' +
+      '<div class="form-group"><label class="form-label">이미지 (권장 1200×675px, 최대 2MB)</label>' +
+      (c.image_url ? '<img src="' + esc(c.image_url) + '" style="width:100%;max-height:180px;object-fit:cover;border-radius:6px;margin-bottom:8px;" />' : '') +
+      '<input type="file" id="card-image-file" accept="image/*" style="font-size:13px;" />' +
+      '<input type="hidden" id="card-image-url" value="' + esc(c.image_url || '') + '" />' +
+      '<input class="form-input" id="card-image-alt" value="' + esc(c.image_alt || '') + '" placeholder="이미지 설명 (alt 텍스트)" style="margin-top:6px;" /></div>' +
+      '<div class="form-group"><label class="form-label">CTA 버튼</label>' +
+      '<select class="form-input" id="card-cta">' +
+      ['none','apply','faq_link','continue'].map(v =>
+        '<option value="' + v + '"' + (c.cta_type === v ? ' selected' : '') + '>' + ctaLabel(v) + '</option>'
+      ).join('') +
+      '</select></div>' +
+      '<div class="form-group"><label class="form-label">대상</label>' +
+      '<select class="form-input" id="card-audience">' +
+      '<option value="public"' + (c.audience === 'public' ? ' selected' : '') + '>가입 전 안내</option>' +
+      '<option value="member"' + (c.audience === 'member' ? ' selected' : '') + '>가입 후 안내</option>' +
+      '</select></div>' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">' +
+      '<input type="checkbox" id="card-active" style="accent-color:var(--blue);"' + (c.active ? ' checked' : '') + ' /> 활성화</label>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      (isEdit ? '<button class="btn btn-danger" style="margin-right:auto;" onclick="deleteCard(\'' + cardId + '\')">삭제</button>' : '') +
+      '<button class="btn btn-primary" onclick="saveCard(\'' + (cardId || '') + '\')">저장</button>';
+    showModal(isEdit ? '카드 수정' : '카드 추가', formHTML, footerHTML, 'lg');
+  };
+
+  window.saveCard = async function(cardId) {
+    const title = (document.getElementById('card-title').value || '').trim();
+    if (!title) { showToast('제목을 입력해주세요.', 'error'); return; }
+    const fileInput = document.getElementById('card-image-file');
+    let imageUrl = document.getElementById('card-image-url').value || '';
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+      try {
+        imageUrl = await uploadCardImage(fileInput.files[0]);
+      } catch(e) { showToast('이미지 업로드 실패: ' + e.message, 'error'); return; }
+    }
+    const audience = document.getElementById('card-audience').value;
+    const data = {
+      title,
+      body: (document.getElementById('card-body').value || '').trim(),
+      image_url: imageUrl,
+      image_alt: (document.getElementById('card-image-alt').value || '').trim(),
+      cta_type: document.getElementById('card-cta').value,
+      audience,
+      active: document.getElementById('card-active').checked,
+      updated_at: today()
+    };
+    try {
+      if (cardId) {
+        await updateDoc(doc(db, 'onboarding_cards', cardId), data);
+        showToast('카드를 수정했습니다.');
+      } else {
+        const countSnap = await getDocs(query(collection(db, 'onboarding_cards'), where('audience', '==', audience)));
+        data.order = countSnap.size;
+        data.created_at = today();
+        await addDoc(collection(db, 'onboarding_cards'), data);
+        showToast('카드를 추가했습니다.');
+      }
+      _obAudience = audience;
+      closeModal();
+      await loadCardList();
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  async function uploadCardImage(file) {
+    const { getStorage, ref, uploadBytes, getDownloadURL } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js');
+    const storage = getStorage();
+    const ext = file.name.split('.').pop();
+    const path = 'onboarding_cards/' + Date.now() + '.' + ext;
+    const storageRef = ref(storage, path);
+    const snap = await uploadBytes(storageRef, file);
+    return await getDownloadURL(snap.ref);
+  }
+
+  window.deleteCard = async function(cardId) {
+    if (!confirm('카드를 삭제하시겠습니까?')) return;
+    try {
+      await deleteDoc(doc(db, 'onboarding_cards', cardId));
+      showToast('카드가 삭제되었습니다.');
+      closeModal();
+      await loadCardList();
+    } catch(e) { showToast('삭제 실패: ' + e.message, 'error'); }
+  };
+
+  /* ── FAQ (faq_items) ── */
+  const FAQ_CATEGORIES = ['입점신청','상품등록입고','진열판매','정산세무','교환환불회수','시스템이용','정책계약'];
+
+  async function renderFaqTab(container) {
+    document.getElementById('page-header-actions').innerHTML =
+      '<button class="btn btn-primary" onclick="openFaqModal(null)" style="font-size:13px;">➕ FAQ 추가</button>';
+    container.innerHTML = '<div class="spinner" style="margin:40px auto;"></div>';
+    try {
+      const snap = await getDocs(query(collection(db, 'faq_items'), orderBy('order', 'asc')));
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (all.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❓</div><div class="empty-state-text">등록된 FAQ가 없습니다.</div></div>';
+        return;
+      }
+      const grouped = {};
+      FAQ_CATEGORIES.forEach(cat => { grouped[cat] = []; });
+      all.forEach(item => {
+        const cat = item.category || '기타';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(item);
+      });
+      let html = '';
+      FAQ_CATEGORIES.forEach(cat => {
+        const items = grouped[cat];
+        if (!items || items.length === 0) return;
+        html += '<div class="card" style="margin-bottom:16px;">' +
+          '<div style="font-weight:700;font-size:15px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--gray-200);">' + esc(cat) + ' <span style="font-size:12px;font-weight:400;color:var(--gray-500);">(' + items.length + '개)</span></div>';
+        items.forEach((item, i) => {
+          html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;' + (i < items.length - 1 ? 'border-bottom:1px solid var(--gray-100);' : '') + '">' +
+            '<div style="display:flex;flex-direction:column;gap:2px;padding-top:2px;">' +
+            (i > 0 ? '<button onclick="moveFaq(\'' + item.id + '\',\'' + cat + '\',-1)" style="border:none;background:none;cursor:pointer;font-size:13px;padding:0;line-height:1;">▲</button>' : '<span style="font-size:13px;opacity:0;">▲</span>') +
+            (i < items.length - 1 ? '<button onclick="moveFaq(\'' + item.id + '\',\'' + cat + '\',1)" style="border:none;background:none;cursor:pointer;font-size:13px;padding:0;line-height:1;">▼</button>' : '<span style="font-size:13px;opacity:0;">▼</span>') +
+            '</div>' +
+            '<div style="flex:1;">' +
+            '<div style="font-weight:600;font-size:13px;margin-bottom:4px;">' + esc(item.question || '') + '</div>' +
+            '<div style="font-size:12px;color:var(--gray-600);white-space:pre-wrap;">' + esc((item.answer || '').substring(0,100)) + (item.answer && item.answer.length > 100 ? '…' : '') + '</div>' +
+            '</div>' +
+            '<div style="display:flex;gap:6px;flex-shrink:0;">' +
+            '<span class="badge ' + (item.active ? 'badge-green' : 'badge-gray') + '">' + (item.active ? '활성' : '비활성') + '</span>' +
+            '<button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="openFaqModal(\'' + item.id + '\')">수정</button>' +
+            '<button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;color:var(--red);" onclick="deleteFaq(\'' + item.id + '\')">삭제</button>' +
+            '</div></div>';
+        });
+        html += '</div>';
+      });
+      container.innerHTML = html || '<div class="empty-state"><div class="empty-state-icon">❓</div><div class="empty-state-text">등록된 FAQ가 없습니다.</div></div>';
+    } catch(e) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
+    }
+  }
+
+  window.moveFaq = async function(faqId, category, dir) {
+    try {
+      const snap = await getDocs(query(collection(db, 'faq_items'), where('category', '==', category), orderBy('order', 'asc')));
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const idx = items.findIndex(i => i.id === faqId);
+      if (idx < 0) return;
+      const swapIdx = idx + dir;
+      if (swapIdx < 0 || swapIdx >= items.length) return;
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'faq_items', items[idx].id), { order: swapIdx });
+      batch.update(doc(db, 'faq_items', items[swapIdx].id), { order: idx });
+      await batch.commit();
+      const container = document.getElementById('info-tab-content');
+      if (container) await renderFaqTab(container);
+    } catch(e) { showToast('순서 변경 실패: ' + e.message, 'error'); }
+  };
+
+  window.openFaqModal = async function(faqId) {
+    let existing = null;
+    if (faqId) {
+      const snap = await getDoc(doc(db, 'faq_items', faqId));
+      if (snap.exists()) existing = { id: snap.id, ...snap.data() };
+    }
+    const isEdit = !!existing;
+    const f = existing || { category: FAQ_CATEGORIES[0], active: true };
+    const formHTML =
+      '<div class="form-group"><label class="form-label">카테고리 <span style="color:var(--red);">*</span></label>' +
+      '<select class="form-input" id="faq-category">' +
+      FAQ_CATEGORIES.map(cat => '<option value="' + cat + '"' + (f.category === cat ? ' selected' : '') + '>' + cat + '</option>').join('') +
+      '</select></div>' +
+      '<div class="form-group"><label class="form-label">질문 <span style="color:var(--red);">*</span></label>' +
+      '<input class="form-input" id="faq-question" value="' + esc(f.question || '') + '" placeholder="자주 묻는 질문" /></div>' +
+      '<div class="form-group"><label class="form-label">답변 <span style="color:var(--red);">*</span></label>' +
+      '<textarea class="form-input" id="faq-answer" rows="5" style="resize:vertical;">' + esc(f.answer || '') + '</textarea></div>' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">' +
+      '<input type="checkbox" id="faq-active" style="accent-color:var(--blue);"' + (f.active ? ' checked' : '') + ' /> 활성화</label>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      (isEdit ? '<button class="btn btn-danger" style="margin-right:auto;" onclick="deleteFaq(\'' + faqId + '\')">삭제</button>' : '') +
+      '<button class="btn btn-primary" onclick="saveFaq(\'' + (faqId || '') + '\')">저장</button>';
+    showModal(isEdit ? 'FAQ 수정' : 'FAQ 추가', formHTML, footerHTML, 'lg');
+  };
+
+  window.saveFaq = async function(faqId) {
+    const question = (document.getElementById('faq-question').value || '').trim();
+    const answer = (document.getElementById('faq-answer').value || '').trim();
+    const category = document.getElementById('faq-category').value;
+    if (!question || !answer) { showToast('질문과 답변을 모두 입력해주세요.', 'error'); return; }
+    const data = {
+      category, question, answer,
+      active: document.getElementById('faq-active').checked,
+      updated_at: today()
+    };
+    try {
+      if (faqId) {
+        await updateDoc(doc(db, 'faq_items', faqId), data);
+        showToast('FAQ를 수정했습니다.');
+      } else {
+        const countSnap = await getDocs(query(collection(db, 'faq_items'), where('category', '==', category)));
+        data.order = countSnap.size;
+        data.created_at = today();
+        await addDoc(collection(db, 'faq_items'), data);
+        showToast('FAQ를 추가했습니다.');
+      }
+      closeModal();
+      const container = document.getElementById('info-tab-content');
+      if (container) await renderFaqTab(container);
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  window.deleteFaq = async function(faqId) {
+    if (!confirm('FAQ를 삭제하시겠습니까?')) return;
+    try {
+      await deleteDoc(doc(db, 'faq_items', faqId));
+      showToast('FAQ가 삭제되었습니다.');
+      closeModal();
+      const container = document.getElementById('info-tab-content');
+      if (container) await renderFaqTab(container);
+    } catch(e) { showToast('삭제 실패: ' + e.message, 'error'); }
+  };
 
   window.openNoticeDetail = async function(noticeId) {
     const snap = await getDoc(doc(db, 'notices', noticeId));
@@ -4022,7 +4379,7 @@
       '<input type="checkbox" id="notice-public" style="accent-color:var(--blue);"' + (n.status !== '비공개' ? ' checked' : '') + ' /> 공개</label>' +
       '</div>';
     const footerHTML =
-      '<button class="btn btn-secondary" onclick="' + (isEdit ? 'closeModal()' : 'navigate(\'notice-list\')') + '">취소</button>' +
+      '<button class="btn btn-secondary" onclick="' + (isEdit ? 'closeModal()' : 'navigate(\'info-management\')') + '">취소</button>' +
       (isEdit ? '<button class="btn btn-danger" style="margin-right:auto;" onclick="deleteNotice(\'' + noticeId + '\')">삭제</button>' : '') +
       '<button class="btn btn-primary" onclick="saveNotice(\'' + (noticeId || '') + '\')">' + (isEdit ? '저장' : '등록') + '</button>';
     showModal(isEdit ? '공지 수정' : '공지 작성', formHTML, footerHTML);
@@ -4051,7 +4408,7 @@
         await addDoc(collection(db, 'notices'), data);
         showToast('공지를 등록했습니다.');
         if (wasPublic) await sendNoticeEmail(title);
-        navigate('notice-list');
+        navigate('info-management');
       }
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
@@ -4083,7 +4440,7 @@
       await deleteDoc(doc(db, 'notices', noticeId));
       showToast('공지가 삭제되었습니다.');
       closeModal();
-      navigate('notice-list');
+      navigate('info-management');
     } catch(e) { showToast('삭제 실패: ' + e.message, 'error'); }
   };
 

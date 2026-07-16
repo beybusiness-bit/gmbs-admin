@@ -376,7 +376,8 @@ Firebase 첫 설정이라면: `webapp-builder` 스킬 `references/firebase-setup
 13단계 상품 승인 워크플로우 — 상품 등록/수정 요청 대기열, 승인/거절 처리, 공급가격·판매수수료율 입력, 정가 자동 산정 로직 — ✅ 완료 (retail_price_auto = ceil(supply/(1-rate/100)/100)*100)
 14단계 정산(Settlement) 스키마 및 관리 화면 — 정산 데이터 모델 확정, 지급 상태 관리, 세무/증빙 상태 관리 (실제 자동 생성은 gmbs-functions 완성 후 연결) — ✅ 완료
 15단계 Activity Log 화면 — 브랜드별 변경 이력 조회 화면 (자동 기록 로직은 1차로 admin 클라이언트에서 직접 기록, 추후 gmbs-functions의 Firestore 트리거로 이관 예정) — ✅ 완료 (writeActivityLog() + loadBrandActivity() 구현, 브랜드 상세 팝업 내 이력 섹션)
-16단계 공지사항(Notice) 관리 — 작성/수정/게시 상태 관리 — ✅ 완료 (사이드바 메뉴 추가, 목록/작성/수정/게시상태 기능)
+~~16단계 공지사항(Notice) 관리~~ → **[변경: vendor 온보딩·FAQ와 통합 관리를 위해 "안내 관리" 메뉴로 확장]**
+16단계 안내 관리 메뉴 — 공지사항(작성/수정/게시상태), 안내 페이지 작성(가입 전 안내·가입 후 안내 카드 CRUD+순서변경+이미지업로드), 자주하는 질문 정리(카테고리별 FAQ CRUD+순서변경) — ✅ 완료
 17단계 문의(Inquiry) 관리 — vendor가 등록한 문의 목록 조회 및 답변 작성 — ✅ 완료 (사이드바 메뉴 추가, 목록/상세/답변 작성 기능)
 추가 이메일 설정 페이지(EmailJS 연동 설정, 트리거별 템플릿 연결·활성화 관리) — ✅ 완료 (vendor.gmbs.kr과 공유 Firebase 프로젝트의 email_configs 컬렉션 사용)
 
@@ -489,6 +490,20 @@ activity_log/{logId}
 notices/{noticeId}
   title, content, pinned(bool), status(공개|비공개), created_by, created_at, updated_at
   // admin만 씀, vendor는 읽기 전용
+
+onboarding_cards/{cardId}              // 신규 — vendor 안내 위저드용
+  audience('public'|'member'),         // public=가입 전 안내, member=가입 후 안내
+  order,                               // audience 그룹 내 정렬 순서
+  title, body,
+  image_url, image_alt,               // Firebase Storage 업로드 (권장 1200×675px, 최대 2MB)
+  cta_type(none|apply|faq_link|continue),
+  active, created_at, updated_at
+  // admin만 write. vendor(gmbs-vendor)에서 read (로그인 여부 무관)
+
+faq_items/{faqId}                      // 신규 — vendor FAQ 화면용
+  category(입점신청|상품등록입고|진열판매|정산세무|교환환불회수|시스템이용|정책계약),
+  question, answer, order, active, created_at, updated_at
+  // admin만 write. vendor에서 read (로그인 여부 무관)
 
 inquiries/{inquiryId}
   brand_id, person_id, title, content, status(답변대기|답변완료),
