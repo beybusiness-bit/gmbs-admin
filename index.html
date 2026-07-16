@@ -444,9 +444,9 @@
       const brands = brandsSnap.docs.map(d => d.data());
       const products = productsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-      const activeBrands   = brands.filter(b => b.active !== false).length;
-      const activeProducts = products.filter(p => p.status === '판매중').length;
-      const stoppedProducts = products.filter(p => p.status === '판매중지').length;
+      const activeBrands   = brands.filter(b => b.onboarding_status === '승인').length;
+      const activeProducts = products.filter(p => p.approval_status === '승인').length;
+      const stoppedProducts = products.filter(p => p.approval_status === '판매중지').length;
       const indivProducts  = products.filter(p => p.tracking_type === 'individual').length;
 
       /* SKU 수: 모든 상품의 skus 서브컬렉션을 병렬로 조회 */
@@ -478,8 +478,8 @@
 
       container.innerHTML = [
         '<div class="dashboard-grid">',
-        statCard('브랜드', activeBrands, '총 ' + brands.length + '개 (비활성 ' + (brands.length - activeBrands) + '개)'),
-        statCard('상품', activeProducts, '판매중 · 판매중지 ' + stoppedProducts + '개'),
+        statCard('브랜드', activeBrands, '총 ' + brands.length + '개 (승인 완료 기준)'),
+        statCard('상품', activeProducts, '승인 · 판매중지 ' + stoppedProducts + '개'),
         statCard('SKU (옵션 조합)', totalSkus, '개체관리 상품 ' + indivProducts + '개 포함'),
         statCard('오늘 바코드 출력', todayPrinted, today + ' 기준'),
         '</div>',
@@ -1202,6 +1202,7 @@
     window._brandPage = 1;
 
     document.getElementById('page-header-actions').innerHTML =
+      '<button class="btn btn-secondary" id="btn-bulk-brand-status" onclick="bulkChangeBrandStatus()" style="display:none;">🔄 입점상태 변경</button>' +
       '<button class="btn btn-secondary" id="btn-export-brands" onclick="exportSelectedBrands()" style="display:none;">📥 선택 내보내기</button>' +
       '<button class="btn btn-primary" onclick="openBrandModal(null)">➕ 새 브랜드 등록</button>';
 
@@ -1222,7 +1223,7 @@
         '<option value="">전체 유형</option><option value="PB">PB</option><option value="위탁">위탁</option><option value="매입">매입</option>' +
         '</select>' +
         '<select id="bl-onboarding-filter" onchange="window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
-        '<option value="">전체 입점상태</option><option value="심사중">심사중</option><option value="승인">승인</option><option value="거절">거절</option><option value="종료">종료</option>' +
+        '<option value="">전체 입점상태</option><option value="미계약">미계약</option><option value="계약완료">계약완료</option><option value="심사중">심사중</option><option value="승인">승인</option><option value="거절">거절</option><option value="종료">종료</option>' +
         '</select>' +
         '<select id="bl-page-size" onchange="window._brandPageSize=parseInt(this.value);window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
@@ -1235,7 +1236,7 @@
         '<div class="card"><div class="table-wrap"><table id="bl-table">' +
         '<thead><tr>' +
         '<th style="width:36px;padding-left:16px;"><input type="checkbox" id="bl-chk-all" onchange="toggleAllBrands(this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></th>' +
-        '<th style="width:80px;"></th><th>브랜드코드</th><th>브랜드명</th><th>거래유형</th><th>입점 상태</th><th>활성</th><th>마지막 상품번호</th>' +
+        '<th style="width:80px;"></th><th>브랜드코드</th><th>브랜드명</th><th>거래유형</th><th>입점 상태</th><th>마지막 상품번호</th>' +
         '</tr></thead>' +
         '<tbody id="bl-tbody"></tbody></table></div></div>';
 
@@ -1275,13 +1276,15 @@
 
   function updateBrandExportBtn() {
     const btn = document.getElementById('btn-export-brands');
-    if (!btn) return;
+    const bulkBtn = document.getElementById('btn-bulk-brand-status');
     const cnt = (window._brandSelected || new Set()).size;
-    if (cnt > 0) {
-      btn.style.display = '';
-      btn.textContent = '📥 선택 내보내기 (' + cnt + '개)';
-    } else {
-      btn.style.display = 'none';
+    if (btn) {
+      if (cnt > 0) { btn.style.display = ''; btn.textContent = '📥 선택 내보내기 (' + cnt + '개)'; }
+      else btn.style.display = 'none';
+    }
+    if (bulkBtn) {
+      if (cnt > 0) { bulkBtn.style.display = ''; bulkBtn.textContent = '🔄 입점상태 변경 (' + cnt + '개)'; }
+      else bulkBtn.style.display = 'none';
     }
   }
 
@@ -1314,16 +1317,17 @@
     if (!tbody) return;
 
     if (pageItems.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--gray-400);padding:32px;">검색 결과가 없습니다.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--gray-400);padding:32px;">검색 결과가 없습니다.</td></tr>';
     } else {
       const onboardingBadge = s => ({
+        '미계약': '<span class="badge badge-gray">미계약</span>',
+        '계약완료': '<span class="badge badge-blue">계약완료</span>',
         '심사중': '<span class="badge badge-yellow">심사중</span>',
         '승인': '<span class="badge badge-green">승인</span>',
         '거절': '<span class="badge badge-red">거절</span>',
         '종료': '<span class="badge badge-gray">종료</span>'
-      }[s] || '<span class="badge badge-gray">미설정</span>');
+      }[s] || '<span class="badge badge-gray">미계약</span>');
       tbody.innerHTML = pageItems.map(b => {
-        const activeText = b.active !== false ? '<span class="badge badge-green">활성</span>' : '<span class="badge badge-gray">비활성</span>';
         const logoCell = b.logo_url
           ? '<img src="' + esc(b.logo_url) + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);" />'
           : '<div style="width:72px;height:72px;border-radius:8px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:20px;">🏬</div>';
@@ -1335,7 +1339,6 @@
           '<td style="font-weight:600;">' + esc(b.brand_name) + '</td>' +
           '<td>' + (typeLabel[b.brand_type] || b.brand_type || '-') + '</td>' +
           '<td>' + onboardingBadge(b.onboarding_status) + '</td>' +
-          '<td>' + activeText + '</td>' +
           '<td style="color:var(--gray-400);font-size:12px;">' + (b.last_product_number || '000') + '</td>' +
           '</tr>';
       }).join('');
@@ -1450,11 +1453,6 @@
         opt('위탁', '위탁 (판매 후 정산)', bType) +
         opt('매입', '매입 (직접 구매)', bType) +
         '</select>', true),
-      formGroup('상태', 'f-active',
-        '<select class="form-select" id="f-active">' +
-        '<option value="true"' + (existing && existing.active === false ? '' : ' selected') + '>활성 (사용 중)</option>' +
-        '<option value="false"' + (existing && existing.active === false ? ' selected' : '') + '>비활성 (사용 중지)</option>' +
-        '</select>'),
       '</div>',
       '</div>',
 
@@ -1594,7 +1592,6 @@
     const brandName = document.getElementById('f-brand-name').value.trim();
     const brandCode = document.getElementById('f-brand-code').value.trim().toUpperCase();
     const brandType = document.getElementById('f-brand-type').value;
-    const active = document.getElementById('f-active').value === 'true';
 
     /* 유효성 검사 */
     if (!brandName) { showToast('브랜드명을 입력해주세요.', 'error'); return; }
@@ -1617,12 +1614,12 @@
         brand_name: brandName,
         brand_code: brandCode,
         brand_type: brandType,
-        active: active,
         updated_at: now
       };
 
       if (!brandId) {
         data.last_product_number = '000';
+        data.onboarding_status = '미계약';
         data.created_at = now;
       }
 
@@ -1716,8 +1713,6 @@
       const fi = b.fee_info || {};
       const ci = b.contact_info || {};
       const typeLabel = { PB: '<span class="badge badge-blue">PB</span>', '위탁': '<span class="badge badge-yellow">위탁</span>', '매입': '<span class="badge badge-green">매입</span>' };
-      const activeText = b.active !== false ? '<span class="badge badge-green">활성</span>' : '<span class="badge badge-gray">비활성</span>';
-
       function row(label, value) {
         if (!value) return '';
         return '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--gray-100);">' +
@@ -1732,11 +1727,13 @@
       const bizTypeText = si.business_type === 'individual' ? '개인(사업자없음)' : (si.business_type === 'business' ? '사업자' : '');
 
       const onboardingBadge = s => ({
+        '미계약': '<span class="badge badge-gray">미계약</span>',
+        '계약완료': '<span class="badge badge-blue">계약완료</span>',
         '심사중': '<span class="badge badge-yellow">심사중</span>',
         '승인': '<span class="badge badge-green">승인</span>',
         '거절': '<span class="badge badge-red">거절</span>',
         '종료': '<span class="badge badge-gray">종료</span>'
-      }[s] || '<span class="badge badge-gray">미설정</span>');
+      }[s] || '<span class="badge badge-gray">미계약</span>');
 
       const body = '<div>' +
         logoSection +
@@ -1744,8 +1741,7 @@
         row('브랜드코드', '<code style="background:var(--blue-light);color:var(--blue);padding:2px 7px;border-radius:4px;">' + esc(b.brand_code) + '</code>') +
         row('브랜드명', '<strong>' + esc(b.brand_name) + '</strong>') +
         row('거래 유형', typeLabel[b.brand_type] || esc(b.brand_type || '')) +
-        row('활성 상태', activeText) +
-        row('입점 심사', onboardingBadge(b.onboarding_status) +
+        row('입점 상태', onboardingBadge(b.onboarding_status) +
           (b.onboarding_status_reason ? ' <span style="font-size:12px;color:var(--gray-500);">— ' + esc(b.onboarding_status_reason) + '</span>' : '') +
           ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openOnboardingModal(\'' + brandId + '\',\'' + esc(b.onboarding_status || '') + '\')">상태 변경</button>') +
         row('브랜드 소개', esc(b.brand_desc || '')) +
@@ -2145,6 +2141,21 @@
       }
 
       await writeActivityLog(brandId, 'contract', contractId || 'new', contractId ? 'updated' : 'created', null, { version, signed_at, end_at });
+
+      // 새 계약 추가 시 브랜드가 '미계약' 상태이면 '계약완료'로 자동 전환
+      if (!contractId) {
+        try {
+          const bsnap = await getDoc(doc(db, 'brands', brandId));
+          if (bsnap.exists() && (bsnap.data().onboarding_status === '미계약' || !bsnap.data().onboarding_status)) {
+            await updateDoc(doc(db, 'brands', brandId), {
+              onboarding_status: '계약완료',
+              onboarding_status_changed_at: today(),
+              updated_at: today()
+            });
+          }
+        } catch(e2) {}
+      }
+
       showToast(contractId ? '계약을 수정했습니다.' : '계약을 추가했습니다.');
       openBrandDetail(brandId);
     } catch(e) {
@@ -2161,7 +2172,7 @@
       '<div class="form-group"><label class="form-label">승인 상태</label>' +
       '<select class="form-input" id="approval-status">' +
       '<option value="">미설정</option>' +
-      ['승인대기','승인','거절'].map(o => '<option value="' + o + '"' + (o === currentStatus ? ' selected' : '') + '>' + o + '</option>').join('') +
+      ['승인대기','승인','거절','판매중지'].map(o => '<option value="' + o + '"' + (o === currentStatus ? ' selected' : '') + '>' + o + '</option>').join('') +
       '</select></div>' +
       '<div id="approval-extra"></div>';
     const footerHTML =
@@ -2182,14 +2193,15 @@
     if (status === '승인') {
       el.innerHTML =
         '<div style="background:var(--blue-light);border-radius:8px;padding:14px;margin-bottom:4px;">' +
-        '<div style="font-size:12px;font-weight:600;color:var(--blue);margin-bottom:10px;">공급가격 / 수수료율 입력</div>' +
+        '<div style="font-size:12px;font-weight:600;color:var(--blue);margin-bottom:10px;">공급가 / 수수료율 / 정가 (양방향 계산)</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
-        '<div class="form-group" style="margin:0;"><label class="form-label">공급가격 (원)</label>' +
-        '<input class="form-input" id="approval-supply-price" type="number" min="0" placeholder="0" /></div>' +
+        '<div class="form-group" style="margin:0;"><label class="form-label">공급가 (원) <span style="font-size:11px;color:var(--gray-400);">입력 시 정가 자동 계산</span></label>' +
+        '<input class="form-input" id="approval-supply-price" type="number" min="0" placeholder="0" oninput="calcRetailFromSupply()" /></div>' +
         '<div class="form-group" style="margin:0;"><label class="form-label">중개수수료율 (%)</label>' +
-        '<input class="form-input" id="approval-commission-rate" type="number" min="0" max="100" step="0.1" placeholder="0" oninput="calcRetailPrice()" /></div>' +
+        '<input class="form-input" id="approval-commission-rate" type="number" min="0" max="100" step="0.1" placeholder="0" oninput="calcRetailFromSupply()" /></div>' +
         '</div>' +
-        '<div style="margin-top:10px;font-size:12px;color:var(--gray-600);">정가(자동산정): <strong id="retail-price-preview">—</strong></div>' +
+        '<div style="margin-top:12px;" class="form-group"><label class="form-label">정가 (원) <span style="font-size:11px;color:var(--gray-400);">직접 입력 시 공급가 자동 계산</span></label>' +
+        '<input class="form-input" id="approval-retail-price" type="number" min="0" placeholder="0" oninput="calcSupplyFromRetail()" /></div>' +
         '</div>';
     } else if (status === '거절') {
       el.innerHTML =
@@ -2200,19 +2212,30 @@
     }
   }
 
-  window.calcRetailPrice = function() {
+  // 공급가 + 수수료율 → 정가 자동 계산
+  window.calcRetailFromSupply = function() {
     const supply = parseFloat((document.getElementById('approval-supply-price') || {}).value) || 0;
     const rate = parseFloat((document.getElementById('approval-commission-rate') || {}).value) || 0;
-    const preview = document.getElementById('retail-price-preview');
-    if (!preview) return;
-    if (supply > 0 && rate > 0) {
-      // 정가 = 공급가 / (1 - 수수료율/100), 100원 단위 올림
-      const retail = Math.ceil(supply / (1 - rate / 100) / 100) * 100;
-      preview.textContent = retail.toLocaleString() + '원';
-    } else {
-      preview.textContent = '—';
+    const retailEl = document.getElementById('approval-retail-price');
+    if (!retailEl) return;
+    if (supply > 0 && rate >= 0 && rate < 100) {
+      retailEl.value = Math.ceil(supply / (1 - rate / 100) / 100) * 100;
     }
   };
+
+  // 정가 + 수수료율 → 공급가 자동 계산
+  window.calcSupplyFromRetail = function() {
+    const retail = parseFloat((document.getElementById('approval-retail-price') || {}).value) || 0;
+    const rate = parseFloat((document.getElementById('approval-commission-rate') || {}).value) || 0;
+    const supplyEl = document.getElementById('approval-supply-price');
+    if (!supplyEl) return;
+    if (retail > 0 && rate >= 0 && rate < 100) {
+      supplyEl.value = Math.floor(retail * (1 - rate / 100));
+    }
+  };
+
+  // 하위 호환용 (기존 코드에서 호출되는 경우)
+  window.calcRetailPrice = window.calcRetailFromSupply;
 
   window.saveApproval = async function(productId) {
     const status = document.getElementById('approval-status').value;
@@ -2221,11 +2244,10 @@
     if (status === '승인') {
       const supply = parseFloat((document.getElementById('approval-supply-price') || {}).value) || 0;
       const rate = parseFloat((document.getElementById('approval-commission-rate') || {}).value) || 0;
+      const retail = parseFloat((document.getElementById('approval-retail-price') || {}).value) || 0;
       data.supply_price = supply;
       data.commission_rate = rate;
-      if (supply > 0 && rate > 0) {
-        data.retail_price_auto = Math.ceil(supply / (1 - rate / 100) / 100) * 100;
-      }
+      data.retail_price_auto = retail || (supply > 0 && rate >= 0 ? Math.ceil(supply / (1 - rate / 100) / 100) * 100 : 0);
     } else if (status === '거절') {
       const reason = ((document.getElementById('approval-rejection-reason') || {}).value || '').trim();
       if (!reason) { showToast('거절 사유를 입력해주세요.', 'error'); return; }
@@ -2246,7 +2268,7 @@
      12단계 입점 심사 워크플로우
   ════════════════════════════════ */
   window.openOnboardingModal = function(brandId, currentStatus) {
-    const opts = ['심사중', '승인', '거절', '종료'];
+    const opts = ['미계약', '계약완료', '심사중', '승인', '거절', '종료'];
     const formHTML =
       '<div class="form-group"><label class="form-label">입점 상태</label>' +
       '<select class="form-input" id="onboarding-status">' +
@@ -2275,6 +2297,75 @@
       showToast('입점 상태를 변경했습니다.');
       openBrandDetail(brandId);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  /* ── 일괄 입점상태 변경 ── */
+  window.bulkChangeBrandStatus = function() {
+    const ids = [...(window._brandSelected || new Set())];
+    if (!ids.length) return;
+    const opts = ['미계약', '계약완료', '심사중', '승인', '거절', '종료'];
+    const formHTML =
+      '<p style="font-size:13px;color:var(--gray-600);margin-bottom:14px;">선택된 <strong>' + ids.length + '</strong>개 브랜드의 입점상태를 일괄 변경합니다.</p>' +
+      '<div class="form-group"><label class="form-label">변경할 입점상태</label>' +
+      '<select class="form-input" id="bulk-onboarding-select">' +
+      opts.map(o => '<option value="' + o + '">' + o + '</option>').join('') +
+      '</select></div>' +
+      '<div class="form-group"><label class="form-label">사유 <span style="font-size:11px;color:var(--gray-400);">(선택)</span></label>' +
+      '<input class="form-input" id="bulk-onboarding-reason" placeholder="사유 입력..." /></div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      '<button class="btn btn-primary" onclick="applyBulkBrandStatus()">변경 적용</button>';
+    showModal('입점상태 일괄 변경', formHTML, footerHTML, 'sm');
+  };
+
+  window.applyBulkBrandStatus = async function() {
+    const ids = [...(window._brandSelected || new Set())];
+    const status = document.getElementById('bulk-onboarding-select').value;
+    const reason = (document.getElementById('bulk-onboarding-reason').value || '').trim();
+    try {
+      await Promise.all(ids.map(id => updateDoc(doc(db, 'brands', id), {
+        onboarding_status: status,
+        onboarding_status_reason: reason,
+        onboarding_status_changed_at: today(),
+        updated_at: today()
+      })));
+      showToast(ids.length + '개 브랜드 입점상태를 "' + status + '"으로 변경했습니다.');
+      window._brandSelected = new Set();
+      closeModal();
+      navigate('brand-list');
+    } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
+  };
+
+  /* ── 일괄 승인상태 변경 ── */
+  window.bulkChangeProductStatus = function() {
+    const ids = [...(window._productSelected || new Set())];
+    if (!ids.length) return;
+    const opts = ['승인대기', '승인', '거절', '판매중지'];
+    const formHTML =
+      '<p style="font-size:13px;color:var(--gray-600);margin-bottom:14px;">선택된 <strong>' + ids.length + '</strong>개 상품의 승인상태를 일괄 변경합니다.</p>' +
+      '<div class="form-group"><label class="form-label">변경할 승인상태</label>' +
+      '<select class="form-input" id="bulk-approval-select">' +
+      opts.map(o => '<option value="' + o + '">' + o + '</option>').join('') +
+      '</select></div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      '<button class="btn btn-primary" onclick="applyBulkProductStatus()">변경 적용</button>';
+    showModal('승인상태 일괄 변경', formHTML, footerHTML, 'sm');
+  };
+
+  window.applyBulkProductStatus = async function() {
+    const ids = [...(window._productSelected || new Set())];
+    const status = document.getElementById('bulk-approval-select').value;
+    try {
+      await Promise.all(ids.map(id => updateDoc(doc(db, 'products', id), {
+        approval_status: status,
+        updated_at: today()
+      })));
+      showToast(ids.length + '개 상품 승인상태를 "' + status + '"으로 변경했습니다.');
+      window._productSelected = new Set();
+      closeModal();
+      navigate('product-list');
+    } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
   };
 
   /* ── 파일 업로드 UI ── */
@@ -2319,6 +2410,7 @@
     window._productPage = 1;
 
     document.getElementById('page-header-actions').innerHTML =
+      '<button class="btn btn-secondary" id="btn-bulk-product-status" onclick="bulkChangeProductStatus()" style="display:none;">🔄 승인상태 변경</button>' +
       '<button class="btn btn-secondary" id="btn-export-products" onclick="exportSelectedProducts()" style="display:none;">📥 선택 내보내기 (토스포스)</button>' +
       '<button class="btn btn-primary" onclick="openProductModal()">➕ 새 상품 등록</button>';
 
@@ -2331,11 +2423,8 @@
       container.innerHTML =
         '<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">' +
         '<input class="form-input" id="pl-search" placeholder="상품명, 상품ID, 브랜드코드 검색..." style="flex:1;min-width:220px;" oninput="window._productPage=1;filterProductList()" />' +
-        '<select id="pl-status-filter" onchange="window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
-        '<option value="">전체 상태</option><option value="판매중">판매중</option><option value="판매중지">판매중지</option>' +
-        '</select>' +
         '<select id="pl-approval-filter" onchange="window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
-        '<option value="">전체 승인상태</option><option value="승인대기">승인대기</option><option value="승인">승인</option><option value="거절">거절</option>' +
+        '<option value="">전체 상태</option><option value="승인대기">승인대기</option><option value="승인">승인</option><option value="거절">거절</option><option value="판매중지">판매중지</option>' +
         '</select>' +
         '<select id="pl-page-size" onchange="window._productPageSize=parseInt(this.value);window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
@@ -2348,7 +2437,7 @@
         '<div class="card"><div class="table-wrap"><table id="pl-table">' +
         '<thead><tr>' +
         '<th style="width:36px;padding-left:16px;"><input type="checkbox" id="pl-chk-all" onchange="toggleAllProducts(this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></th>' +
-        '<th style="width:80px;"></th><th>상품 ID</th><th>상품명</th><th>브랜드</th><th>관리방식</th><th>판매가</th><th>상태</th><th>등록일</th>' +
+        '<th style="width:80px;"></th><th>상품 ID</th><th>상품명</th><th>브랜드</th><th>관리방식</th><th>판매가</th><th>승인상태</th><th>등록일</th>' +
         '</tr></thead>' +
         '<tbody id="pl-tbody"></tbody></table></div></div>';
 
@@ -2388,28 +2477,28 @@
 
   function updateProductExportBtn() {
     const btn = document.getElementById('btn-export-products');
-    if (!btn) return;
+    const bulkBtn = document.getElementById('btn-bulk-product-status');
     const cnt = (window._productSelected || new Set()).size;
-    if (cnt > 0) {
-      btn.style.display = '';
-      btn.textContent = '📥 선택 내보내기 (' + cnt + '개, 토스포스)';
-    } else {
-      btn.style.display = 'none';
+    if (btn) {
+      if (cnt > 0) { btn.style.display = ''; btn.textContent = '📥 선택 내보내기 (' + cnt + '개, 토스포스)'; }
+      else btn.style.display = 'none';
+    }
+    if (bulkBtn) {
+      if (cnt > 0) { bulkBtn.style.display = ''; bulkBtn.textContent = '🔄 승인상태 변경 (' + cnt + '개)'; }
+      else bulkBtn.style.display = 'none';
     }
   }
 
   window.filterProductList = function() {
     const term = ((document.getElementById('pl-search') || {}).value || '').trim().toLowerCase();
-    const statusFilter = ((document.getElementById('pl-status-filter') || {}).value || '');
     const approvalFilter = ((document.getElementById('pl-approval-filter') || {}).value || '');
     const filtered = (window._allProducts || []).filter(function(p) {
       const matchTerm = !term ||
         (p.product_name || '').toLowerCase().includes(term) ||
         (p.id || '').toLowerCase().includes(term) ||
         (p.brand_code || '').toLowerCase().includes(term);
-      const matchStatus = !statusFilter || p.status === statusFilter;
       const matchApproval = !approvalFilter || p.approval_status === approvalFilter;
-      return matchTerm && matchStatus && matchApproval;
+      return matchTerm && matchApproval;
     });
     window._productFiltered = filtered;
 
@@ -2421,7 +2510,12 @@
     const pageItems = filtered.slice((pg-1)*ps, pg*ps);
 
     const trackingLabel = { quantity: '<span class="badge badge-blue">수량</span>', individual: '<span class="badge badge-yellow">개체</span>' };
-    const statusLabel = { '판매중': '<span class="badge badge-green">판매중</span>', '판매중지': '<span class="badge badge-gray">판매중지</span>' };
+    const approvalLabel = {
+      '승인대기': '<span class="badge badge-yellow">승인대기</span>',
+      '승인': '<span class="badge badge-green">승인</span>',
+      '거절': '<span class="badge badge-red">거절</span>',
+      '판매중지': '<span class="badge badge-gray">판매중지</span>'
+    };
 
     const tbody = document.getElementById('pl-tbody');
     const countEl = document.getElementById('pl-count');
@@ -2429,7 +2523,7 @@
     if (!tbody) return;
 
     if (pageItems.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--gray-400);padding:32px;">검색 결과가 없습니다.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--gray-400);padding:32px;">검색 결과가 없습니다.</td></tr>';
     } else {
       tbody.innerHTML = pageItems.map(p => {
         const thumb = p.image_url
@@ -2444,7 +2538,7 @@
         '<td>' + esc(p.brand_code) + '</td>' +
         '<td>' + (trackingLabel[p.tracking_type] || p.tracking_type) + '</td>' +
         '<td>' + (p.base_price || 0).toLocaleString() + '원</td>' +
-        '<td>' + (statusLabel[p.status] || p.status) + '</td>' +
+        '<td>' + (approvalLabel[p.approval_status] || '<span class="badge badge-gray">미설정</span>') + '</td>' +
         '<td style="color:var(--gray-400);font-size:12px;">' + (p.created_at ? p.created_at.slice(0,10) : '-') + '</td>' +
         '</tr>';
       }).join('');
@@ -2508,8 +2602,9 @@
       const approvalBadge = s => ({
         '승인대기': '<span class="badge badge-yellow">승인대기</span>',
         '승인': '<span class="badge badge-green">승인</span>',
-        '거절': '<span class="badge badge-red">거절</span>'
-      }[s] || '');
+        '거절': '<span class="badge badge-red">거절</span>',
+        '판매중지': '<span class="badge badge-gray">판매중지</span>'
+      }[s] || '<span class="badge badge-gray">미설정</span>');
 
       const approvalRow = p.approval_status
         ? row('승인 상태', approvalBadge(p.approval_status) +
@@ -2897,7 +2992,7 @@
     let brands;
     try {
       const snap = await getDocs(collection(db, 'brands'));
-      brands = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(b => b.active !== false);
+      brands = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(b => b.onboarding_status !== '거절' && b.onboarding_status !== '종료');
       brands.sort((a, b) => (a.brand_name || '').localeCompare(b.brand_name || ''));
     } catch(e) {
       document.querySelector('#modal-container .modal-body').innerHTML =
@@ -3974,7 +4069,7 @@
       const brands = allBrands.filter(b => selected.has(b.id));
       const rows = [['브랜드명','브랜드코드','거래유형','상태','마지막 상품번호','등록일']];
       brands.forEach(b => {
-        rows.push([b.brand_name, b.brand_code, b.brand_type, b.active === false ? '사용중지' : '활성', b.last_product_number || '000', fmtDate(b.created_at)]);
+        rows.push([b.brand_name, b.brand_code, b.brand_type, b.onboarding_status || '미계약', b.last_product_number || '000', fmtDate(b.created_at)]);
       });
       const ws = XLSX.utils.aoa_to_sheet(rows);
       const wb = XLSX.utils.book_new();
