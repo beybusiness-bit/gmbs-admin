@@ -128,7 +128,9 @@ LOCAL_PATH 폴더가 존재하는가?
 
 #### Step 3. 배포 방식: GitHub Pages
 
-별도 브랜치 없이 main에서 직접 작업한다. 수정 → 커밋 → push → GitHub Pages 자동 배포. PR 과정 불필요. push 배포 횟수 제한 없음.
+**이 저장소 전용 세션 (gmbs-admin 직접 세션):** 별도 브랜치 없이 main에서 직접 작업한다. 수정 → 커밋 → push → GitHub Pages 자동 배포. PR 과정 불필요. push 배포 횟수 제한 없음.
+
+**다른 저장소 세션에서 gmbs-admin을 add_repo로 추가해 작업하는 경우 (예: gmbs-vendor 세션):** main 직접 push 금지. 반드시 `claude/기능명-랜덤` 형태의 별도 브랜치에서 작업하고 PR을 올린다. 이유: 동시에 진행 중인 gmbs-admin 직접 세션과 충돌 방지.
 
 ---
 
