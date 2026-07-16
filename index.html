@@ -2168,6 +2168,15 @@
       '해지': '<span class="badge badge-red">해지</span>'
     }[s] || '<span class="badge badge-gray">' + esc(s || '') + '</span>');
 
+    // 유캔사인 전자계약 상태 배지
+    const eSignBadge = s => ({
+      '발송대기': '<span class="badge badge-gray" title="전자계약 아직 미발송">📄 발송대기</span>',
+      '발송됨':   '<span class="badge badge-blue" title="서명 대기 중">✉️ 발송됨</span>',
+      '서명진행중': '<span class="badge badge-yellow" title="담당자 서명 진행 중">✍️ 서명진행중</span>',
+      '체결완료': '<span class="badge badge-green" title="전자계약 완료">✅ 체결완료</span>',
+      '취소됨':   '<span class="badge badge-red" title="전자계약 취소">❌ 취소됨</span>',
+    }[s] || '');
+
     let html = '<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">' +
       '<button class="btn btn-secondary" style="font-size:12px;padding:5px 12px;" onclick="openContractModal(\'' + brandId + '\',null)">+ 계약 추가</button>' +
       '</div>';
@@ -2177,12 +2186,27 @@
     } else {
       contracts.forEach(c => {
         const period = (c.signed_at || '?') + ' ~ ' + (c.end_at || '무기한');
-        html += '<div style="padding:12px 0;border-bottom:1px solid var(--gray-100);">' +
-          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">' +
+        const ucStatus = c.ucansign_status || c.status_ucansign || '';
+        const canSend = !ucStatus || ucStatus === '발송대기' || ucStatus === '취소됨';
+        html += '<div style="padding:14px 0;border-bottom:1px solid var(--gray-100);">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">' +
           '<span style="font-size:13px;font-weight:600;color:var(--gray-800);">v' + esc(String(c.version || 1)) + '</span>' +
           statusBadge(c.status) +
+          (ucStatus ? eSignBadge(ucStatus) : '') +
           (c.auto_renew ? '<span style="font-size:11px;color:var(--gray-400);">자동갱신</span>' : '') +
           '<span style="font-size:12px;color:var(--gray-500);margin-left:4px;">' + esc(period) + '</span>' +
+          '</div>' +
+          // 전자계약 발송 버튼 (functions 콜러블 연결 예정)
+          '<div style="background:var(--gray-50);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;">' +
+          '<span style="font-size:12px;color:var(--gray-600);flex:1;">전자계약 (유캔사인)' +
+          (c.ucansign_document_id ? ' · <span style="font-family:monospace;font-size:11px;color:var(--gray-400);">' + esc(c.ucansign_document_id) + '</span>' : '') +
+          (c.sent_at ? ' · 발송 ' + esc(fmtDate(c.sent_at)) : '') +
+          (c.completed_at ? ' · 체결 ' + esc(fmtDate(c.completed_at)) : '') +
+          '</span>' +
+          (canSend
+            ? '<button class="btn btn-primary" style="font-size:11px;padding:5px 12px;" onclick="sendElectronicContract(\'' + brandId + '\',\'' + c.id + '\')">' +
+              (ucStatus === '취소됨' ? '🔄 다시 발송' : '📨 전자계약 발송') + '</button>'
+            : '') +
           '</div>' +
           '<div style="display:flex;gap:6px;">' +
           (c.file_url
@@ -2195,6 +2219,52 @@
     }
     sec.innerHTML = html;
   }
+
+  // 전자계약 발송 — gmbs-functions 콜러블 함수 호출
+  window.sendElectronicContract = async function(brandId, contractId) {
+    if (!confirm('전자계약 발송을 진행하시겠습니까?\n담당자에게 카카오톡/이메일로 서명 요청이 발송됩니다.')) return;
+    try {
+      // 브랜드·계약·담당자 정보 수집
+      const [brandSnap, contractSnap, personsSnap] = await Promise.all([
+        getDoc(doc(db, 'brands', brandId)),
+        getDoc(doc(db, 'brands', brandId, 'contracts', contractId)),
+        getDocs(query(collection(db, 'brands', brandId, 'persons'), where('active', '==', true))),
+      ]);
+      if (!brandSnap.exists() || !contractSnap.exists()) {
+        showToast('브랜드 또는 계약 정보를 찾을 수 없습니다.', 'error'); return;
+      }
+      const brand = brandSnap.data();
+      const contract = contractSnap.data();
+      const persons = personsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      if (persons.length === 0) {
+        showToast('담당자 정보가 없습니다. 먼저 담당자를 등록해주세요.', 'error'); return;
+      }
+
+      // functions 콜러블 함수 호출 (firebase/functions 모듈이 없으면 미구현 안내)
+      if (typeof firebase === 'undefined' || !firebase.functions) {
+        // gmbs-functions 미연결 상태 — 발송 상태만 임시로 업데이트
+        showToast('⚠️ gmbs-functions 미연결 상태입니다. functions 완성 후 실제 발송이 가능합니다.', 'error');
+        return;
+      }
+
+      const sendContract = firebase.functions().httpsCallable('sendElectronicContract');
+      const result = await sendContract({
+        brandId,
+        contractId,
+        brandName: brand.brand_name || '',
+        persons: persons.map(p => ({ name: p.name, email: p.email, phone: p.phone })),
+        contractVersion: contract.version || 1,
+        signedAt: contract.signed_at || '',
+        endAt: contract.end_at || '',
+      });
+
+      showToast('전자계약 발송 완료: ' + (result.data && result.data.message || '성공'));
+      openBrandDetail(brandId);
+    } catch(e) {
+      showToast('발송 실패: ' + e.message, 'error');
+    }
+  };
 
   window.openContractModal = async function(brandId, contractId) {
     let existing = null;
@@ -4191,12 +4261,12 @@
     if (!wrap) return;
     wrap.innerHTML = '<div class="spinner" style="margin:40px auto;"></div>';
     try {
+      // orderBy 제거 → 복합 인덱스 불필요, 클라이언트에서 정렬
       const snap = await getDocs(query(
         collection(db, 'onboarding_cards'),
-        where('audience', '==', _obAudience),
-        orderBy('order', 'asc')
+        where('audience', '==', _obAudience)
       ));
-      const cards = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const cards = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
       if (cards.length === 0) {
         wrap.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🃏</div><div class="empty-state-text">카드가 없습니다. 카드를 추가해보세요.</div></div>';
         return;
@@ -4233,10 +4303,9 @@
     try {
       const snap = await getDocs(query(
         collection(db, 'onboarding_cards'),
-        where('audience', '==', _obAudience),
-        orderBy('order', 'asc')
+        where('audience', '==', _obAudience)
       ));
-      const cards = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const cards = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
       const idx = cards.findIndex(c => c.id === cardId);
       if (idx < 0) return;
       const swapIdx = idx + dir;
@@ -4352,8 +4421,8 @@
     container.innerHTML = addBtnHtml + '<div id="faq-list-content"><div class="spinner" style="margin:40px auto;"></div></div>';
     const listEl = container.querySelector('#faq-list-content');
     try {
-      const snap = await getDocs(query(collection(db, 'faq_items'), orderBy('order', 'asc')));
-      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const snap = await getDocs(collection(db, 'faq_items'));
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
       if (all.length === 0) {
         listEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❓</div><div class="empty-state-text">등록된 FAQ가 없습니다.</div></div>';
         return;
@@ -4397,8 +4466,8 @@
 
   window.moveFaq = async function(faqId, category, dir) {
     try {
-      const snap = await getDocs(query(collection(db, 'faq_items'), where('category', '==', category), orderBy('order', 'asc')));
-      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const snap = await getDocs(query(collection(db, 'faq_items'), where('category', '==', category)));
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
       const idx = items.findIndex(i => i.id === faqId);
       if (idx < 0) return;
       const swapIdx = idx + dir;
