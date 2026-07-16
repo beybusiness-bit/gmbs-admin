@@ -1922,12 +1922,14 @@
     const sec = document.getElementById('brand-activity-section');
     if (!sec) return;
     try {
+      // orderBy 제거 → 복합 인덱스 불필요, 클라이언트에서 정렬
       const snap = await getDocs(query(
         collection(db, 'activity_log'),
-        where('brand_id', '==', brandId),
-        orderBy('created_at', 'desc')
+        where('brand_id', '==', brandId)
       ));
-      const logs = snap.docs.map(d => ({ id: d.id, ...d.data() })).slice(0, 20);
+      const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+        .slice(0, 20);
       if (logs.length === 0) {
         sec.innerHTML = '<div style="font-size:13px;color:var(--gray-400);padding:8px 0;">변경 이력이 없습니다.</div>';
         return;
