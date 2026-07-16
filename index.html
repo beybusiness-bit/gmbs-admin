@@ -273,6 +273,9 @@
       <div class="nav-item" data-page="settings" onclick="navigate('settings')">
         <span class="icon">⚙️</span> 설정
       </div>
+      <div class="nav-item" data-page="email-settings" onclick="navigate('email-settings')">
+        <span class="icon">✉️</span> 이메일 설정
+      </div>
     </div>
     <div class="sidebar-footer">
       <div class="user-info">
@@ -406,7 +409,8 @@
     'settlement-list': '정산',
     'notice-list': '공지사항',
     'inquiry-list': '문의',
-    settings: '설정'
+    settings: '설정',
+    'email-settings': '이메일 설정'
   };
 
   window.navigate = async (page, params) => {
@@ -427,6 +431,7 @@
     else if (page === 'inquiry-list') await renderInquiryList(content);
     else if (page === 'barcode') renderBarcodePage(content);
     else if (page === 'settings') await renderSettings(content);
+    else if (page === 'email-settings') await renderEmailSettings(content);
     else renderComingSoon(content, PAGE_TITLES[page] || page);
   };
 
@@ -4131,6 +4136,113 @@
   function renderComingSoon(container, name) {
     container.innerHTML = '<div class="coming-soon"><div class="coming-soon-icon">🔧</div><div class="coming-soon-label">' + name + '</div><div class="coming-soon-sub">다음 단계에서 구현됩니다.</div></div>';
   }
+
+  /* ════════════════════════════════
+     이메일 설정 페이지
+  ════════════════════════════════ */
+  const EMAIL_TRIGGERS = [
+    { id: 'application_received', label: '브랜드 등록 신청 접수', desc: '신규 브랜드가 등록 신청을 제출했을 때 신청자에게 자동 발송' },
+    { id: 'join_received',        label: '기존 브랜드 합류 신청 접수', desc: '기존 브랜드에 합류 신청을 제출했을 때 신청자에게 자동 발송' },
+    { id: 'brand_approved',       label: '입점 승인 완료', desc: '관리자가 브랜드 입점을 승인했을 때 담당자에게 자동 발송' },
+    { id: 'brand_rejected',       label: '입점 거절', desc: '관리자가 브랜드 입점을 거절했을 때 신청자에게 자동 발송' },
+    { id: 'product_registered',   label: '상품 등록 승인', desc: '관리자가 상품 등록을 승인했을 때 담당자에게 자동 발송' },
+    { id: 'product_rejected',     label: '상품 등록 거절', desc: '관리자가 상품 등록을 거절했을 때 담당자에게 자동 발송' },
+  ];
+
+  async function renderEmailSettings(container) {
+    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+    try {
+      const [settingsSnap, configsSnap] = await Promise.all([
+        getDoc(doc(db, 'email_configs', '_settings')),
+        getDocs(collection(db, 'email_configs')),
+      ]);
+      const settings = settingsSnap.exists() ? settingsSnap.data() : {};
+      const configs = {};
+      configsSnap.docs.forEach(function(d) { if (d.id !== '_settings') configs[d.id] = d.data(); });
+
+      container.innerHTML =
+        '<div style="max-width:800px;">' +
+
+        /* ── EmailJS 연동 설정 ── */
+        '<div class="card" style="margin-bottom:24px;padding:24px;">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">EmailJS 연동 설정</div>' +
+        '<div style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">EmailJS에서 발급받은 키를 입력하세요. <a href="https://www.emailjs.com/" target="_blank" style="color:var(--blue);text-decoration:none;">EmailJS 콘솔 →</a></div>' +
+        '<div class="form-row" style="margin-bottom:16px;">' +
+        '<div class="form-group">' +
+        '<label class="form-label">Public Key</label>' +
+        '<input id="ejs-public-key" class="form-input" type="text" placeholder="예: O4qANYVjrmK5AdY4i" value="' + esc(settings.public_key || '') + '" />' +
+        '<div class="form-hint">EmailJS → Account → Public Key</div>' +
+        '</div>' +
+        '<div class="form-group">' +
+        '<label class="form-label">Service ID</label>' +
+        '<input id="ejs-service-id" class="form-input" type="text" placeholder="예: service_xxxxxxx" value="' + esc(settings.service_id || '') + '" />' +
+        '<div class="form-hint">EmailJS → Email Services → Service ID</div>' +
+        '</div>' +
+        '</div>' +
+        '<button onclick="saveEmailJsSettings()" class="btn btn-primary">저장</button>' +
+        '</div>' +
+
+        /* ── 트리거 설정 ── */
+        '<div class="card" style="padding:24px;">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">이메일 발송 트리거 설정</div>' +
+        '<div style="font-size:12px;color:var(--gray-500);margin-bottom:12px;">각 이벤트에 연결할 EmailJS 템플릿 ID를 입력하고 활성화하세요.</div>' +
+        '<div style="background:var(--blue-light);border-radius:8px;padding:12px 14px;margin-bottom:20px;font-size:12px;color:var(--gray-700);line-height:1.7;">' +
+        '<b>💡 템플릿에서 사용 가능한 변수</b><br>' +
+        '<code>{{to_email}}</code> 수신자 이메일 &nbsp;·&nbsp; <code>{{to_name}}</code> 수신자 이름 &nbsp;·&nbsp; <code>{{brand_name}}</code> 브랜드명 &nbsp;·&nbsp; <code>{{reply_to}}</code> 답장 이메일' +
+        '</div>' +
+        EMAIL_TRIGGERS.map(function(t) {
+          var cfg = configs[t.id] || {};
+          var isEnabled = !!(cfg.enabled && cfg.template_id);
+          return '<div style="padding:16px 0;border-bottom:1px solid var(--gray-100);">' +
+            '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">' +
+            '<div style="flex:1;min-width:180px;">' +
+            '<div style="font-weight:600;font-size:13px;color:var(--gray-900);">' + esc(t.label) + '</div>' +
+            '<div style="font-size:12px;color:var(--gray-400);margin-top:2px;">' + esc(t.desc) + '</div>' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+            '<input id="tpl-' + t.id + '" class="form-input" type="text" placeholder="template_xxxxxxx" value="' + esc(cfg.template_id || '') + '" style="width:200px;" />' +
+            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;font-size:13px;font-weight:500;">' +
+            '<input type="checkbox" id="chk-' + t.id + '" ' + (isEnabled ? 'checked' : '') + ' style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue);" />' +
+            '활성화' +
+            '</label>' +
+            '<button onclick="saveTriggerConfig(\'' + t.id + '\')" class="btn btn-secondary" style="white-space:nowrap;">저장</button>' +
+            '</div>' +
+            '</div>' +
+            '</div>';
+        }).join('') +
+        '</div>' +
+
+        '</div>';
+    } catch(e) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">불러오지 못했습니다: ' + esc(e.message) + '</div></div>';
+    }
+  }
+
+  window.saveEmailJsSettings = async function() {
+    var publicKey = (document.getElementById('ejs-public-key') || {}).value.trim();
+    var serviceId = (document.getElementById('ejs-service-id') || {}).value.trim();
+    if (!publicKey || !serviceId) { showToast('Public Key와 Service ID를 모두 입력하세요.', 'error'); return; }
+    try {
+      await setDoc(doc(db, 'email_configs', '_settings'), { public_key: publicKey, service_id: serviceId, updated_at: new Date().toISOString() }, { merge: true });
+      showToast('EmailJS 설정 저장 완료', 'success');
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  window.saveTriggerConfig = async function(triggerId) {
+    var tplEl = document.getElementById('tpl-' + triggerId);
+    var chkEl = document.getElementById('chk-' + triggerId);
+    var templateId = tplEl ? tplEl.value.trim() : '';
+    var enabled = chkEl ? chkEl.checked : false;
+    try {
+      await setDoc(doc(db, 'email_configs', triggerId), {
+        trigger_event: triggerId,
+        template_id: templateId,
+        enabled: enabled && !!templateId,
+        updated_at: new Date().toISOString(),
+      }, { merge: true });
+      showToast('저장 완료', 'success');
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
 
   /* ── 유틸 ── */
   function statCard(label, value, sub) {

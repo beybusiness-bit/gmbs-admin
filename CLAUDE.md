@@ -129,7 +129,9 @@ LOCAL_PATH 폴더가 존재하는가?
 
 #### Step 3. 배포 방식: Vercel
 
-브랜치 push → Vercel 미리보기 URL 자동 생성. main 머지 → Vercel 프로덕션 자동 배포. PR 과정 불필요. push 배포 횟수 제한 없음.
+**이 저장소 전용 세션 (gmbs-admin 직접 세션):** 별도 브랜치 없이 main에서 직접 작업한다. 수정 → 커밋 → push → Vercel 프로덕션 자동 배포. PR 과정 불필요. push 배포 횟수 제한 없음.
+
+**다른 저장소 세션에서 gmbs-admin을 add_repo로 추가해 작업하는 경우 (예: gmbs-vendor 세션):** main 직접 push 금지. 반드시 `claude/기능명-랜덤` 형태의 별도 브랜치에서 작업하고 PR을 올린다. 이유: 동시에 진행 중인 gmbs-admin 직접 세션과 충돌 방지.
 
 ---
 
@@ -376,6 +378,29 @@ Firebase 첫 설정이라면: `webapp-builder` 스킬 `references/firebase-setup
 15단계 Activity Log 화면 — 브랜드별 변경 이력 조회 화면 (자동 기록 로직은 1차로 admin 클라이언트에서 직접 기록, 추후 gmbs-functions의 Firestore 트리거로 이관 예정) — ✅ 완료 (writeActivityLog() + loadBrandActivity() 구현, 브랜드 상세 팝업 내 이력 섹션)
 16단계 공지사항(Notice) 관리 — 작성/수정/게시 상태 관리 — ✅ 완료 (사이드바 메뉴 추가, 목록/작성/수정/게시상태 기능)
 17단계 문의(Inquiry) 관리 — vendor가 등록한 문의 목록 조회 및 답변 작성 — ✅ 완료 (사이드바 메뉴 추가, 목록/상세/답변 작성 기능)
+추가 이메일 설정 페이지(EmailJS 연동 설정, 트리거별 템플릿 연결·활성화 관리) — ✅ 완료 (vendor.gmbs.kr과 공유 Firebase 프로젝트의 email_configs 컬렉션 사용)
+
+---
+
+### 이메일 트리거 현황 및 추가 예정 목록
+
+**현재 구현된 트리거** (email_configs 컬렉션에서 관리):
+- `application_received` — 신규 브랜드 등록 신청 접수 시
+- `join_received` — 기존 브랜드 합류 신청 접수 시
+- `brand_approved` — 입점 승인 시
+- `brand_rejected` — 입점 거절 시
+- `product_registered` — 상품 등록 승인 시
+- `product_rejected` — 상품 등록 거절 시
+
+**향후 기능 확장 시 추가 예정인 트리거** (기능 구현 후 이메일 설정 페이지에 함께 추가):
+- `inventory_low` — 재고 부족 알림 (재고관리 기능 구현 후)
+- `inventory_out` — 재고 소진 알림 (재고관리 기능 구현 후)
+- `settlement_ready` — 정산 내역 생성 알림 (정산 기능 구현 후)
+- `settlement_paid` — 정산 지급 완료 알림 (정산 기능 구현 후)
+- `contract_expiring` — 계약 만료 임박 알림 (계약관리 기능 구현 후)
+- `product_stop` — 상품 판매중지 알림 (추후 필요 시)
+
+⚠️ **새 트리거 추가 방법**: admin/index.html의 `EMAIL_TRIGGERS` 배열에 항목 추가 + vendor/emailjs-config.js는 수정 불필요 (공통 sendEmail 함수가 trigger_event로 동적 처리).
 
 ---
 
