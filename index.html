@@ -263,7 +263,7 @@
         <span class="icon">🏬</span> 브랜드
       </div>
       <div class="nav-item" data-page="application-review" onclick="navigate('application-review')">
-        <span class="icon">📋</span> 입점 심사
+        <span class="icon">📋</span> 승인 관리
       </div>
       <div class="nav-item" data-page="settlement-list" onclick="navigate('settlement-list')">
         <span class="icon">💰</span> 정산
@@ -274,11 +274,8 @@
       <div class="nav-item" data-page="inquiry-list" onclick="navigate('inquiry-list')">
         <span class="icon">💬</span> 문의
       </div>
-      <div class="nav-item" data-page="settings" onclick="navigate('settings')">
-        <span class="icon">⚙️</span> 설정
-      </div>
       <div class="nav-item" data-page="email-settings" onclick="navigate('email-settings')">
-        <span class="icon">✉️</span> 이메일 설정
+        <span class="icon">✉️</span> 이메일 알림
       </div>
     </div>
     <div class="sidebar-footer">
@@ -289,7 +286,10 @@
           <div class="user-email" id="user-email-display">-</div>
         </div>
       </div>
-      <button class="btn-logout" onclick="signOut()">로그아웃</button>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+        <button class="btn-logout" style="flex:1;" onclick="signOut()">로그아웃</button>
+        <button title="설정" onclick="navigate('settings')" data-page="settings" style="background:none;border:1px solid #475569;color:#94a3b8;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:14px;flex-shrink:0;" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='none'">⚙️</button>
+      </div>
     </div>
   </nav>
 
@@ -410,12 +410,12 @@
     'product-list': '상품',
     barcode: '바코드',
     'brand-list': '브랜드',
-    'application-review': '입점 심사',
+    'application-review': '승인 관리',
     'settlement-list': '정산',
     'notice-list': '공지사항',
     'inquiry-list': '문의',
     settings: '설정',
-    'email-settings': '이메일 설정'
+    'email-settings': '이메일 알림'
   };
 
   window.navigate = async (page, params) => {
@@ -1213,7 +1213,7 @@
     window._brandPage = 1;
 
     document.getElementById('page-header-actions').innerHTML =
-      '<button class="btn btn-secondary" id="btn-bulk-brand-status" onclick="bulkChangeBrandStatus()" style="display:none;">🔄 입점상태 변경</button>' +
+      '<button class="btn btn-secondary" id="btn-bulk-brand-status" onclick="bulkChangeBrandStatus()" style="display:none;">🔄 일괄 변경</button>' +
       '<button class="btn btn-secondary" id="btn-export-brands" onclick="exportSelectedBrands()" style="display:none;">📥 선택 내보내기</button>' +
       '<button class="btn btn-primary" onclick="openBrandModal(null)">➕ 새 브랜드 등록</button>';
 
@@ -1294,7 +1294,7 @@
       else btn.style.display = 'none';
     }
     if (bulkBtn) {
-      if (cnt > 0) { bulkBtn.style.display = ''; bulkBtn.textContent = '🔄 입점상태 변경 (' + cnt + '개)'; }
+      if (cnt > 0) { bulkBtn.style.display = ''; bulkBtn.textContent = '🔄 일괄 변경 (' + cnt + '개)'; }
       else bulkBtn.style.display = 'none';
     }
   }
@@ -1867,14 +1867,47 @@
     }
   }
 
+  function personInlineFormHTML(brandId, p, isEdit) {
+    const pid = p ? p.id : '';
+    const val = p || {};
+    const roleOpts = ['대표','운영 담당자','MD','마케팅 담당자','영업 담당자','기타'];
+    const roleSelects = roleOpts.map(r =>
+      '<option value="' + r + '"' + (val.role === r ? ' selected' : '') + '>' + r + '</option>'
+    ).join('');
+    return '<div id="person-inline-form" style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:10px;padding:16px;margin-bottom:12px;">' +
+      '<div style="font-size:13px;font-weight:600;color:var(--gray-700);margin-bottom:12px;">' + (isEdit ? '담당자 수정' : '담당자 추가') + '</div>' +
+      '<div class="form-row">' +
+        '<div class="form-group"><label class="form-label">이름 <span style="color:var(--red)">*</span></label>' +
+        '<input class="form-input" id="pif-name" value="' + esc(val.name || '') + '" placeholder="담당자 이름" /></div>' +
+        '<div class="form-group"><label class="form-label">역할/직책</label>' +
+        '<select class="form-input" id="pif-role"><option value="">선택 안 함</option>' + roleSelects + '</select></div>' +
+      '</div>' +
+      '<div class="form-row">' +
+        '<div class="form-group"><label class="form-label">전화번호</label>' +
+        '<input class="form-input" id="pif-phone" value="' + esc(fmtPhone(val.phone || '')) + '" placeholder="010-0000-0000" oninput="onPersonPhoneInput(this)" inputmode="numeric" /></div>' +
+        '<div class="form-group"><label class="form-label">연락용 이메일</label>' +
+        '<input class="form-input" id="pif-contact-email" value="' + esc(val.contact_email || val.email || '') + '" placeholder="업무용 이메일 (선택)" /></div>' +
+      '</div>' +
+      '<div class="form-group"><label class="form-label">vendor 로그인 구글 계정 <span style="color:var(--red)">*</span></label>' +
+      '<div class="form-hint" style="margin-bottom:4px;">vendor.gmbs.kr에 로그인할 구글 계정. 예: yourname@gmail.com</div>' +
+      '<input class="form-input" id="pif-login-email" value="' + esc(val.login_google_email || '') + '" placeholder="yourname@gmail.com" /></div>' +
+      (!isEdit ? '<div class="form-group"><label class="form-label">구글 계정 재확인 <span style="color:var(--red)">*</span></label>' +
+      '<input class="form-input" id="pif-login-email-confirm" placeholder="위와 동일하게 입력" /></div>' : '') +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">' +
+        '<button class="btn btn-secondary" style="font-size:12px;" onclick="cancelPersonInlineForm(\'' + brandId + '\')">취소</button>' +
+        '<button class="btn btn-primary" style="font-size:12px;" onclick="savePersonInline(\'' + brandId + '\',\'' + pid + '\',' + (isEdit?'true':'false') + ')">' + (isEdit ? '저장' : '추가') + '</button>' +
+      '</div>' +
+    '</div>';
+  }
+
   function renderPersonsSection(brandId, persons, sec) {
     const active = persons.filter(p => p.active !== false);
     const inactive = persons.filter(p => p.active === false);
-    const roleLabel = r => ({ owner: '대표', manager: '담당자', accountant: '정산담당', cs: 'CS' }[r] || r || '');
 
     let html = '<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">' +
-      '<button class="btn btn-secondary" style="font-size:12px;padding:5px 12px;" onclick="openPersonModal(\'' + brandId + '\',null)">+ 담당자 추가</button>' +
-      '</div>';
+      '<button class="btn btn-secondary" style="font-size:12px;padding:5px 12px;" onclick="showPersonInlineForm(\'' + brandId + '\')">+ 담당자 추가</button>' +
+      '</div>' +
+      '<div id="person-form-area"></div>';
 
     if (active.length === 0 && inactive.length === 0) {
       html += '<div style="font-size:13px;color:var(--gray-400);padding:12px 0;">등록된 담당자가 없습니다.</div>';
@@ -1884,14 +1917,15 @@
         return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--gray-100);' + dimStyle + '">' +
           '<div style="flex:1;">' +
           '<div style="font-size:13px;font-weight:600;color:var(--gray-800);">' + esc(p.name || '') +
-          (p.role ? ' <span style="font-size:11px;color:var(--blue);background:var(--blue-light);padding:1px 7px;border-radius:10px;font-weight:500;">' + esc(roleLabel(p.role)) + '</span>' : '') +
+          (p.role ? ' <span style="font-size:11px;color:var(--blue);background:var(--blue-light);padding:1px 7px;border-radius:10px;font-weight:500;">' + esc(p.role) + '</span>' : '') +
           (dim ? ' <span style="font-size:11px;color:var(--gray-400);">(비활성)</span>' : '') +
           '</div>' +
           (p.phone ? '<div style="font-size:12px;color:var(--gray-500);margin-top:2px;">📞 ' + esc(p.phone) + '</div>' : '') +
-          (p.email ? '<div style="font-size:12px;color:var(--gray-500);">✉️ ' + esc(p.email) + '</div>' : '') +
+          (p.contact_email || p.email ? '<div style="font-size:12px;color:var(--gray-500);">✉️ ' + esc(p.contact_email || p.email || '') + '</div>' : '') +
+          (p.login_google_email ? '<div style="font-size:11px;color:var(--gray-400);">🔐 ' + esc(p.login_google_email) + '</div>' : '') +
           '</div>' +
           '<div style="display:flex;gap:6px;">' +
-          '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openPersonModal(\'' + brandId + '\',\'' + p.id + '\')">수정</button>' +
+          '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="showPersonInlineForm(\'' + brandId + '\',\'' + p.id + '\')">수정</button>' +
           (dim
             ? '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="setPersonActive(\'' + brandId + '\',\'' + p.id + '\',true)">활성화</button>'
             : '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--gray-400);" onclick="setPersonActive(\'' + brandId + '\',\'' + p.id + '\',false)">비활성</button>') +
@@ -1937,85 +1971,74 @@
     el.setSelectionRange(pos + diff, pos + diff);
   };
 
-  window.openPersonModal = async function(brandId, personId) {
+  // 인라인 폼 표시 (brand detail 모달 내부에서 동작 — showModal 호출 없음)
+  window.showPersonInlineForm = async function(brandId, personId) {
+    const formArea = document.getElementById('person-form-area');
+    if (!formArea) return;
     let existing = null;
     if (personId) {
-      const snap = await getDoc(doc(db, 'brands', brandId, 'persons', personId));
-      if (snap.exists()) existing = { id: snap.id, ...snap.data() };
+      try {
+        const snap = await getDoc(doc(db, 'brands', brandId, 'persons', personId));
+        if (snap.exists()) existing = { id: snap.id, ...snap.data() };
+      } catch(e) {}
     }
-    const isEdit = !!existing;
-    const p = existing || {};
-    const roleOpt = v => '<option value="' + v + '"' + (p.role === v ? ' selected' : '') + '>';
-    const formHTML =
-      '<div class="form-group"><label class="form-label">이름 <span style="color:var(--red);">*</span></label>' +
-      '<input class="form-input" id="person-name" value="' + esc(p.name || '') + '" placeholder="담당자 이름" /></div>' +
-      '<div class="form-group"><label class="form-label">역할/직책</label>' +
-      '<select class="form-input" id="person-role">' +
-      '<option value="">선택 안 함</option>' +
-      roleOpt('대표') + '대표</option>' +
-      roleOpt('운영 담당자') + '운영 담당자</option>' +
-      roleOpt('MD') + 'MD</option>' +
-      roleOpt('마케팅 담당자') + '마케팅 담당자</option>' +
-      roleOpt('영업 담당자') + '영업 담당자</option>' +
-      roleOpt('기타') + '기타</option>' +
-      '</select></div>' +
-      '<div class="form-group"><label class="form-label">전화번호</label>' +
-      '<input class="form-input" id="person-phone" value="' + esc(fmtPhone(p.phone || '')) + '" placeholder="010-0000-0000" oninput="onPersonPhoneInput(this)" inputmode="numeric" /></div>' +
-      '<div class="form-group"><label class="form-label">연락용 이메일</label>' +
-      '<div class="form-hint" style="margin-bottom:4px;">업무 메일 주소 (필수 아님)</div>' +
-      '<input class="form-input" id="person-contact-email" value="' + esc(p.contact_email || p.email || '') + '" placeholder="업무용 이메일" /></div>' +
-      '<div class="form-group"><label class="form-label">vendor 로그인 구글 계정 <span style="color:var(--red);">*</span></label>' +
-      '<div class="form-hint" style="margin-bottom:4px;">vendor.gmbs.kr 로그인에 사용할 구글 계정 이메일 (오타 주의)</div>' +
-      '<input class="form-input" id="person-login-email" value="' + esc(p.login_google_email || '') + '" placeholder="google@gmail.com" /></div>' +
-      (!isEdit ? '<div class="form-group"><label class="form-label">구글 계정 재확인 <span style="color:var(--red);">*</span></label>' +
-      '<input class="form-input" id="person-login-email-confirm" placeholder="위와 동일하게 입력" /></div>' : '');
-
-    const footerHTML =
-      '<button class="btn btn-secondary" onclick="openBrandDetail(\'' + brandId + '\')">취소</button>' +
-      '<button class="btn btn-primary" onclick="savePerson(\'' + brandId + '\',\'' + (personId || '') + '\')">' + (isEdit ? '저장' : '추가') + '</button>';
-
-    showModal(isEdit ? '담당자 수정' : '담당자 추가', formHTML, footerHTML);
+    formArea.innerHTML = personInlineFormHTML(brandId, existing, !!personId);
+    formArea.querySelector('#pif-name') && formArea.querySelector('#pif-name').focus();
   };
 
-  window.savePerson = async function(brandId, personId) {
-    const name = (document.getElementById('person-name').value || '').trim();
+  window.cancelPersonInlineForm = function(brandId) {
+    const formArea = document.getElementById('person-form-area');
+    if (formArea) formArea.innerHTML = '';
+  };
+
+  window.savePersonInline = async function(brandId, personId, isEdit) {
+    const getVal = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+    const name = getVal('pif-name');
     if (!name) { showToast('이름을 입력해주세요.', 'error'); return; }
-    const loginEmail = (document.getElementById('person-login-email').value || '').trim();
+    const loginEmail = getVal('pif-login-email');
     if (!loginEmail) { showToast('vendor 로그인 구글 계정을 입력해주세요.', 'error'); return; }
-    if (!personId) {
-      // 신규 추가: 이메일 재확인 체크
-      const loginEmailConfirm = (document.getElementById('person-login-email-confirm').value || '').trim();
+    if (!isEdit) {
+      const loginEmailConfirm = getVal('pif-login-email-confirm');
       if (loginEmail !== loginEmailConfirm) { showToast('구글 계정 이메일이 일치하지 않습니다.', 'error'); return; }
     }
     const data = {
       name,
-      role: document.getElementById('person-role').value || '',
-      phone: (document.getElementById('person-phone').value || '').replace(/\D/g, '').replace(/(\d{2,3})(\d{3,4})(\d{4})/, '$1-$2-$3'),
-      contact_email: (document.getElementById('person-contact-email').value || '').trim(),
+      role: getVal('pif-role'),
+      phone: getVal('pif-phone').replace(/\D/g, '').replace(/(\d{2,3})(\d{3,4})(\d{4})/, '$1-$2-$3'),
+      contact_email: getVal('pif-contact-email'),
       login_google_email: loginEmail,
       active: true,
       updated_at: today()
     };
+    // 저장 버튼 비활성화 (중복 클릭 방지)
+    const saveBtn = document.querySelector('#person-form-area .btn-primary');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '저장 중...'; }
     try {
       let savedPersonId = personId;
-      if (personId) {
+      if (isEdit && personId) {
         await updateDoc(doc(db, 'brands', brandId, 'persons', personId), data);
       } else {
         data.created_at = today();
         const ref = await addDoc(collection(db, 'brands', brandId, 'persons'), data);
         savedPersonId = ref.id;
-        // 신규 담당자 등록 시 vendor_accounts 초대 문서 생성
         await setDoc(doc(db, 'vendor_accounts', loginEmail), {
-          uid: null,
-          brand_id: brandId,
-          person_id: savedPersonId,
-          status: '초대됨',
-          created_at: today()
+          uid: null, brand_id: brandId, person_id: savedPersonId,
+          status: '초대됨', created_at: today()
         }, { merge: false });
       }
-      showToast(personId ? '담당자를 수정했습니다.' : '담당자를 추가하고 vendor 계정을 초대했습니다.');
-      openBrandDetail(brandId);
-    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+      showToast(isEdit ? '담당자를 수정했습니다.' : '담당자를 추가하고 vendor 계정을 초대했습니다.');
+      // 인라인으로 섹션만 갱신 (모달 유지)
+      const sec = document.getElementById('brand-persons-section');
+      if (sec) await loadBrandPersons(brandId);
+    } catch(e) {
+      showToast('저장 실패: ' + e.message, 'error');
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = isEdit ? '저장' : '추가'; }
+    }
+  };
+
+  // 하위 호환: openPersonModal은 showPersonInlineForm으로 리다이렉트
+  window.openPersonModal = function(brandId, personId) {
+    window.showPersonInlineForm(brandId, personId || null);
   };
 
   /* ════════════════════════════════
@@ -2335,69 +2358,108 @@
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
 
-  /* ── 일괄 입점상태 변경 ── */
+  /* ── 일괄 변경 (브랜드) ── */
   window.bulkChangeBrandStatus = function() {
     const ids = [...(window._brandSelected || new Set())];
     if (!ids.length) return;
-    const opts = ['미계약', '계약완료', '심사중', '승인', '거절', '종료'];
+    const onboardingOpts = ['미계약', '계약완료', '심사중', '승인', '거절', '종료'];
+    const typeOpts = ['PB', '위탁', '매입', '기타'];
     const formHTML =
-      '<p style="font-size:13px;color:var(--gray-600);margin-bottom:14px;">선택된 <strong>' + ids.length + '</strong>개 브랜드의 입점상태를 일괄 변경합니다.</p>' +
-      '<div class="form-group"><label class="form-label">변경할 입점상태</label>' +
-      '<select class="form-input" id="bulk-onboarding-select">' +
-      opts.map(o => '<option value="' + o + '">' + o + '</option>').join('') +
-      '</select></div>' +
-      '<div class="form-group"><label class="form-label">사유 <span style="font-size:11px;color:var(--gray-400);">(선택)</span></label>' +
-      '<input class="form-input" id="bulk-onboarding-reason" placeholder="사유 입력..." /></div>';
+      '<p style="font-size:13px;color:var(--gray-600);margin-bottom:16px;">선택된 <strong>' + ids.length + '</strong>개 브랜드에 적용할 항목을 선택하세요. 체크한 항목만 변경됩니다.</p>' +
+      '<div class="form-group" style="margin-bottom:16px;">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px;cursor:pointer;">' +
+      '<input type="checkbox" id="bulk-chk-onboarding" style="width:15px;height:15px;accent-color:var(--blue);" onchange="document.getElementById(\'bulk-onboarding-select\').disabled=!this.checked" />' +
+      '입점상태 변경' +
+      '</label>' +
+      '<select class="form-input" id="bulk-onboarding-select" disabled>' +
+      onboardingOpts.map(o => '<option value="' + o + '">' + o + '</option>').join('') +
+      '</select>' +
+      '<input class="form-input" id="bulk-onboarding-reason" placeholder="사유 (선택)" style="margin-top:8px;" />' +
+      '</div>' +
+      '<div class="form-group">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px;cursor:pointer;">' +
+      '<input type="checkbox" id="bulk-chk-type" style="width:15px;height:15px;accent-color:var(--blue);" onchange="document.getElementById(\'bulk-brand-type-select\').disabled=!this.checked" />' +
+      '거래유형 변경' +
+      '</label>' +
+      '<select class="form-input" id="bulk-brand-type-select" disabled>' +
+      typeOpts.map(o => '<option value="' + o + '">' + o + '</option>').join('') +
+      '</select>' +
+      '</div>';
     const footerHTML =
       '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
       '<button class="btn btn-primary" onclick="applyBulkBrandStatus()">변경 적용</button>';
-    showModal('입점상태 일괄 변경', formHTML, footerHTML, 'sm');
+    showModal('브랜드 일괄 변경', formHTML, footerHTML, 'sm');
   };
 
   window.applyBulkBrandStatus = async function() {
     const ids = [...(window._brandSelected || new Set())];
-    const status = document.getElementById('bulk-onboarding-select').value;
-    const reason = (document.getElementById('bulk-onboarding-reason').value || '').trim();
+    const chkOnboarding = document.getElementById('bulk-chk-onboarding');
+    const chkType = document.getElementById('bulk-chk-type');
+    const updateData = { updated_at: today() };
+    if (chkOnboarding && chkOnboarding.checked) {
+      const status = document.getElementById('bulk-onboarding-select').value;
+      const reason = (document.getElementById('bulk-onboarding-reason').value || '').trim();
+      updateData.onboarding_status = status;
+      updateData.onboarding_status_reason = reason;
+      updateData.onboarding_status_changed_at = today();
+    }
+    if (chkType && chkType.checked) {
+      updateData.brand_type = document.getElementById('bulk-brand-type-select').value;
+    }
+    if (Object.keys(updateData).length <= 1) { showToast('변경할 항목을 하나 이상 선택하세요.', 'error'); return; }
     try {
-      await Promise.all(ids.map(id => updateDoc(doc(db, 'brands', id), {
-        onboarding_status: status,
-        onboarding_status_reason: reason,
-        onboarding_status_changed_at: today(),
-        updated_at: today()
-      })));
-      showToast(ids.length + '개 브랜드 입점상태를 "' + status + '"으로 변경했습니다.');
+      await Promise.all(ids.map(id => updateDoc(doc(db, 'brands', id), updateData)));
+      showToast(ids.length + '개 브랜드 일괄 변경 완료.');
       window._brandSelected = new Set();
       closeModal();
       navigate('brand-list');
     } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
   };
 
-  /* ── 일괄 승인상태 변경 ── */
+  /* ── 일괄 변경 (상품) ── */
   window.bulkChangeProductStatus = function() {
     const ids = [...(window._productSelected || new Set())];
     if (!ids.length) return;
-    const opts = ['승인대기', '승인', '거절', '판매중지'];
+    const approvalOpts = ['승인대기', '승인', '거절', '판매중지'];
     const formHTML =
-      '<p style="font-size:13px;color:var(--gray-600);margin-bottom:14px;">선택된 <strong>' + ids.length + '</strong>개 상품의 승인상태를 일괄 변경합니다.</p>' +
-      '<div class="form-group"><label class="form-label">변경할 승인상태</label>' +
-      '<select class="form-input" id="bulk-approval-select">' +
-      opts.map(o => '<option value="' + o + '">' + o + '</option>').join('') +
-      '</select></div>';
+      '<p style="font-size:13px;color:var(--gray-600);margin-bottom:16px;">선택된 <strong>' + ids.length + '</strong>개 상품에 적용할 항목을 선택하세요. 체크한 항목만 변경됩니다.</p>' +
+      '<div class="form-group" style="margin-bottom:16px;">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px;cursor:pointer;">' +
+      '<input type="checkbox" id="bulk-chk-approval" style="width:15px;height:15px;accent-color:var(--blue);" onchange="document.getElementById(\'bulk-approval-select\').disabled=!this.checked" />' +
+      '승인상태 변경' +
+      '</label>' +
+      '<select class="form-input" id="bulk-approval-select" disabled>' +
+      approvalOpts.map(o => '<option value="' + o + '">' + o + '</option>').join('') +
+      '</select>' +
+      '</div>' +
+      '<div class="form-group">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px;cursor:pointer;">' +
+      '<input type="checkbox" id="bulk-chk-rejection" style="width:15px;height:15px;accent-color:var(--blue);" onchange="document.getElementById(\'bulk-rejection-reason\').disabled=!this.checked" />' +
+      '거절 사유 입력/수정' +
+      '</label>' +
+      '<input class="form-input" id="bulk-rejection-reason" placeholder="거절 사유" disabled />' +
+      '</div>';
     const footerHTML =
       '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
       '<button class="btn btn-primary" onclick="applyBulkProductStatus()">변경 적용</button>';
-    showModal('승인상태 일괄 변경', formHTML, footerHTML, 'sm');
+    showModal('상품 일괄 변경', formHTML, footerHTML, 'sm');
   };
 
   window.applyBulkProductStatus = async function() {
     const ids = [...(window._productSelected || new Set())];
-    const status = document.getElementById('bulk-approval-select').value;
+    const chkApproval = document.getElementById('bulk-chk-approval');
+    const chkRejection = document.getElementById('bulk-chk-rejection');
+    const updateData = { updated_at: today() };
+    if (chkApproval && chkApproval.checked) {
+      updateData.approval_status = document.getElementById('bulk-approval-select').value;
+    }
+    if (chkRejection && chkRejection.checked) {
+      updateData.rejection_reason = (document.getElementById('bulk-rejection-reason').value || '').trim();
+    }
+    if (Object.keys(updateData).length <= 1) { showToast('변경할 항목을 하나 이상 선택하세요.', 'error'); return; }
     try {
-      await Promise.all(ids.map(id => updateDoc(doc(db, 'products', id), {
-        approval_status: status,
-        updated_at: today()
-      })));
-      showToast(ids.length + '개 상품 승인상태를 "' + status + '"으로 변경했습니다.');
+      await Promise.all(ids.map(id => updateDoc(doc(db, 'products', id), updateData)));
+      showToast(ids.length + '개 상품 일괄 변경 완료.');
       window._productSelected = new Set();
       closeModal();
       navigate('product-list');
@@ -2446,7 +2508,7 @@
     window._productPage = 1;
 
     document.getElementById('page-header-actions').innerHTML =
-      '<button class="btn btn-secondary" id="btn-bulk-product-status" onclick="bulkChangeProductStatus()" style="display:none;">🔄 승인상태 변경</button>' +
+      '<button class="btn btn-secondary" id="btn-bulk-product-status" onclick="bulkChangeProductStatus()" style="display:none;">🔄 일괄 변경</button>' +
       '<button class="btn btn-secondary" id="btn-export-products" onclick="exportSelectedProducts()" style="display:none;">📥 선택 내보내기 (토스포스)</button>' +
       '<button class="btn btn-primary" onclick="openProductModal()">➕ 새 상품 등록</button>';
 
@@ -2520,7 +2582,7 @@
       else btn.style.display = 'none';
     }
     if (bulkBtn) {
-      if (cnt > 0) { bulkBtn.style.display = ''; bulkBtn.textContent = '🔄 승인상태 변경 (' + cnt + '개)'; }
+      if (cnt > 0) { bulkBtn.style.display = ''; bulkBtn.textContent = '🔄 일괄 변경 (' + cnt + '개)'; }
       else bulkBtn.style.display = 'none';
     }
   }
@@ -4217,23 +4279,37 @@
   async function renderApplicationReview(container) {
     container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
     try {
-      const [appsSnap, joinsSnap] = await Promise.all([
+      const [appsSnap, joinsSnap, productsSnap] = await Promise.all([
         getDocs(query(collection(db, 'brand_applications'), orderBy('submitted_at', 'desc'))),
-        getDocs(query(collection(db, 'brand_join_requests'), orderBy('submitted_at', 'desc')))
+        getDocs(query(collection(db, 'brand_join_requests'), orderBy('submitted_at', 'desc'))),
+        getDocs(query(collection(db, 'products'), orderBy('created_at', 'desc')))
       ]);
       const apps = appsSnap.docs.map(d => ({ id: d.id, _type: 'application', ...d.data() }));
       const joins = joinsSnap.docs.map(d => ({ id: d.id, _type: 'join', ...d.data() }));
-      renderApplicationReviewUI(container, apps, joins, 'application');
+      // 상품 승인대기 목록 (approval_status가 '승인대기'인 것만)
+      const pendingProducts = productsSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(p => p.approval_status === '승인대기');
+      renderApplicationReviewUI(container, apps, joins, pendingProducts, 'application');
     } catch(e) {
       container.innerHTML = '<div style="padding:40px;color:var(--red);">로드 실패: ' + esc(e.message) + '</div>';
     }
   }
 
-  function renderApplicationReviewUI(container, apps, joins, activeTab) {
+  function tabBtn(label, tab, activeTab, badge) {
+    const isActive = activeTab === tab;
+    return '<button onclick="switchApplicationTab(\'' + tab + '\')" style="padding:10px 20px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;' +
+      'color:' + (isActive ? 'var(--blue)' : 'var(--gray-500)') + ';border-bottom:' + (isActive ? '2px solid var(--blue)' : '2px solid transparent') + ';margin-bottom:-2px;">' +
+      label + (badge > 0 ? ' <span style="background:var(--red);color:#fff;border-radius:99px;padding:1px 7px;font-size:11px;margin-left:4px;">' + badge + '</span>' : '') +
+    '</button>';
+  }
+
+  function renderApplicationReviewUI(container, apps, joins, pendingProducts, activeTab) {
     const statusBadge = s => ({
       '제출됨': '<span class="badge badge-blue">제출됨</span>',
       '승인': '<span class="badge badge-green">승인</span>',
-      '거절': '<span class="badge badge-red">거절</span>'
+      '거절': '<span class="badge badge-red">거절</span>',
+      '승인대기': '<span class="badge badge-yellow">승인대기</span>'
     }[s] || '<span class="badge badge-gray">' + esc(s||'') + '</span>');
 
     const fmtDate = v => {
@@ -4242,15 +4318,15 @@
       return String(v).slice(0, 10);
     };
 
-    const rows = (list) => {
+    const appRows = (list) => {
       if (!list.length) return '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--gray-400);">신청 내역이 없습니다.</td></tr>';
       return list.map(item => {
         const isJoin = item._type === 'join';
         return '<tr>' +
           '<td>' + statusBadge(item.status) + '</td>' +
           '<td>' + esc(item.applicant_name || '-') + '</td>' +
-          '<td>' + esc(item.applicant_email || '-') + '</td>' +
-          '<td>' + esc(isJoin ? ('합류: ' + (item.target_brand_id || '-')) : (item.brand_name || '-')) + '</td>' +
+          '<td style="font-size:12px;">' + esc(item.applicant_email || '-') + '</td>' +
+          '<td>' + esc(isJoin ? (item._brandNameDisplay || item.target_brand_id || '-') : (item.brand_name || '-')) + '</td>' +
           '<td>' + esc(item.applicant_role || '-') + '</td>' +
           '<td>' + fmtDate(item.submitted_at) + '</td>' +
           '<td>' +
@@ -4262,20 +4338,27 @@
       }).join('');
     };
 
+    const productRows = (list) => {
+      if (!list.length) return '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--gray-400);">승인 대기 상품이 없습니다.</td></tr>';
+      return list.map(p => '<tr>' +
+        '<td>' + statusBadge(p.approval_status) + '</td>' +
+        '<td>' + esc(p.product_name || '-') + '</td>' +
+        '<td>' + esc(p.brand_code || '-') + '</td>' +
+        '<td>' + esc(p.id || '-') + '</td>' +
+        '<td>' + fmtDate(p.created_at) + '</td>' +
+        '<td><button class="btn btn-sm btn-primary" onclick="openProductApprovalFromReview(\'' + p.id + '\')">심사</button></td>' +
+      '</tr>').join('');
+    };
+
     const pendingApps  = apps.filter(a => a.status === '제출됨').length;
     const pendingJoins = joins.filter(j => j.status === '제출됨').length;
 
     container.innerHTML =
       '<div style="margin-bottom:20px;">' +
-        '<div style="display:flex;gap:8px;border-bottom:2px solid var(--gray-200);">' +
-          '<button class="tab-btn' + (activeTab === 'application' ? ' tab-active' : '') + '" ' +
-            'onclick="switchApplicationTab(\'application\')" style="padding:10px 20px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:' + (activeTab==='application'?'var(--blue)':'var(--gray-500)') + ';border-bottom:' + (activeTab==='application'?'2px solid var(--blue)':'2px solid transparent') + ';margin-bottom:-2px;">' +
-            '신규 브랜드 등록 신청 ' + (pendingApps > 0 ? '<span style="background:var(--red);color:#fff;border-radius:99px;padding:1px 7px;font-size:11px;margin-left:4px;">' + pendingApps + '</span>' : '') +
-          '</button>' +
-          '<button class="tab-btn' + (activeTab === 'join' ? ' tab-active' : '') + '" ' +
-            'onclick="switchApplicationTab(\'join\')" style="padding:10px 20px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:' + (activeTab==='join'?'var(--blue)':'var(--gray-500)') + ';border-bottom:' + (activeTab==='join'?'2px solid var(--blue)':'2px solid transparent') + ';margin-bottom:-2px;">' +
-            '기존 브랜드 합류 신청 ' + (pendingJoins > 0 ? '<span style="background:var(--red);color:#fff;border-radius:99px;padding:1px 7px;font-size:11px;margin-left:4px;">' + pendingJoins + '</span>' : '') +
-          '</button>' +
+        '<div style="display:flex;gap:0;border-bottom:2px solid var(--gray-200);">' +
+          tabBtn('브랜드 입점 신청', 'application', activeTab, pendingApps) +
+          tabBtn('상품 승인 신청', 'product', activeTab, pendingProducts.length) +
+          tabBtn('담당자 합류 신청', 'join', activeTab, pendingJoins) +
         '</div>' +
       '</div>' +
 
@@ -4283,7 +4366,15 @@
         '<div class="card" style="overflow-x:auto;">' +
           '<table class="data-table"><thead><tr>' +
             '<th>상태</th><th>신청자</th><th>이메일</th><th>브랜드명</th><th>역할</th><th>신청일</th><th>처리</th>' +
-          '</tr></thead><tbody>' + rows(apps) + '</tbody></table>' +
+          '</tr></thead><tbody>' + appRows(apps) + '</tbody></table>' +
+        '</div>' +
+      '</div>' +
+
+      '<div id="tab-product" style="display:' + (activeTab==='product'?'block':'none') + ';">' +
+        '<div class="card" style="overflow-x:auto;">' +
+          '<table class="data-table"><thead><tr>' +
+            '<th>상태</th><th>상품명</th><th>브랜드코드</th><th>상품ID</th><th>등록일</th><th>처리</th>' +
+          '</tr></thead><tbody>' + productRows(pendingProducts) + '</tbody></table>' +
         '</div>' +
       '</div>' +
 
@@ -4291,18 +4382,22 @@
         '<div class="card" style="overflow-x:auto;">' +
           '<table class="data-table"><thead><tr>' +
             '<th>상태</th><th>신청자</th><th>이메일</th><th>대상 브랜드</th><th>역할</th><th>신청일</th><th>처리</th>' +
-          '</tr></thead><tbody>' + rows(joins) + '</tbody></table>' +
+          '</tr></thead><tbody>' + appRows(joins) + '</tbody></table>' +
         '</div>' +
       '</div>';
 
-    // 탭 데이터를 전역에 보관 (switchApplicationTab에서 재사용)
-    window._appReviewData = { apps, joins };
+    window._appReviewData = { apps, joins, pendingProducts };
   }
 
   window.switchApplicationTab = function(tab) {
-    const d = window._appReviewData || { apps: [], joins: [] };
+    const d = window._appReviewData || { apps: [], joins: [], pendingProducts: [] };
     const content = document.getElementById('page-content');
-    renderApplicationReviewUI(content, d.apps, d.joins, tab);
+    renderApplicationReviewUI(content, d.apps, d.joins, d.pendingProducts, tab);
+  };
+
+  window.openProductApprovalFromReview = async function(productId) {
+    // 상품 상세 팝업의 승인 심사 모달을 직접 열기
+    await openApprovalModal(productId);
   };
 
   window.openApplicationDetail = async function(docId, type) {
@@ -4504,26 +4599,19 @@
       const configs = {};
       configsSnap.docs.forEach(function(d) { if (d.id !== '_settings') configs[d.id] = d.data(); });
 
+      var hasKeys = !!(settings.public_key && settings.service_id);
+
       container.innerHTML =
         '<div style="max-width:800px;">' +
 
-        /* ── EmailJS 연동 설정 ── */
-        '<div class="card" style="margin-bottom:24px;padding:24px;">' +
-        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">EmailJS 연동 설정</div>' +
-        '<div style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">EmailJS에서 발급받은 키를 입력하세요. <a href="https://www.emailjs.com/" target="_blank" style="color:var(--blue);text-decoration:none;">EmailJS 콘솔 →</a></div>' +
-        '<div class="form-row" style="margin-bottom:16px;">' +
-        '<div class="form-group">' +
-        '<label class="form-label">Public Key</label>' +
-        '<input id="ejs-public-key" class="form-input" type="text" placeholder="예: O4qANYVjrmK5AdY4i" value="' + esc(settings.public_key || '') + '" />' +
-        '<div class="form-hint">EmailJS → Account → Public Key</div>' +
+        /* ── 상단 연동 설정 버튼 ── */
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">' +
+        '<div style="font-size:13px;color:var(--gray-500);">' +
+          (hasKeys
+            ? '✅ EmailJS 연동 완료 <span style="color:var(--gray-400);font-size:12px;">(Service ID: ' + esc(settings.service_id || '') + ')</span>'
+            : '⚠️ EmailJS 연동이 설정되지 않았습니다.') +
         '</div>' +
-        '<div class="form-group">' +
-        '<label class="form-label">Service ID</label>' +
-        '<input id="ejs-service-id" class="form-input" type="text" placeholder="예: service_xxxxxxx" value="' + esc(settings.service_id || '') + '" />' +
-        '<div class="form-hint">EmailJS → Email Services → Service ID</div>' +
-        '</div>' +
-        '</div>' +
-        '<button onclick="saveEmailJsSettings()" class="btn btn-primary">저장</button>' +
+        '<button onclick="openEmailJsSettingsModal()" class="btn btn-secondary" style="white-space:nowrap;">⚙️ EmailJS 연동 설정</button>' +
         '</div>' +
 
         /* ── 트리거 설정 ── */
@@ -4557,10 +4645,32 @@
         '</div>' +
 
         '</div>';
+
+      window._emailJsCurrentSettings = settings;
     } catch(e) {
       container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">불러오지 못했습니다: ' + esc(e.message) + '</div></div>';
     }
   }
+
+  window.openEmailJsSettingsModal = function() {
+    var settings = window._emailJsCurrentSettings || {};
+    showModal(
+      'EmailJS 연동 설정',
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">EmailJS에서 발급받은 키를 입력하세요. <a href="https://www.emailjs.com/" target="_blank" style="color:var(--blue);text-decoration:none;">EmailJS 콘솔 →</a></div>' +
+      '<div class="form-group" style="margin-bottom:16px;">' +
+      '<label class="form-label">Public Key</label>' +
+      '<input id="ejs-public-key" class="form-input" type="text" placeholder="예: O4qANYVjrmK5AdY4i" value="' + esc(settings.public_key || '') + '" />' +
+      '<div class="form-hint">EmailJS → Account → Public Key</div>' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom:20px;">' +
+      '<label class="form-label">Service ID</label>' +
+      '<input id="ejs-service-id" class="form-input" type="text" placeholder="예: service_xxxxxxx" value="' + esc(settings.service_id || '') + '" />' +
+      '<div class="form-hint">EmailJS → Email Services → Service ID</div>' +
+      '</div>',
+      '<button onclick="closeModal()" class="btn btn-secondary">취소</button>' +
+      '<button onclick="saveEmailJsSettings()" class="btn btn-primary">저장</button>'
+    );
+  };
 
   window.saveEmailJsSettings = async function() {
     var publicKey = (document.getElementById('ejs-public-key') || {}).value.trim();
@@ -4569,6 +4679,9 @@
     try {
       await setDoc(doc(db, 'email_configs', '_settings'), { public_key: publicKey, service_id: serviceId, updated_at: new Date().toISOString() }, { merge: true });
       showToast('EmailJS 설정 저장 완료', 'success');
+      closeModal();
+      var mainContent = document.getElementById('main-content');
+      if (mainContent) renderEmailSettings(mainContent);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
 
