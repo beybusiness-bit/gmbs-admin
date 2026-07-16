@@ -12,6 +12,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -261,6 +262,9 @@
       <div class="nav-item" data-page="brand-list" onclick="navigate('brand-list')">
         <span class="icon">🏬</span> 브랜드
       </div>
+      <div class="nav-item" data-page="application-review" onclick="navigate('application-review')">
+        <span class="icon">📋</span> 입점 심사
+      </div>
       <div class="nav-item" data-page="settlement-list" onclick="navigate('settlement-list')">
         <span class="icon">💰</span> 정산
       </div>
@@ -406,6 +410,7 @@
     'product-list': '상품',
     barcode: '바코드',
     'brand-list': '브랜드',
+    'application-review': '입점 심사',
     'settlement-list': '정산',
     'notice-list': '공지사항',
     'inquiry-list': '문의',
@@ -426,6 +431,7 @@
     if (page === 'dashboard') await renderDashboard(content);
     else if (page === 'product-list') await renderProductList(content);
     else if (page === 'brand-list') await renderBrandList(content);
+    else if (page === 'application-review') await renderApplicationReview(content);
     else if (page === 'settlement-list') await renderSettlementList(content);
     else if (page === 'notice-list') await renderNoticeList(content);
     else if (page === 'inquiry-list') await renderInquiryList(content);
@@ -1943,18 +1949,26 @@
     const formHTML =
       '<div class="form-group"><label class="form-label">이름 <span style="color:var(--red);">*</span></label>' +
       '<input class="form-input" id="person-name" value="' + esc(p.name || '') + '" placeholder="담당자 이름" /></div>' +
-      '<div class="form-group"><label class="form-label">역할</label>' +
+      '<div class="form-group"><label class="form-label">역할/직책</label>' +
       '<select class="form-input" id="person-role">' +
       '<option value="">선택 안 함</option>' +
-      roleOpt('owner') + '대표</option>' +
-      roleOpt('manager') + '담당자</option>' +
-      roleOpt('accountant') + '정산담당</option>' +
-      roleOpt('cs') + 'CS</option>' +
+      roleOpt('대표') + '대표</option>' +
+      roleOpt('운영 담당자') + '운영 담당자</option>' +
+      roleOpt('MD') + 'MD</option>' +
+      roleOpt('마케팅 담당자') + '마케팅 담당자</option>' +
+      roleOpt('영업 담당자') + '영업 담당자</option>' +
+      roleOpt('기타') + '기타</option>' +
       '</select></div>' +
       '<div class="form-group"><label class="form-label">전화번호</label>' +
       '<input class="form-input" id="person-phone" value="' + esc(fmtPhone(p.phone || '')) + '" placeholder="010-0000-0000" oninput="onPersonPhoneInput(this)" inputmode="numeric" /></div>' +
-      '<div class="form-group"><label class="form-label">이메일</label>' +
-      '<input class="form-input" id="person-email" value="' + esc(p.email || '') + '" placeholder="example@email.com" /></div>';
+      '<div class="form-group"><label class="form-label">연락용 이메일</label>' +
+      '<div class="form-hint" style="margin-bottom:4px;">업무 메일 주소 (필수 아님)</div>' +
+      '<input class="form-input" id="person-contact-email" value="' + esc(p.contact_email || p.email || '') + '" placeholder="업무용 이메일" /></div>' +
+      '<div class="form-group"><label class="form-label">vendor 로그인 구글 계정 <span style="color:var(--red);">*</span></label>' +
+      '<div class="form-hint" style="margin-bottom:4px;">vendor.gmbs.kr 로그인에 사용할 구글 계정 이메일 (오타 주의)</div>' +
+      '<input class="form-input" id="person-login-email" value="' + esc(p.login_google_email || '') + '" placeholder="google@gmail.com" /></div>' +
+      (!isEdit ? '<div class="form-group"><label class="form-label">구글 계정 재확인 <span style="color:var(--red);">*</span></label>' +
+      '<input class="form-input" id="person-login-email-confirm" placeholder="위와 동일하게 입력" /></div>' : '');
 
     const footerHTML =
       '<button class="btn btn-secondary" onclick="openBrandDetail(\'' + brandId + '\')">취소</button>' +
@@ -1966,23 +1980,40 @@
   window.savePerson = async function(brandId, personId) {
     const name = (document.getElementById('person-name').value || '').trim();
     if (!name) { showToast('이름을 입력해주세요.', 'error'); return; }
+    const loginEmail = (document.getElementById('person-login-email').value || '').trim();
+    if (!loginEmail) { showToast('vendor 로그인 구글 계정을 입력해주세요.', 'error'); return; }
+    if (!personId) {
+      // 신규 추가: 이메일 재확인 체크
+      const loginEmailConfirm = (document.getElementById('person-login-email-confirm').value || '').trim();
+      if (loginEmail !== loginEmailConfirm) { showToast('구글 계정 이메일이 일치하지 않습니다.', 'error'); return; }
+    }
     const data = {
       name,
       role: document.getElementById('person-role').value || '',
       phone: (document.getElementById('person-phone').value || '').replace(/\D/g, '').replace(/(\d{2,3})(\d{3,4})(\d{4})/, '$1-$2-$3'),
-      email: (document.getElementById('person-email').value || '').trim(),
+      contact_email: (document.getElementById('person-contact-email').value || '').trim(),
+      login_google_email: loginEmail,
       active: true,
       updated_at: today()
     };
     try {
+      let savedPersonId = personId;
       if (personId) {
         await updateDoc(doc(db, 'brands', brandId, 'persons', personId), data);
       } else {
         data.created_at = today();
-        await addDoc(collection(db, 'brands', brandId, 'persons'), data);
+        const ref = await addDoc(collection(db, 'brands', brandId, 'persons'), data);
+        savedPersonId = ref.id;
+        // 신규 담당자 등록 시 vendor_accounts 초대 문서 생성
+        await setDoc(doc(db, 'vendor_accounts', loginEmail), {
+          uid: null,
+          brand_id: brandId,
+          person_id: savedPersonId,
+          status: '초대됨',
+          created_at: today()
+        }, { merge: false });
       }
-      showToast(personId ? '담당자를 수정했습니다.' : '담당자를 추가했습니다.');
-      // 브랜드 상세 팝업으로 복귀 (담당자 섹션 자동 갱신됨)
+      showToast(personId ? '담당자를 수정했습니다.' : '담당자를 추가하고 vendor 계정을 초대했습니다.');
       openBrandDetail(brandId);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
@@ -4148,6 +4179,319 @@
     { id: 'product_registered',   label: '상품 등록 승인', desc: '관리자가 상품 등록을 승인했을 때 담당자에게 자동 발송' },
     { id: 'product_rejected',     label: '상품 등록 거절', desc: '관리자가 상품 등록을 거절했을 때 담당자에게 자동 발송' },
   ];
+
+  /* ════════════════════════════════
+     EmailJS 공통 발송 헬퍼
+  ════════════════════════════════ */
+  async function sendEmailByTrigger(triggerEvent, params) {
+    // params: { toEmail, toName, brandName, ... }
+    try {
+      const [settingsSnap, triggerSnap] = await Promise.all([
+        getDoc(doc(db, 'email_configs', '_settings')),
+        getDoc(doc(db, 'email_configs', triggerEvent))
+      ]);
+      if (!settingsSnap.exists()) return;
+      const { public_key, service_id } = settingsSnap.data();
+      if (!public_key || !service_id) return;
+      if (!triggerSnap.exists()) return;
+      const { template_id, enabled } = triggerSnap.data();
+      if (!enabled || !template_id) return;
+      if (typeof emailjs !== 'undefined') {
+        emailjs.init({ publicKey: public_key });
+        await emailjs.send(service_id, template_id, {
+          to_email: params.toEmail,
+          to_name: params.toName || '',
+          brand_name: params.brandName || '',
+          rejection_reason: params.rejectionReason || '',
+          reply_to: 'noreply@gmbs.kr'
+        });
+      }
+    } catch(e) {
+      console.warn('EmailJS 발송 실패:', e);
+    }
+  }
+
+  /* ════════════════════════════════
+     입점 심사 (brand_applications / brand_join_requests)
+  ════════════════════════════════ */
+  async function renderApplicationReview(container) {
+    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+    try {
+      const [appsSnap, joinsSnap] = await Promise.all([
+        getDocs(query(collection(db, 'brand_applications'), orderBy('submitted_at', 'desc'))),
+        getDocs(query(collection(db, 'brand_join_requests'), orderBy('submitted_at', 'desc')))
+      ]);
+      const apps = appsSnap.docs.map(d => ({ id: d.id, _type: 'application', ...d.data() }));
+      const joins = joinsSnap.docs.map(d => ({ id: d.id, _type: 'join', ...d.data() }));
+      renderApplicationReviewUI(container, apps, joins, 'application');
+    } catch(e) {
+      container.innerHTML = '<div style="padding:40px;color:var(--red);">로드 실패: ' + esc(e.message) + '</div>';
+    }
+  }
+
+  function renderApplicationReviewUI(container, apps, joins, activeTab) {
+    const statusBadge = s => ({
+      '제출됨': '<span class="badge badge-blue">제출됨</span>',
+      '승인': '<span class="badge badge-green">승인</span>',
+      '거절': '<span class="badge badge-red">거절</span>'
+    }[s] || '<span class="badge badge-gray">' + esc(s||'') + '</span>');
+
+    const fmtDate = v => {
+      if (!v) return '-';
+      if (v && v.toDate) return v.toDate().toLocaleDateString('ko-KR');
+      return String(v).slice(0, 10);
+    };
+
+    const rows = (list) => {
+      if (!list.length) return '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--gray-400);">신청 내역이 없습니다.</td></tr>';
+      return list.map(item => {
+        const isJoin = item._type === 'join';
+        return '<tr>' +
+          '<td>' + statusBadge(item.status) + '</td>' +
+          '<td>' + esc(item.applicant_name || '-') + '</td>' +
+          '<td>' + esc(item.applicant_email || '-') + '</td>' +
+          '<td>' + esc(isJoin ? ('합류: ' + (item.target_brand_id || '-')) : (item.brand_name || '-')) + '</td>' +
+          '<td>' + esc(item.applicant_role || '-') + '</td>' +
+          '<td>' + fmtDate(item.submitted_at) + '</td>' +
+          '<td>' +
+            (item.status === '제출됨'
+              ? '<button class="btn btn-sm btn-primary" onclick="openApplicationDetail(\'' + item.id + '\',\'' + item._type + '\')">심사</button>'
+              : '<button class="btn btn-sm btn-secondary" onclick="openApplicationDetail(\'' + item.id + '\',\'' + item._type + '\')">상세</button>') +
+          '</td>' +
+        '</tr>';
+      }).join('');
+    };
+
+    const pendingApps  = apps.filter(a => a.status === '제출됨').length;
+    const pendingJoins = joins.filter(j => j.status === '제출됨').length;
+
+    container.innerHTML =
+      '<div style="margin-bottom:20px;">' +
+        '<div style="display:flex;gap:8px;border-bottom:2px solid var(--gray-200);">' +
+          '<button class="tab-btn' + (activeTab === 'application' ? ' tab-active' : '') + '" ' +
+            'onclick="switchApplicationTab(\'application\')" style="padding:10px 20px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:' + (activeTab==='application'?'var(--blue)':'var(--gray-500)') + ';border-bottom:' + (activeTab==='application'?'2px solid var(--blue)':'2px solid transparent') + ';margin-bottom:-2px;">' +
+            '신규 브랜드 등록 신청 ' + (pendingApps > 0 ? '<span style="background:var(--red);color:#fff;border-radius:99px;padding:1px 7px;font-size:11px;margin-left:4px;">' + pendingApps + '</span>' : '') +
+          '</button>' +
+          '<button class="tab-btn' + (activeTab === 'join' ? ' tab-active' : '') + '" ' +
+            'onclick="switchApplicationTab(\'join\')" style="padding:10px 20px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:' + (activeTab==='join'?'var(--blue)':'var(--gray-500)') + ';border-bottom:' + (activeTab==='join'?'2px solid var(--blue)':'2px solid transparent') + ';margin-bottom:-2px;">' +
+            '기존 브랜드 합류 신청 ' + (pendingJoins > 0 ? '<span style="background:var(--red);color:#fff;border-radius:99px;padding:1px 7px;font-size:11px;margin-left:4px;">' + pendingJoins + '</span>' : '') +
+          '</button>' +
+        '</div>' +
+      '</div>' +
+
+      '<div id="tab-application" style="display:' + (activeTab==='application'?'block':'none') + ';">' +
+        '<div class="card" style="overflow-x:auto;">' +
+          '<table class="data-table"><thead><tr>' +
+            '<th>상태</th><th>신청자</th><th>이메일</th><th>브랜드명</th><th>역할</th><th>신청일</th><th>처리</th>' +
+          '</tr></thead><tbody>' + rows(apps) + '</tbody></table>' +
+        '</div>' +
+      '</div>' +
+
+      '<div id="tab-join" style="display:' + (activeTab==='join'?'block':'none') + ';">' +
+        '<div class="card" style="overflow-x:auto;">' +
+          '<table class="data-table"><thead><tr>' +
+            '<th>상태</th><th>신청자</th><th>이메일</th><th>대상 브랜드</th><th>역할</th><th>신청일</th><th>처리</th>' +
+          '</tr></thead><tbody>' + rows(joins) + '</tbody></table>' +
+        '</div>' +
+      '</div>';
+
+    // 탭 데이터를 전역에 보관 (switchApplicationTab에서 재사용)
+    window._appReviewData = { apps, joins };
+  }
+
+  window.switchApplicationTab = function(tab) {
+    const d = window._appReviewData || { apps: [], joins: [] };
+    const content = document.getElementById('page-content');
+    renderApplicationReviewUI(content, d.apps, d.joins, tab);
+  };
+
+  window.openApplicationDetail = async function(docId, type) {
+    const colName = type === 'application' ? 'brand_applications' : 'brand_join_requests';
+    const snap = await getDoc(doc(db, colName, docId));
+    if (!snap.exists()) { showToast('문서를 찾을 수 없습니다.', 'error'); return; }
+    const item = { id: snap.id, ...snap.data() };
+    const isJoin = type === 'join';
+
+    // 합류 신청이면 브랜드명 조회
+    let brandNameDisplay = item.brand_name || '';
+    if (isJoin && item.target_brand_id) {
+      try {
+        const bsnap = await getDoc(doc(db, 'brands', item.target_brand_id));
+        if (bsnap.exists()) brandNameDisplay = bsnap.data().brand_name || item.target_brand_id;
+        else brandNameDisplay = item.target_brand_id;
+      } catch(e) { brandNameDisplay = item.target_brand_id; }
+    }
+
+    const fmtDate = v => {
+      if (!v) return '-';
+      if (v && v.toDate) return v.toDate().toLocaleString('ko-KR');
+      return String(v).slice(0, 16);
+    };
+
+    const isPending = item.status === '제출됨';
+    const statusBadge = { '제출됨': '<span class="badge badge-blue">제출됨</span>', '승인': '<span class="badge badge-green">승인</span>', '거절': '<span class="badge badge-red">거절</span>' }[item.status] || '';
+
+    const bodyHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">' +
+        '<div><div class="form-label" style="margin-bottom:2px;">상태</div><div>' + statusBadge + '</div></div>' +
+        '<div><div class="form-label" style="margin-bottom:2px;">신청일</div><div style="font-size:13px;">' + fmtDate(item.submitted_at) + '</div></div>' +
+        '<div><div class="form-label" style="margin-bottom:2px;">신청자 이름</div><div style="font-size:13px;">' + esc(item.applicant_name || '-') + '</div></div>' +
+        '<div><div class="form-label" style="margin-bottom:2px;">신청자 이메일</div><div style="font-size:13px;">' + esc(item.applicant_email || '-') + '</div></div>' +
+        '<div><div class="form-label" style="margin-bottom:2px;">역할</div><div style="font-size:13px;">' + esc(item.applicant_role || '-') + '</div></div>' +
+        '<div><div class="form-label" style="margin-bottom:2px;">전화번호</div><div style="font-size:13px;">' + esc(item.applicant_phone || '-') + '</div></div>' +
+        '<div><div class="form-label" style="margin-bottom:2px;">연락 이메일</div><div style="font-size:13px;">' + esc(item.applicant_contact_email || '-') + '</div></div>' +
+        '<div><div class="form-label" style="margin-bottom:2px;">' + (isJoin ? '합류 대상 브랜드' : '브랜드명') + '</div><div style="font-size:13px;">' + esc(brandNameDisplay) + '</div></div>' +
+      '</div>' +
+      (item.rejection_reason ? '<div style="padding:10px;background:#fee2e2;border-radius:6px;font-size:12px;color:#991b1b;margin-bottom:12px;">거절 사유: ' + esc(item.rejection_reason) + '</div>' : '') +
+      (isPending
+        ? '<div style="border-top:1px solid var(--gray-200);padding-top:16px;margin-top:4px;">' +
+            '<div class="form-label" style="margin-bottom:4px;">거절 시 사유 (거절 선택 시 입력)</div>' +
+            '<textarea id="app-reject-reason" class="form-input" rows="3" placeholder="거절 사유를 입력하세요 (선택)"></textarea>' +
+          '</div>'
+        : '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">처리자: ' + esc(item.reviewer_email || '-') + ' · ' + fmtDate(item.reviewed_at) + '</div>');
+
+    const footerHTML = isPending
+      ? '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>' +
+        '<button class="btn" style="background:var(--red);color:#fff;" onclick="rejectApplication(\'' + docId + '\',\'' + type + '\',\'' + esc(item.applicant_email) + '\',\'' + esc(item.applicant_name) + '\',\'' + esc(item.applicant_contact_email || '') + '\',\'' + esc(brandNameDisplay) + '\')">거절</button>' +
+        '<button class="btn btn-primary" onclick="approveApplication(\'' + docId + '\',\'' + type + '\')">승인</button>'
+      : '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>';
+
+    const title = isJoin
+      ? '합류 신청 상세 — ' + esc(item.applicant_name || '')
+      : '브랜드 등록 신청 — ' + esc(item.brand_name || item.applicant_name || '');
+    showModal(title, bodyHTML, footerHTML);
+
+    // 승인 시 필요한 전체 데이터를 전역에 보관
+    window._pendingAppItem = { ...item, id: docId, _type: type, _brandNameDisplay: brandNameDisplay };
+  };
+
+  window.approveApplication = async function(docId, type) {
+    const item = window._pendingAppItem;
+    if (!item || item.id !== docId) { showToast('데이터 오류', 'error'); return; }
+    const isJoin = type === 'join';
+    const auth = getAuth();
+    const reviewerEmail = auth.currentUser ? auth.currentUser.email : '';
+
+    try {
+      if (isJoin) {
+        // 합류 신청 승인
+        const brandId = item.target_brand_id;
+        const personRef = await addDoc(collection(db, 'brands', brandId, 'persons'), {
+          name: item.applicant_name || '',
+          phone: item.applicant_phone || '',
+          role: item.applicant_role || '',
+          contact_email: item.applicant_contact_email || '',
+          login_google_email: item.applicant_email || '',
+          active: true,
+          created_at: today(), updated_at: today()
+        });
+        const personId = personRef.id;
+
+        await setDoc(doc(db, 'vendor_accounts', item.applicant_email), {
+          uid: item.applicant_uid || null,
+          brand_id: brandId, person_id: personId,
+          status: '연결됨', created_at: today(), linked_at: today()
+        });
+
+        if (item.applicant_uid) {
+          await setDoc(doc(db, 'users', item.applicant_uid), {
+            member_status: '브랜드회원',
+            brand_id: brandId, person_id: personId,
+            updated_at: today()
+          }, { merge: true });
+        }
+
+        await updateDoc(doc(db, 'brand_join_requests', docId), {
+          status: '승인', reviewed_at: today(), reviewer_email: reviewerEmail
+        });
+
+        // 브랜드명 조회해서 메일 발송
+        let brandName = item._brandNameDisplay || brandId;
+        await sendEmailByTrigger('brand_approved', {
+          toEmail: item.applicant_contact_email || item.applicant_email,
+          toName: item.applicant_name,
+          brandName: brandName
+        });
+
+      } else {
+        // 신규 브랜드 등록 신청 승인
+        const brandRef = await addDoc(collection(db, 'brands'), {
+          brand_name: item.brand_name || item.applicant_name + '의 브랜드',
+          brand_code: '',
+          onboarding_status: '미계약',
+          created_at: today(), updated_at: today()
+        });
+        const brandId = brandRef.id;
+
+        const personRef = await addDoc(collection(db, 'brands', brandId, 'persons'), {
+          name: item.applicant_name || '',
+          phone: item.applicant_phone || '',
+          role: item.applicant_role || '',
+          contact_email: item.applicant_contact_email || '',
+          login_google_email: item.applicant_email || '',
+          active: true,
+          created_at: today(), updated_at: today()
+        });
+        const personId = personRef.id;
+
+        await setDoc(doc(db, 'vendor_accounts', item.applicant_email), {
+          uid: item.applicant_uid || null,
+          brand_id: brandId, person_id: personId,
+          status: '연결됨', created_at: today(), linked_at: today()
+        });
+
+        if (item.applicant_uid) {
+          await setDoc(doc(db, 'users', item.applicant_uid), {
+            member_status: '브랜드회원',
+            brand_id: brandId, person_id: personId,
+            updated_at: today()
+          }, { merge: true });
+        }
+
+        await updateDoc(doc(db, 'brand_applications', docId), {
+          status: '승인', reviewed_at: today(), reviewer_email: reviewerEmail
+        });
+
+        await sendEmailByTrigger('brand_approved', {
+          toEmail: item.applicant_contact_email || item.applicant_email,
+          toName: item.applicant_name,
+          brandName: item.brand_name || ''
+        });
+      }
+
+      showToast('승인 처리가 완료되었습니다.');
+      closeModal();
+      await renderApplicationReview(document.getElementById('page-content'));
+    } catch(e) {
+      showToast('승인 실패: ' + e.message, 'error');
+    }
+  };
+
+  window.rejectApplication = async function(docId, type, applicantEmail, applicantName, contactEmail, brandName) {
+    const reason = (document.getElementById('app-reject-reason') || {}).value || '';
+    const auth = getAuth();
+    const reviewerEmail = auth.currentUser ? auth.currentUser.email : '';
+    const colName = type === 'application' ? 'brand_applications' : 'brand_join_requests';
+    try {
+      await updateDoc(doc(db, colName, docId), {
+        status: '거절',
+        rejection_reason: reason,
+        reviewed_at: today(),
+        reviewer_email: reviewerEmail
+      });
+      await sendEmailByTrigger('brand_rejected', {
+        toEmail: contactEmail || applicantEmail,
+        toName: applicantName,
+        brandName: brandName,
+        rejectionReason: reason
+      });
+      showToast('거절 처리가 완료되었습니다.');
+      closeModal();
+      await renderApplicationReview(document.getElementById('page-content'));
+    } catch(e) {
+      showToast('거절 실패: ' + e.message, 'error');
+    }
+  };
 
   async function renderEmailSettings(container) {
     container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
