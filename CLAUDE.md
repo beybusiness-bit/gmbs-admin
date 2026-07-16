@@ -367,6 +367,29 @@ Firebase 첫 설정이라면: `webapp-builder` 스킬 `references/firebase-setup
 추가 브랜드 정보 확장(사업자구분/과세정보/주민등록번호/연락처/SNS/소개/로고 사진) — ✅ 완료
 추가 상품·SKU·개체 사진 기능(등록·수정·목록 썸네일·바코드 페이지 썸네일·라벨 미리보기) — ✅ 완료
 추가 UI 개선(브랜드 상세 팝업, 안내문구 스타일 통일, 썸네일 2배 크기) — ✅ 완료
+추가 이메일 설정 페이지(EmailJS 연동 설정, 트리거별 템플릿 연결·활성화 관리) — ✅ 완료 (vendor.gmbs.kr과 공유 Firebase 프로젝트의 email_configs 컬렉션 사용)
+
+---
+
+### 이메일 트리거 현황 및 추가 예정 목록
+
+**현재 구현된 트리거** (email_configs 컬렉션에서 관리):
+- `application_received` — 신규 브랜드 등록 신청 접수 시
+- `join_received` — 기존 브랜드 합류 신청 접수 시
+- `brand_approved` — 입점 승인 시
+- `brand_rejected` — 입점 거절 시
+- `product_registered` — 상품 등록 승인 시
+- `product_rejected` — 상품 등록 거절 시
+
+**향후 기능 확장 시 추가 예정인 트리거** (기능 구현 후 이메일 설정 페이지에 함께 추가):
+- `inventory_low` — 재고 부족 알림 (재고관리 기능 구현 후)
+- `inventory_out` — 재고 소진 알림 (재고관리 기능 구현 후)
+- `settlement_ready` — 정산 내역 생성 알림 (정산 기능 구현 후)
+- `settlement_paid` — 정산 지급 완료 알림 (정산 기능 구현 후)
+- `contract_expiring` — 계약 만료 임박 알림 (계약관리 기능 구현 후)
+- `product_stop` — 상품 판매중지 알림 (추후 필요 시)
+
+⚠️ **새 트리거 추가 방법**: admin/index.html의 `EMAIL_TRIGGERS` 배열에 항목 추가 + vendor/emailjs-config.js는 수정 불필요 (공통 sendEmail 함수가 trigger_event로 동적 처리).
 
 ---
 
