@@ -2144,9 +2144,9 @@
             row('예금주', esc(si.account_holder || '')) +
             row('은행', esc(si.bank_name || '')) +
             row('계좌번호', isEncrypted(si.account_number) ? '<span id="bd-account-number">복호화 중...</span>' : esc(si.account_number || '')) +
-            row('신분증 사본', si.id_card_url ? '<a href="' + esc(si.id_card_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a>' : '<span style="font-size:12px;color:var(--gray-400);">미등록 (계약 완료 후 자동 저장 또는 수동 업로드)</span>') +
-            row('통장 사본', si.bank_book_url ? '<a href="' + esc(si.bank_book_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a>' : '<span style="font-size:12px;color:var(--gray-400);">미등록</span>') +
-            (si.business_type === 'business' ? row('사업자등록증', si.biz_reg_url ? '<a href="' + esc(si.biz_reg_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a>' : '<span style="font-size:12px;color:var(--gray-400);">미등록</span>') : '')
+            row('신분증 사본', (si.id_card_url ? '<a href="' + esc(si.id_card_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' : '') + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUrlModal(\'' + brandId + '\',\'id_card_url\')">🔗 URL 입력</button>') +
+            row('통장 사본', (si.bank_book_url ? '<a href="' + esc(si.bank_book_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' : '') + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUrlModal(\'' + brandId + '\',\'bank_book_url\')">🔗 URL 입력</button>') +
+            (si.business_type === 'business' ? row('사업자등록증', (si.biz_reg_url ? '<a href="' + esc(si.biz_reg_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' : '') + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUrlModal(\'' + brandId + '\',\'biz_reg_url\')">🔗 URL 입력</button>') : '')
           : '') +
         '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">변경 이력</div>' +
         '<div id="brand-activity-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
@@ -2431,6 +2431,32 @@
       if (sec) sec.innerHTML = '<div style="font-size:12px;color:var(--gray-400);">계약 로드 실패: ' + esc(e.message) + '</div>';
     }
   }
+
+  window.openDocUrlModal = function(brandId, field) {
+    const labels = { id_card_url: '신분증 사본', bank_book_url: '통장 사본', biz_reg_url: '사업자등록증' };
+    const label = labels[field] || field;
+    const formHTML =
+      '<div class="form-group"><label class="form-label">' + esc(label) + ' URL</label>' +
+      '<input class="form-input" id="doc-url-input" type="url" placeholder="https://..." /></div>' +
+      '<div style="font-size:12px;color:var(--gray-400);">Firebase Storage 또는 외부 URL을 입력하세요. 유캔사인 서명 완료 후 자동 저장된 경우 여기서 확인할 수 있습니다.</div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="openBrandDetail(\'' + brandId + '\')">취소</button>' +
+      '<button class="btn btn-primary" onclick="saveDocUrl(\'' + brandId + '\',\'' + field + '\')">저장</button>';
+    showModal(label + ' URL 저장', formHTML, footerHTML);
+  };
+
+  window.saveDocUrl = async function(brandId, field) {
+    const url = ((document.getElementById('doc-url-input') || {}).value || '').trim();
+    if (!url) { showToast('URL을 입력해주세요.', 'error'); return; }
+    try {
+      await updateDoc(doc(db, 'brands', brandId), {
+        ['settlement_info.' + field]: url,
+        updated_at: today()
+      });
+      showToast('저장되었습니다.');
+      openBrandDetail(brandId);
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
 
   window.openContractDocsModal = function(brandId, contractId) {
     const formHTML =
@@ -6666,7 +6692,21 @@
       websiteSection +
       settlementSection +
       (item.rejection_reason ? '<div style="padding:10px;background:#fee2e2;border-radius:6px;font-size:12px;color:#991b1b;margin-bottom:12px;">거절 사유: ' + esc(item.rejection_reason) + '</div>' : '') +
-      (isPending
+      (isPending && !isJoin
+        ? '<div style="border-top:1px solid var(--gray-200);padding-top:16px;margin-top:4px;background:var(--blue-light);border-radius:10px;padding:14px 16px;margin-bottom:12px;">' +
+            '<div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:10px;">✅ 승인 시 확정 정보</div>' +
+            '<div class="form-row" style="margin-bottom:8px;">' +
+              '<div class="form-group"><label class="form-label">거래유형 <span style="color:var(--red);">*</span></label>' +
+              '<select class="form-input" id="app-brand-type">' +
+              ['PB','위탁','매입','기타'].map(t => '<option value="' + t + '"' + ((item.brand_type||'위탁') === t ? ' selected' : '') + '>' + t + '</option>').join('') +
+              '</select></div>' +
+              '<div class="form-group"><label class="form-label">위탁수수료 (%)</label>' +
+              '<input class="form-input" id="app-commission" type="number" min="0" max="100" step="0.1" value="' + esc(String(item.requested_commission_rate || 15)) + '" /></div>' +
+            '</div>' +
+            '<div class="form-label" style="margin-bottom:4px;">승인/거절 사유 <span style="font-size:11px;color:var(--gray-400);">(선택 — 이메일로 전달됩니다)</span></div>' +
+            '<textarea id="app-reject-reason" class="form-input" rows="2" placeholder="예: 서류 확인 완료 / 기준 미달 등"></textarea>' +
+          '</div>'
+        : isPending
         ? '<div style="border-top:1px solid var(--gray-200);padding-top:16px;margin-top:4px;">' +
             '<div class="form-label" style="margin-bottom:4px;">승인/거절 사유 <span style="font-size:11px;color:var(--gray-400);">(선택 — 이메일로 전달됩니다)</span></div>' +
             '<textarea id="app-reject-reason" class="form-input" rows="3" placeholder="예: 서류 확인 완료 / 기준 미달 등"></textarea>' +
@@ -6741,16 +6781,17 @@
 
       } else {
         // 신규 브랜드 등록 신청 승인 — brand_applications 데이터를 brands로 복사
+        // vendor가 신청 폼에서 brand_type을 제거했으므로 admin 확정 폼에서 읽음
+        const adminBrandType = ((document.getElementById('app-brand-type') || {}).value) || item.brand_type || '위탁';
+        const adminCommission = parseFloat(((document.getElementById('app-commission') || {}).value) || '') || item.requested_commission_rate || 15;
         const brandRef = await addDoc(collection(db, 'brands'), {
           brand_name: item.brand_name || item.applicant_name + '의 브랜드',
           brand_code: '',
-          brand_type: item.brand_type || '',
+          brand_type: adminBrandType,
           brand_desc: item.brand_description || '',
           website_urls: item.website_urls || [],
           settlement_info: item.settlement_info || {},
-          fee_info: item.brand_type === '위탁' && item.requested_commission_rate
-            ? { commission_rate: item.requested_commission_rate }
-            : {},
+          fee_info: adminBrandType === '위탁' ? { commission_rate: adminCommission } : {},
           onboarding_status: '심사중',
           created_at: today(), updated_at: today()
         });
