@@ -5488,9 +5488,10 @@
       /* ── 유캔사인 API 키 ── */
       '<div class="card" style="margin-bottom:20px;">' +
       '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">유캔사인 API 키</div>' +
-      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">템플릿 필드 자동 가져오기 및 전자계약 발송에 사용됩니다. 유캔사인 관리자 → 계정 설정 → API에서 발급할 수 있습니다.</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">템플릿 필드 자동 가져오기 및 전자계약 발송에 사용됩니다.</div>' +
+      '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">유캔사인 로그인 → 우측 상단 프로필 → <strong>개발자</strong> → <strong>API KEY</strong> 탭에서 발급받은 키를 붙여넣으세요. (accessToken이 아닌 API KEY 원본값)</div>' +
       '<div style="display:flex;gap:8px;align-items:center;">' +
-      '<input class="form-input" id="ucansign-api-key-input" type="password" placeholder="유캔사인 Bearer 토큰을 붙여넣으세요" style="flex:1;font-family:monospace;font-size:13px;" />' +
+      '<input class="form-input" id="ucansign-api-key-input" type="password" placeholder="유캔사인 API KEY (영구 발급된 키)" style="flex:1;font-family:monospace;font-size:13px;" />' +
       '<button class="btn btn-primary" style="white-space:nowrap;" onclick="saveUcansignApiKey()">저장</button>' +
       '</div>' +
       '<div id="ucansign-key-status" style="font-size:12px;margin-top:8px;color:var(--gray-400);">로딩 중...</div>' +
@@ -5629,27 +5630,36 @@
       if (btn) { btn.disabled = true; btn.textContent = '가져오는 중...'; }
       try {
         const cfgSnap = await getDoc(doc(db, 'settings', 'config'));
-        const apiKey = cfgSnap.data()?.ucansign_api_key;
-        if (!apiKey) {
+        const storedApiKey = cfgSnap.data()?.ucansign_api_key;
+        if (!storedApiKey) {
           showToast('설정 페이지에서 유캔사인 API 키를 먼저 저장해주세요.', 'error');
           if (btn) { btn.disabled = false; btn.textContent = '🔍 필드 가져오기'; }
           return;
         }
+
+        // 1단계: API KEY로 accessToken 발급 (유효기간 30분)
+        if (btn) btn.textContent = '토큰 발급 중...';
+        const tokenRes = await fetch('https://app.ucansign.com/openapi/user/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: storedApiKey })
+        });
+        const tokenJson = await tokenRes.json();
+        console.log('[UCansign] 토큰 발급 응답:', tokenJson);
+        if (tokenJson.code !== 0 || !tokenJson.result?.accessToken) {
+          throw new Error('토큰 발급 실패: ' + (tokenJson.msg || '알 수 없는 오류') + ' — 설정 페이지에서 API 키를 다시 확인해주세요.');
+        }
+        const accessToken = tokenJson.result.accessToken;
+
+        // 2단계: accessToken으로 템플릿 상세 조회
+        if (btn) btn.textContent = '필드 조회 중...';
         const res = await fetch('https://app.ucansign.com/openapi/templates/' + templateId, {
           method: 'GET',
-          headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' }
+          headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' }
         });
-        if (!res.ok) {
-          const errJson = await res.json().catch(() => ({}));
-          throw new Error((errJson.msg || res.statusText || '') + ' (HTTP ' + res.status + ')');
-        }
         const json = await res.json();
         console.log('[UCansign] 템플릿 상세 응답 전체:', JSON.stringify(json, null, 2));
-        // 유캔사인은 HTTP 200으로 응답하면서 본문에 오류 코드를 담기도 함
-        if (json.code !== undefined && json.code !== 0 && json.code !== 200) {
-          if (json.code === 401 || (json.msg || '').toLowerCase().includes('token')) {
-            throw new Error('API 키가 올바르지 않습니다. 설정 페이지에서 유캔사인 API 키를 다시 확인·저장해주세요. (오류: ' + (json.msg || json.code) + ')');
-          }
+        if (json.code !== undefined && json.code !== 0) {
           throw new Error((json.msg || '알 수 없는 오류') + ' (code: ' + json.code + ')');
         }
 
