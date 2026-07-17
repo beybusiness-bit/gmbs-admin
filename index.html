@@ -2144,9 +2144,9 @@
             row('예금주', esc(si.account_holder || '')) +
             row('은행', esc(si.bank_name || '')) +
             row('계좌번호', isEncrypted(si.account_number) ? '●●●● (암호화 보관 중)' : esc(si.account_number || '')) +
-            (si.id_card_url ? row('신분증 사본', '<a href="' + esc(si.id_card_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a>') : '') +
-            (si.bank_book_url ? row('통장 사본', '<a href="' + esc(si.bank_book_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a>') : '') +
-            (si.biz_reg_url ? row('사업자등록증', '<a href="' + esc(si.biz_reg_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a>') : '')
+            row('신분증 사본', si.id_card_url ? '<a href="' + esc(si.id_card_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a>' : '<span style="font-size:12px;color:var(--gray-400);">미등록 (계약 완료 후 자동 저장 또는 수동 업로드)</span>') +
+            row('통장 사본', si.bank_book_url ? '<a href="' + esc(si.bank_book_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a>' : '<span style="font-size:12px;color:var(--gray-400);">미등록</span>') +
+            (si.business_type === 'business' ? row('사업자등록증', si.biz_reg_url ? '<a href="' + esc(si.biz_reg_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a>' : '<span style="font-size:12px;color:var(--gray-400);">미등록</span>') : '')
           : '') +
         '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">변경 이력</div>' +
         '<div id="brand-activity-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
@@ -2517,7 +2517,10 @@
             ? '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;margin-right:6px;" onclick="openSendContractModal(\'' + brandId + '\')">🔄 재발송</button>'
             : '') +
           (ucStatus === '체결완료'
-            ? '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openContractDocsModal(\'' + brandId + '\',\'' + c.id + '\')">📎 서류 업로드</button>'
+            ? (c.signed_pdf_url
+                ? '<a href="' + esc(c.signed_pdf_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:4px 10px;margin-right:6px;">📄 계약서 PDF</a>'
+                : '<span style="font-size:11px;color:var(--gray-400);margin-right:8px;">PDF 자동저장 대기중</span>')
+            + '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openContractDocsModal(\'' + brandId + '\',\'' + c.id + '\')">📎 서류 업로드</button>'
             : '') +
           '</div>';
       });
