@@ -1563,7 +1563,8 @@
     document.getElementById('f-brand-type').addEventListener('change', function() {
       const show = this.value === '위탁' || this.value === '매입';
       document.getElementById('section-settlement').style.display = show ? '' : 'none';
-      document.getElementById('section-fee').style.display = show ? '' : 'none';
+      const commEl = document.getElementById('section-commission');
+      if (commEl) commEl.style.display = this.value === '위탁' ? '' : 'none';
     });
     document.getElementById('f-brand-code').addEventListener('input', function() {
       const pos = this.selectionStart;
@@ -1601,14 +1602,25 @@
     const v = (key, def) => existing ? (existing[key] !== undefined ? existing[key] : (def || '')) : (def || '');
     const bType = v('brand_type', 'PB');
     const showSI = bType === '위탁' || bType === '매입';
-    const contact = (existing && existing.contact_info) ? existing.contact_info : {};
+    const showCommission = bType === '위탁';
     const bizType = si.business_type || 'business';
     const taxType = si.taxation_type || '';
+    const existingUrls = (existing && Array.isArray(existing.website_urls) && existing.website_urls.length > 0)
+      ? existing.website_urls
+      : [''];
+
+    const urlRows = existingUrls.map((url, i) =>
+      '<div class="brand-url-row" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">' +
+      '<input class="form-input brand-url-input" type="url" placeholder="https://example.com 또는 @인스타그램아이디" value="' + esc(url) + '" style="flex:1;" />' +
+      (i === 0
+        ? '<button type="button" onclick="addBrandUrlRow()" style="flex-shrink:0;border:none;background:none;cursor:pointer;color:var(--blue);font-size:20px;padding:0 4px;" title="행 추가">＋</button>'
+        : '<button type="button" onclick="this.closest(\'.brand-url-row\').remove()" style="flex-shrink:0;border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:18px;padding:0 4px;" title="삭제">✕</button>') +
+      '</div>'
+    ).join('');
 
     return [
-      /* ── 기본 정보 ── */
+      /* ── 기본 정보 (소제목 없이 단일 섹션) ── */
       '<div class="form-section">',
-      '<div class="form-section-title">기본 정보</div>',
       '<div class="form-row">',
       formGroup('브랜드명', 'f-brand-name',
         '<input class="form-input" id="f-brand-name" type="text" placeholder="예: 온기" value="' + esc(v('brand_name')) + '" required />', true),
@@ -1624,14 +1636,11 @@
         opt('매입', '매입 (직접 구매)', bType) +
         '</select>', true),
       '</div>',
-      '</div>',
 
-      /* ── 브랜드 소개 ── */
-      '<div class="form-section">',
-      '<div class="form-section-title">브랜드 소개 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택사항</span></div>',
-      '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">',
+      /* 대표 사진 + 간단 소개 */
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-bottom:16px;">',
       '<div style="flex:0 0 auto;">',
-      '<label class="form-label">대표 사진 (로고)</label>',
+      '<label class="form-label">대표 사진 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">권장 500×500px · JPG/PNG · 정사각형</span></label>',
       fileUploadArea('upload-brand-logo', 'preview-brand-logo', 'input-brand-logo', v('logo_url')),
       '</div>',
       '<div style="flex:1;min-width:200px;">',
@@ -1640,37 +1649,26 @@
       '<div class="form-hint" id="brand-desc-count">' + String(v('brand_desc')).length + '/100</div>',
       '</div>',
       '</div>',
-      '</div>',
 
-      /* ── 연락처 정보 ── */
-      '<div class="form-section">',
-      '<div class="form-section-title">연락처 정보 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택사항</span></div>',
-      '<div class="form-row">',
-      formGroup('연락처', 'f-contact-phone',
-        '<input class="form-input" id="f-contact-phone" type="tel" placeholder="010-0000-0000" value="' + esc(contact.phone || '') + '" />'),
-      formGroup('이메일', 'f-contact-email',
-        '<input class="form-input" id="f-contact-email" type="email" placeholder="example@email.com" value="' + esc(contact.email || '') + '" />'),
-      '</div>',
-      formGroup('SNS', 'f-contact-sns',
-        '<input class="form-input" id="f-contact-sns" type="text" placeholder="@인스타그램아이디 또는 링크" value="' + esc(contact.sns || '') + '" />'),
-      '</div>',
-
-      /* ── 수수료 정보 (위탁/매입만) ── */
-      '<div class="form-section" id="section-fee" style="' + (showSI ? '' : 'display:none;') + '">',
-      '<div class="form-section-title">수수료 정보</div>',
-      '<div class="form-row">',
-      formGroup('중개수수료 (%)', 'f-commission',
-        '<input class="form-input" id="f-commission" type="number" min="0" max="100" step="0.1" value="' + (fi.commission_rate !== undefined ? fi.commission_rate : 10) + '" />' +
-        '<div class="form-hint">기본값 10%. 판매 금액의 몇 %를 수수료로 받을지 입력.</div>'),
-      formGroup('제세공과금 (%)', 'f-tax-rate',
-        '<input class="form-input" id="f-tax-rate" type="number" min="0" max="100" step="0.1" value="' + (fi.tax_rate !== undefined ? fi.tax_rate : 5) + '" />' +
-        '<div class="form-hint">기본값 5%. 정산 시 공제할 제세공과금 비율.</div>'),
+      /* 관련 사이트 */
+      '<div class="form-group">',
+      '<label class="form-label">관련 사이트 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">웹사이트, SNS 등 원하는 만큼 추가</span></label>',
+      '<div id="brand-url-rows">' + urlRows + '</div>',
       '</div>',
       '</div>',
 
       /* ── 정산 정보 (위탁/매입만) ── */
       '<div class="form-section" id="section-settlement" style="' + (showSI ? '' : 'display:none;') + '">',
       '<div class="form-section-title">정산 정보 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택사항 — 나중에 추가해도 됩니다</span></div>',
+
+      /* 위탁판매대행수수료 (위탁만) */
+      '<div id="section-commission" style="' + (showCommission ? '' : 'display:none;') + '">',
+      '<div class="form-row">',
+      formGroup('위탁판매대행수수료 (%)', 'f-commission',
+        '<input class="form-input" id="f-commission" type="number" min="0" max="100" step="0.1" value="' + (fi.commission_rate !== undefined ? fi.commission_rate : 10) + '" />' +
+        '<div class="form-hint">기본값 10%. 판매 금액의 몇 %를 수수료로 받을지 입력.</div>'),
+      '</div>',
+      '</div>',
 
       /* 사업자 여부 */
       '<div class="form-group" style="margin-bottom:16px;">',
@@ -1699,8 +1697,11 @@
       '<div id="section-resident" style="' + (bizType === 'individual' ? '' : 'display:none;') + '">',
       '<div class="form-row" style="margin-bottom:16px;">',
       formGroup('주민등록번호', 'f-resident',
-        '<input class="form-input" id="f-resident" type="text" placeholder="000000-0000000" value="' + esc(si.resident_number || '') + '" />' +
-        '<div class="form-hint">세금 신고 목적으로만 사용됩니다.</div>'),
+        '<input class="form-input" id="f-resident" type="text" placeholder="000000-0000000" value="' + esc(si.resident_number || '') + '" autocomplete="off" />' +
+        '<div class="form-hint">⚠️ 원천징수 세금신고 목적으로만 사용 · 암호화 보관 · 5년 후 파기</div>'),
+      '</div>',
+      '<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:11px;color:#92400e;line-height:1.8;">',
+      '🔒 주민등록번호는 소득세법에 따른 원천징수 의무 이행을 위해서만 수집됩니다. 본 정보는 암호화되어 저장되며, 세무법정 보관 기간(5년) 이후 안전하게 파기됩니다.',
       '</div>',
       '</div>',
 
@@ -1727,7 +1728,6 @@
       '</div>',
 
       /* 통장 정보 */
-      '<div class="form-section-title" style="font-size:13px;margin-top:8px;margin-bottom:12px;">통장 정보</div>',
       '<div class="form-row">',
       formGroup('은행', 'f-bank-name',
         '<input class="form-input" id="f-bank-name" type="text" placeholder="예: 국민은행" value="' + esc(si.bank_name || '') + '" />'),
@@ -1740,7 +1740,6 @@
       '</div>',
 
       /* 서류 이미지 */
-      '<div class="form-section-title" style="font-size:13px;margin-top:8px;margin-bottom:12px;">서류 이미지</div>',
       '<div class="form-row">',
       '<div class="form-group">',
       '<label class="form-label">신분증 사본</label>',
@@ -1755,6 +1754,17 @@
 
     ].join('');
   }
+
+  window.addBrandUrlRow = function() {
+    const container = document.getElementById('brand-url-rows');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'brand-url-row';
+    row.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px;';
+    row.innerHTML = '<input class="form-input brand-url-input" type="url" placeholder="https://example.com 또는 @인스타그램아이디" style="flex:1;" />' +
+      '<button type="button" onclick="this.closest(\'.brand-url-row\').remove()" style="flex-shrink:0;border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:18px;padding:0 4px;" title="삭제">✕</button>';
+    container.appendChild(row);
+  };
 
   /* ── 브랜드 저장 ── */
   async function saveBrand(brandId, existing) {
@@ -1796,12 +1806,9 @@
       /* 브랜드 소개 */
       data.brand_desc = (document.getElementById('f-brand-desc') || {}).value || '';
 
-      /* 연락처 정보 */
-      data.contact_info = {
-        phone: ((document.getElementById('f-contact-phone') || {}).value || '').trim(),
-        email: ((document.getElementById('f-contact-email') || {}).value || '').trim(),
-        sns: ((document.getElementById('f-contact-sns') || {}).value || '').trim()
-      };
+      /* 관련 사이트 (복수) */
+      data.website_urls = Array.from(document.querySelectorAll('.brand-url-input'))
+        .map(el => el.value.trim()).filter(Boolean);
 
       /* 로고 이미지 업로드 */
       let logoUrl = existing ? (existing.logo_url || '') : '';
@@ -1815,10 +1822,9 @@
 
       /* 정산/수수료 정보 (위탁/매입만) */
       if (brandType === '위탁' || brandType === '매입') {
-        data.fee_info = {
-          commission_rate: parseFloat(document.getElementById('f-commission').value) || 10,
-          tax_rate: parseFloat(document.getElementById('f-tax-rate').value) || 5
-        };
+        data.fee_info = brandType === '위탁' ? {
+          commission_rate: parseFloat((document.getElementById('f-commission') || {}).value) || 10
+        } : {};
 
         const bizInd = document.getElementById('f-biz-individual');
         const bizType = (bizInd && bizInd.checked) ? 'individual' : 'business';
@@ -5468,7 +5474,7 @@
       '<div style="max-width:660px;">' +
 
       /* ── 앱 설치 ── */
-      '<div class="card" style="margin-bottom:20px;">' +
+      '<div class="card" style="padding:24px;margin-bottom:20px;">' +
       '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">홈 화면에 앱 설치</div>' +
       '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">이 관리 도구를 스마트폰 또는 컴퓨터의 홈 화면에 앱처럼 설치할 수 있습니다.</div>' +
       '<div id="pwa-install-area">' +
@@ -5486,7 +5492,7 @@
       '</div>' +
 
       /* ── 유캔사인 API 키 ── */
-      '<div class="card" style="margin-bottom:20px;">' +
+      '<div class="card" style="padding:24px;margin-bottom:20px;">' +
       '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">유캔사인 API 키</div>' +
       '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">템플릿 필드 자동 가져오기 및 전자계약 발송에 사용됩니다.</div>' +
       '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">유캔사인 로그인 → 우측 상단 프로필 → <strong>개발자</strong> → <strong>API KEY</strong> 탭에서 발급받은 키를 붙여넣으세요. (accessToken이 아닌 API KEY 원본값)</div>' +
@@ -5498,7 +5504,7 @@
       '</div>' +
 
       /* ── 계약서 템플릿 관리 ── */
-      '<div class="card" style="margin-bottom:20px;">' +
+      '<div class="card" style="padding:24px;margin-bottom:20px;">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
       '<div style="font-size:16px;font-weight:700;color:var(--gray-900);">계약서 템플릿 관리</div>' +
       '<button class="btn btn-primary" style="font-size:12px;padding:5px 12px;" onclick="openContractTemplateModal(null)">+ 템플릿 추가</button>' +
@@ -5508,7 +5514,7 @@
       '</div>' +
 
       /* ── Firebase 연결 상태 ── */
-      '<div class="card">' +
+      '<div class="card" style="padding:24px;">' +
       '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:16px;">Firebase 연결 상태</div>' +
       '<div id="firebase-status-area"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
       '</div>' +
@@ -5574,7 +5580,12 @@
         'ID: <code style="font-size:11px;background:var(--gray-100);padding:1px 5px;border-radius:3px;">' + esc(t.ucansign_template_id || '미설정') + '</code>' +
         (t.type ? ' &nbsp;· 유형: ' + esc(t.type) : '') +
         '</div></div>' +
-        '<span class="badge ' + (t.is_active !== false ? 'badge-green' : 'badge-gray') + '">' + (t.is_active !== false ? '활성' : '비활성') + '</span>' +
+        '<label style="position:relative;display:inline-block;width:40px;height:22px;cursor:pointer;flex-shrink:0;" title="' + (t.is_active !== false ? '활성 — 클릭해서 비활성화' : '비활성 — 클릭해서 활성화') + '">' +
+        '<input type="checkbox" ' + (t.is_active !== false ? 'checked' : '') + ' onchange="toggleContractTemplateActive(\'' + t.id + '\',this.checked)" style="opacity:0;width:0;height:0;" />' +
+        '<span style="position:absolute;inset:0;border-radius:11px;background:' + (t.is_active !== false ? 'var(--blue)' : 'var(--gray-300)') + ';transition:background .2s;">' +
+        '<span style="position:absolute;top:3px;left:' + (t.is_active !== false ? '21px' : '3px') + ';width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;"></span>' +
+        '</span>' +
+        '</label>' +
         '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openContractTemplateModal(\'' + t.id + '\')">수정</button>' +
         '</div>'
       ).join('');
@@ -5612,23 +5623,53 @@
       '</div>' +
       '<div id="ct-vars-panel" style="display:none;background:#f8f7ff;border:1px solid #ddd6fe;border-radius:8px;padding:12px;margin-bottom:10px;font-size:12px;">' +
       '<div style="color:#5b21b6;font-weight:700;margin-bottom:6px;">기본값 입력 시 아래 변수를 사용할 수 있습니다. 클릭하면 클립보드에 복사됩니다.</div>' +
-      '<div style="background:#fff3cd;border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:11px;color:#856404;">⚠️ 변수 치환은 전자계약 발송 기능이 완성된 후 자동 적용됩니다. <strong>지금은 기본값으로 저장만 됩니다.</strong></div>' +
-      '<div style="display:flex;flex-wrap:wrap;gap:8px;">' +
-      '<span onclick="window._cpVar(\'{{brand_name}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{brand_name}}</span><span style="color:#6b7280;font-size:10px;">브랜드명</span></span>' +
-      '<span onclick="window._cpVar(\'{{brand_code}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{brand_code}}</span><span style="color:#6b7280;font-size:10px;">브랜드코드</span></span>' +
-      '<span onclick="window._cpVar(\'{{ceo_name}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{ceo_name}}</span><span style="color:#6b7280;font-size:10px;">대표자명</span></span>' +
-      '<span onclick="window._cpVar(\'{{phone}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{phone}}</span><span style="color:#6b7280;font-size:10px;">연락처</span></span>' +
-      '<span onclick="window._cpVar(\'{{email}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{email}}</span><span style="color:#6b7280;font-size:10px;">이메일</span></span>' +
-      '<span onclick="window._cpVar(\'{{commission_rate}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{commission_rate}}</span><span style="color:#6b7280;font-size:10px;">수수료율</span></span>' +
-      '<span onclick="window._cpVar(\'{{yyyymmdd}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{yyyymmdd}}</span><span style="color:#6b7280;font-size:10px;">날짜(20260717)</span></span>' +
-      '<span onclick="window._cpVar(\'{{yyyy-mm-dd}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{yyyy-mm-dd}}</span><span style="color:#6b7280;font-size:10px;">날짜(2026-07-17)</span></span>' +
-      '<span onclick="window._cpVar(\'{{yyyy년mm월dd일}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{yyyy년mm월dd일}}</span><span style="color:#6b7280;font-size:10px;">날짜(2026년07월17일)</span></span>' +
-      '</div></div>' +
+      '<div style="background:#fff3cd;border-radius:6px;padding:6px 10px;margin-bottom:8px;font-size:11px;color:#856404;">⚠️ 변수 치환은 전자계약 발송 기능이 완성된 후 자동 적용됩니다. <strong>지금은 기본값으로 저장만 됩니다.</strong></div>' +
+      '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:11px;color:#166534;line-height:1.7;">' +
+      '📅 <strong>날짜 변수</strong>: 발송 시점의 <strong>오늘 날짜</strong>가 자동으로 채워집니다. 특정 날짜를 고정하려면 기본값 칸에 <code style="background:#dcfce7;padding:1px 4px;border-radius:3px;">2026-08-01</code> 처럼 직접 입력하세요.<br>' +
+      '💰 <strong>수수료율</strong>: 숫자만 들어갑니다 (예: <code style="background:#dcfce7;padding:1px 4px;border-radius:3px;">10</code>). %기호는 포함되지 않으므로 계약서 템플릿에 "%" 를 직접 붙여두세요.' +
+      '</div>' +
+      '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">📋 브랜드 정보</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">' +
+      ctVarChip('{{brand_name}}', '브랜드명', '예: 온기') +
+      ctVarChip('{{brand_code}}', '브랜드코드', '예: ONG') +
+      ctVarChip('{{commission_rate}}', '위탁판매대행수수료', '예: 10 (%기호 없이)') +
+      '</div>' +
+      '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">👤 담당자 정보</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">' +
+      ctVarChip('{{ceo_name}}', '담당자명/대표자명', '예: 홍길동') +
+      ctVarChip('{{phone}}', '연락처', '예: 010-1234-5678') +
+      ctVarChip('{{email}}', '이메일', '예: hello@brand.com') +
+      '</div>' +
+      '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">📅 날짜 (발송 시 오늘 날짜 자동 적용)</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">' +
+      ctVarChip('{{yyyymmdd}}', '날짜', '예: 20260717') +
+      ctVarChip('{{yyyy-mm-dd}}', '날짜(하이픈)', '예: 2026-07-17') +
+      ctVarChip('{{yyyy년mm월dd일}}', '날짜(한글)', '예: 2026년07월17일') +
+      '</div>' +
+      '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">✍️ 서명 참여자 (유캔사인 발송 시 자동 입력)</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
+      ctVarChip('{{sender_name}}', '발신인 이름', '예: GMBS 담당자명') +
+      ctVarChip('{{sender_email}}', '발신인 이메일', '예: gmbs@example.com') +
+      ctVarChip('{{receiver_name}}', '수신인 이름', '예: 브랜드 담당자명') +
+      ctVarChip('{{receiver_email}}', '수신인 이메일', '예: brand@example.com') +
+      ctVarChip('{{receiver_kakao}}', '수신인 카카오번호', '예: 010-1234-5678') +
+      '</div>' +
+      '</div>' +
       '<div id="ct-fields-rows" style="display:flex;flex-direction:column;gap:6px;"></div>' +
       '</div>' +
 
-      '<div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;">' +
-      '<input type="checkbox" id="ct-active"' + (t.is_active !== false ? ' checked' : '') + ' /> <span>활성 <span style="font-size:12px;font-weight:400;color:var(--gray-400);">(체크 해제 시 발송 화면에서 선택 불가)</span></span></label></div>';
+      '<div class="form-group">' +
+      '<label class="form-label">활성 <span style="font-size:12px;font-weight:400;color:var(--gray-400);">— 비활성 시 발송 화면에서 선택 불가</span></label>' +
+      '<label style="display:inline-flex;align-items:center;gap:10px;cursor:pointer;">' +
+      '<span style="position:relative;display:inline-block;width:40px;height:22px;">' +
+      '<input type="checkbox" id="ct-active"' + (t.is_active !== false ? ' checked' : '') + ' style="opacity:0;width:0;height:0;" onchange="(function(cb){var s=cb.parentElement.querySelector(\'span\');s.style.background=cb.checked?\'var(--blue)\':\' var(--gray-300)\';s.querySelector(\'span\').style.left=cb.checked?\'21px\':\'3px\';})(this)" />' +
+      '<span style="position:absolute;inset:0;border-radius:11px;background:' + (t.is_active !== false ? 'var(--blue)' : 'var(--gray-300)') + ';transition:background .2s;">' +
+      '<span style="position:absolute;top:3px;left:' + (t.is_active !== false ? '21px' : '3px') + ';width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;"></span>' +
+      '</span>' +
+      '</span>' +
+      '<span style="font-size:13px;font-weight:500;" id="ct-active-label">' + (t.is_active !== false ? '활성' : '비활성') + '</span>' +
+      '</label>' +
+      '</div>';
 
     const footer =
       (existing ? '<button class="btn btn-secondary" style="color:var(--red);" onclick="deleteContractTemplate(\'' + existing.id + '\')">삭제</button>' : '') +
@@ -5685,18 +5726,15 @@
             obj.forEach(function(item) { collectFields(item, collected); });
             return;
           }
-          const fieldKey = obj.fieldName || obj.field_name;
+          const fieldKey = obj.fieldName || obj.field_name || obj.name;
           const type = (obj.fieldType || obj.field_type || obj.type || obj.componentType || '').toUpperCase();
-          const excludeTypes = ['SIGN', 'STAMP', 'INITIAL', 'CHECKBOX', 'DATE', 'IMAGE', 'SEAL'];
           if (fieldKey && typeof fieldKey === 'string' && fieldKey.trim()) {
-            const isExcluded = excludeTypes.some(function(ex) { return type.includes(ex); });
-            if (!isExcluded) {
-              const key = fieldKey.trim();
-              if (!collected.some(function(c) { return c.name === key; })) {
-                const descCandidates = [obj.label, obj.description, obj.placeholder, obj.componentLabel, obj.title];
-                const desc = descCandidates.find(function(d) { return d && typeof d === 'string' && d.trim() && d.trim() !== key; }) || '';
-                collected.push({ name: key, desc: typeof desc === 'string' ? desc.trim() : '' });
-              }
+            const key = fieldKey.trim();
+            if (!collected.some(function(c) { return c.name === key; })) {
+              const descCandidates = [obj.label, obj.description, obj.placeholder, obj.componentLabel, obj.title];
+              const desc = descCandidates.find(function(d) { return d && typeof d === 'string' && d.trim() && d.trim() !== key; }) || '';
+              const typeLabel = type ? ' [' + type + ']' : '';
+              collected.push({ name: key, desc: (typeof desc === 'string' ? desc.trim() : '') + typeLabel });
             }
           }
           Object.keys(obj).forEach(function(k) { collectFields(obj[k], collected); });
@@ -5740,11 +5778,11 @@
       row.innerHTML =
         '<div style="display:flex;gap:6px;align-items:center;">' +
         '<input class="form-input ct-field-key" placeholder="항목명 (유캔사인 필드명)" value="' + esc(k || '') + '" style="flex:1;font-size:13px;" />' +
+        (desc ? '<span style="color:var(--gray-400);font-size:11px;flex-shrink:0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(desc) + '">' + esc(desc) + '</span>' : '') +
         '<span style="color:var(--gray-400);flex-shrink:0;font-size:12px;">→</span>' +
         '<input class="form-input ct-field-val" placeholder="기본값 (변수 예: {{brand_name}})" value="' + esc(v || '') + '" style="flex:1.5;font-size:13px;" />' +
         '<button type="button" onclick="this.closest(\'.ct-field-row\').remove()" style="flex-shrink:0;border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:16px;padding:0 4px;">✕</button>' +
-        '</div>' +
-        '<input class="form-input ct-field-desc" placeholder="이 항목 설명 메모 (선택) — 예: 계약서 제목, 수수료율" value="' + esc(desc || '') + '" style="font-size:11px;color:#6b7280;border-color:var(--gray-200);padding:4px 8px;" />';
+        '</div>';
       document.getElementById('ct-fields-rows').appendChild(row);
     };
 
@@ -5765,15 +5803,13 @@
 
     // 키-값 행에서 defaultFields 수집
     const defaultFields = {};
-    const fieldDescs = {};
     document.querySelectorAll('.ct-field-row').forEach(function(row) {
       const k = (row.querySelector('.ct-field-key') || {}).value?.trim();
       const v = (row.querySelector('.ct-field-val') || {}).value?.trim();
-      const d = (row.querySelector('.ct-field-desc') || {}).value?.trim();
-      if (k) { defaultFields[k] = v || ''; if (d) fieldDescs[k] = d; }
+      if (k) { defaultFields[k] = v || ''; }
     });
 
-    const data = { name, ucansign_template_id: ucansignId, type: type || '', default_fields: defaultFields, field_descs: fieldDescs, is_active: isActive, updated_at: today() };
+    const data = { name, ucansign_template_id: ucansignId, type: type || '', default_fields: defaultFields, is_active: isActive, updated_at: today() };
     try {
       if (templateId) {
         await updateDoc(doc(db, 'contract_templates', templateId), data);
@@ -5795,6 +5831,13 @@
       closeModal();
       loadContractTemplatesList();
     } catch(e) { showToast('삭제 실패: ' + e.message, 'error'); }
+  };
+
+  window.toggleContractTemplateActive = async function(templateId, isActive) {
+    try {
+      await updateDoc(doc(db, 'contract_templates', templateId), { is_active: isActive, updated_at: today() });
+      showToast(isActive ? '활성화되었습니다.' : '비활성화되었습니다.', 'success');
+    } catch(e) { showToast('변경 실패: ' + e.message, 'error'); loadContractTemplatesList(); }
   };
 
   function settingNumField(label, id, val, min, max) {
@@ -6614,6 +6657,13 @@
   }
   function formGroup(label, id, inputHTML, required) {
     return '<div class="form-group"><label class="form-label" for="' + id + '">' + label + (required ? '<span class="required">*</span>' : '') + '</label>' + inputHTML + '</div>';
+  }
+  function ctVarChip(varStr, label, example) {
+    return '<span onclick="window._cpVar(\'' + varStr.replace(/'/g, "\\'") + '\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;cursor:pointer;background:#ede9fe;border-radius:6px;padding:5px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;gap:1px;">' +
+      '<span style="font-family:monospace;color:#5b21b6;font-weight:600;">' + esc(varStr) + '</span>' +
+      '<span style="color:#6b7280;">' + esc(label) + '</span>' +
+      '<span style="color:#9ca3af;font-size:10px;">' + esc(example) + '</span>' +
+      '</span>';
   }
   function opt(value, label, selected) {
     return '<option value="' + value + '"' + (selected === value ? ' selected' : '') + '>' + label + '</option>';
