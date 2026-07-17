@@ -2143,7 +2143,7 @@
             row('과세 유형', esc(si.taxation_type || '')) +
             row('예금주', esc(si.account_holder || '')) +
             row('은행', esc(si.bank_name || '')) +
-            row('계좌번호', isEncrypted(si.account_number) ? '●●●● (암호화 보관 중)' : esc(si.account_number || '')) +
+            row('계좌번호', isEncrypted(si.account_number) ? '<span id="bd-account-number">복호화 중...</span>' : esc(si.account_number || '')) +
             row('신분증 사본', si.id_card_url ? '<a href="' + esc(si.id_card_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a>' : '<span style="font-size:12px;color:var(--gray-400);">미등록 (계약 완료 후 자동 저장 또는 수동 업로드)</span>') +
             row('통장 사본', si.bank_book_url ? '<a href="' + esc(si.bank_book_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a>' : '<span style="font-size:12px;color:var(--gray-400);">미등록</span>') +
             (si.business_type === 'business' ? row('사업자등록증', si.biz_reg_url ? '<a href="' + esc(si.biz_reg_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a>' : '<span style="font-size:12px;color:var(--gray-400);">미등록</span>') : '')
@@ -2166,6 +2166,16 @@
       loadBrandActivity(brandId);
       loadBrandPersons(brandId);
       loadBrandContracts(brandId);
+      // 암호화된 계좌번호 복호화
+      if (b.settlement_info && isEncrypted(b.settlement_info.account_number)) {
+        decryptField(b.settlement_info.account_number).then(v => {
+          const el = document.getElementById('bd-account-number');
+          if (el) el.textContent = v || '(복호화 실패)';
+        }).catch(() => {
+          const el = document.getElementById('bd-account-number');
+          if (el) el.textContent = '(복호화 실패)';
+        });
+      }
     } catch(e) {
       document.querySelector('#modal-container .modal-body').innerHTML =
         '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
@@ -2484,6 +2494,7 @@
       '서명진행중': '<span class="badge badge-yellow">✍️ 서명진행중</span>',
       '체결완료': '<span class="badge badge-green">✅ 체결완료</span>',
       '취소됨':   '<span class="badge badge-red">❌ 취소됨</span>',
+      '발송실패': '<span class="badge badge-red">⚠️ 발송실패</span>',
     }[s] || '<span class="badge badge-gray">📄 발송대기</span>');
 
     // 최상단: 전자계약 발송 버튼 (계약 여부와 무관하게 항상 노출)
@@ -2497,7 +2508,7 @@
     } else {
       contracts.forEach(c => {
         const ucStatus = c.status || '';
-        const canResend = ucStatus === '취소됨';
+        const canResend = ucStatus === '취소됨' || ucStatus === '발송실패';
         const isActive = !ucStatus || ucStatus === '발송대기' || ucStatus === '발송됨' || ucStatus === '서명진행중';
         html +=
           '<div style="padding:14px 0;border-bottom:1px solid var(--gray-100);">' +
