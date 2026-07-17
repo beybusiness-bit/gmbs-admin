@@ -565,7 +565,7 @@
         hint.innerHTML = '<span style="color:var(--gray-500);">국세청 응답: ' + (item.b_stt || '조회 결과 없음') + '</span>';
       }
     } catch(e) {
-      hint.innerHTML = '<span style="color:var(--red);">조회 오류: ' + e.message + '. API 키 또는 네트워크를 확인하세요.</span>';
+      hint.innerHTML = '<span style="color:var(--red);">조회 오류: ' + esc(e.message) + '. API 키 또는 네트워크를 확인하세요.</span>';
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = '사업자 확인'; }
     }
@@ -854,7 +854,7 @@
         '</div>'
       ].join('');
     } catch (e) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">데이터를 불러오지 못했습니다.<br>' + e.message + '</div></div>';
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">데이터를 불러오지 못했습니다.<br>' + esc(e.message) + '</div></div>';
     }
   }
 
@@ -1041,7 +1041,7 @@
       }).join('');
 
     } catch(e) {
-      if (resultsEl) resultsEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
+      if (resultsEl) resultsEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
     }
   };
 
@@ -1595,8 +1595,8 @@
       filterBrandList();
     } catch (e) {
       const _blContent = document.getElementById('brand-list-content');
-      if (_blContent) _blContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
-      else container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
+      if (_blContent) _blContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
+      else container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
     }
   }
 
@@ -2163,7 +2163,7 @@
         row('브랜드명', '<strong>' + esc(b.brand_name) + '</strong>') +
         row('브랜드 소개', esc(b.brand_desc || '')) +
         (Array.isArray(b.website_urls) && b.website_urls.length
-          ? row('관련 사이트', b.website_urls.map(u => '<a href="' + esc(u) + '" target="_blank" style="color:var(--blue);font-size:12px;">' + esc(u) + '</a>').join('<br>'))
+          ? row('관련 사이트', b.website_urls.map(u => '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer" style="color:var(--blue);font-size:12px;">' + esc(u) + '</a>').join('<br>'))
           : '') +
         (bizTypeText
           ? sectionLabel('정산 정보 (벤더 제출)') +
@@ -2172,10 +2172,10 @@
             row('과세 유형', esc(si.taxation_type || '')) +
             row('예금주', esc(si.account_holder || '')) +
             row('은행', esc(si.bank_name || '')) +
-            row('계좌번호', isEncrypted(si.account_number) ? '<span id="bd-account-number">복호화 중...</span>' : esc(si.account_number || '')) +
-            row('신분증 사본', (si.id_card_url ? '<a href="' + esc(si.id_card_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' : '') + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUrlModal(\'' + brandId + '\',\'id_card_url\')">🔗 URL 입력</button>') +
-            row('통장 사본', (si.bank_book_url ? '<a href="' + esc(si.bank_book_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' : '') + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUrlModal(\'' + brandId + '\',\'bank_book_url\')">🔗 URL 입력</button>') +
-            (si.business_type === 'business' ? row('사업자등록증', (si.biz_reg_url ? '<a href="' + esc(si.biz_reg_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' : '') + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUrlModal(\'' + brandId + '\',\'biz_reg_url\')">🔗 URL 입력</button>') : '')
+            row('계좌번호', isEncrypted(si.account_number) ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealBrandAccountNumber(\'' + brandId + '\')">🔓 보기</button><span id="bd-account-number" style="margin-left:8px;font-family:monospace;"></span>' : esc(si.account_number || '')) +
+            row('신분증 사본', (si.id_card_url ? '<a href="' + esc(si.id_card_url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' : '') + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUrlModal(\'' + brandId + '\',\'id_card_url\')">🔗 URL 입력</button>') +
+            row('통장 사본', (si.bank_book_url ? '<a href="' + esc(si.bank_book_url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' : '') + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUrlModal(\'' + brandId + '\',\'bank_book_url\')">🔗 URL 입력</button>') +
+            (si.business_type === 'business' ? row('사업자등록증', (si.biz_reg_url ? '<a href="' + esc(si.biz_reg_url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' : '') + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUrlModal(\'' + brandId + '\',\'biz_reg_url\')">🔗 URL 입력</button>') : '')
           : '') +
         '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">변경 이력</div>' +
         '<div id="brand-activity-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
@@ -2195,16 +2195,7 @@
       loadBrandActivity(brandId);
       loadBrandPersons(brandId);
       loadBrandContracts(brandId);
-      // 암호화된 계좌번호 복호화
-      if (b.settlement_info && isEncrypted(b.settlement_info.account_number)) {
-        decryptField(b.settlement_info.account_number).then(v => {
-          const el = document.getElementById('bd-account-number');
-          if (el) el.textContent = v || '(복호화 실패)';
-        }).catch(() => {
-          const el = document.getElementById('bd-account-number');
-          if (el) el.textContent = '(복호화 실패)';
-        });
-      }
+      // 계좌번호는 버튼 클릭 시에만 복호화 (revealBrandAccountNumber)
     } catch(e) {
       document.querySelector('#modal-container .modal-body').innerHTML =
         '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
@@ -2461,6 +2452,43 @@
     }
   }
 
+  window.revealBrandAccountNumber = async function(brandId) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '복호화 중...';
+    try {
+      const snap = await getDoc(doc(db, 'brands', brandId));
+      const accountEnc = snap.data()?.settlement_info?.account_number || '';
+      const plain = isEncrypted(accountEnc) ? await decryptField(accountEnc) : accountEnc;
+      const el = document.getElementById('bd-account-number');
+      if (el) el.textContent = plain || '(없음)';
+      btn.remove();
+    } catch(e) {
+      btn.disabled = false;
+      btn.textContent = '🔓 보기';
+      showToast('복호화 실패: ' + e.message, 'error');
+    }
+  };
+
+  // 입점 신청 상세 팝업: 주민번호/계좌번호 버튼 클릭 시 복호화
+  window.revealAppField = async function(docId, fieldName, spanId) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '복호화 중...';
+    try {
+      const snap = await getDoc(doc(db, 'applications', docId));
+      const encVal = snap.data()?.settlement_info?.[fieldName] || '';
+      const plain = isEncrypted(encVal) ? await decryptField(encVal) : encVal;
+      const el = document.getElementById(spanId);
+      if (el) { el.textContent = plain || '(없음)'; }
+      btn.remove();
+    } catch(e) {
+      btn.disabled = false;
+      btn.textContent = '🔓 보기';
+      showToast('복호화 실패: ' + e.message, 'error');
+    }
+  };
+
   window.openDocUrlModal = function(brandId, field) {
     const labels = { id_card_url: '신분증 사본', bank_book_url: '통장 사본', biz_reg_url: '사업자등록증' };
     const label = labels[field] || field;
@@ -2584,7 +2612,7 @@
             : '') +
           (ucStatus === '체결완료'
             ? (c.signed_pdf_url
-                ? '<a href="' + esc(c.signed_pdf_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:4px 10px;margin-right:6px;">📄 계약서 PDF</a>'
+                ? '<a href="' + esc(c.signed_pdf_url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size:11px;padding:4px 10px;margin-right:6px;">📄 계약서 PDF</a>'
                 : '<span style="font-size:11px;color:var(--gray-400);margin-right:8px;">PDF 자동저장 대기중</span>')
             + '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openContractDocsModal(\'' + brandId + '\',\'' + c.id + '\')">📎 서류 업로드</button>'
             : '') +
@@ -3354,8 +3382,8 @@
       filterProductList();
     } catch(e) {
       const _plContent = document.getElementById('product-list-content');
-      if (_plContent) _plContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
-      else container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
+      if (_plContent) _plContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
+      else container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
     }
   }
 
@@ -5903,7 +5931,7 @@
       '<div class="card" style="padding:24px;margin-bottom:20px;">' +
       '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">국세청 사업자 조회 API 키</div>' +
       '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">브랜드 정산 정보 입력 시 사업자등록번호 실시간 조회에 사용됩니다.</div>' +
-      '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;"><a href="https://www.data.go.kr/data/15081808/openapi.do" target="_blank" style="color:var(--blue);">공공데이터포털(data.go.kr)</a>에서 "국세청_사업자등록정보 진위확인 및 상태조회 서비스" 신청 → 일반 인증키(Encoding)를 붙여넣으세요.</div>' +
+      '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;"><a href="https://www.data.go.kr/data/15081808/openapi.do" target="_blank" rel="noopener noreferrer" style="color:var(--blue);">공공데이터포털(data.go.kr)</a>에서 "국세청_사업자등록정보 진위확인 및 상태조회 서비스" 신청 → 일반 인증키(Encoding)를 붙여넣으세요.</div>' +
       '<div style="display:flex;gap:8px;align-items:center;">' +
       '<input class="form-input" id="nts-api-key-input" type="password" placeholder="국세청 오픈API 서비스키" style="flex:1;font-family:monospace;font-size:13px;" />' +
       '<button class="btn btn-primary" style="white-space:nowrap;" onclick="saveNtsApiKey()">저장</button>' +
@@ -6192,7 +6220,7 @@
           body: JSON.stringify({ apiKey: storedApiKey })
         });
         const tokenJson = await tokenRes.json();
-        console.log('[UCansign] 토큰 발급 응답:', tokenJson);
+        // 토큰 발급 결과는 콘솔에 출력하지 않음 (보안)
         if (tokenJson.code !== 0 || !tokenJson.result?.accessToken) {
           throw new Error('토큰 발급 실패: ' + (tokenJson.msg || '알 수 없는 오류') + ' — 설정 페이지에서 API 키를 다시 확인해주세요.');
         }
@@ -6205,7 +6233,7 @@
           headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' }
         });
         const json = await res.json();
-        console.log('[UCansign] 템플릿 상세 응답 전체:', JSON.stringify(json, null, 2));
+        // 템플릿 상세 응답 전체 로그 제거 (보안)
         if (json.code !== undefined && json.code !== 0) {
           throw new Error((json.msg || '알 수 없는 오류') + ' (code: ' + json.code + ')');
         }
@@ -6234,7 +6262,6 @@
         const collected = [];
         collectFields(json, collected);
 
-        console.log('[UCansign] 수집된 필드:', collected);
 
         if (collected.length === 0) {
           showToast('입력 필드를 찾지 못했습니다. 브라우저 개발자 도구(F12) → Console에서 응답 구조를 확인해주세요.', 'info');
@@ -6664,28 +6691,18 @@
     const isPending = item.status === '제출됨';
     const statusBadge = { '제출됨': '<span class="badge badge-blue">제출됨</span>', '승인': '<span class="badge badge-green">승인</span>', '거절': '<span class="badge badge-red">거절</span>' }[item.status] || '';
 
-    // 정산 정보 복호화 (암호화 필드)
+    // 정산 정보 (암호화 필드는 버튼 클릭 시에만 복호화)
     const si = item.settlement_info || {};
-    let siResidentDisplay = '-';
-    let siAccountDisplay = '-';
-    if (si.resident_number && isEncrypted(si.resident_number)) {
-      decryptField(si.resident_number).then(v => {
-        const el = document.getElementById('app-si-resident');
-        if (el) el.textContent = v || '(복호화 실패)';
-      }).catch(() => {});
-      siResidentDisplay = '복호화 중...';
-    } else if (si.resident_number) {
-      siResidentDisplay = si.resident_number;
-    }
-    if (si.account_number && isEncrypted(si.account_number)) {
-      decryptField(si.account_number).then(v => {
-        const el = document.getElementById('app-si-account');
-        if (el) el.textContent = v || '(복호화 실패)';
-      }).catch(() => {});
-      siAccountDisplay = '복호화 중...';
-    } else if (si.account_number) {
-      siAccountDisplay = si.account_number;
-    }
+    const siResidentDisplay = si.resident_number
+      ? (isEncrypted(si.resident_number)
+          ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealAppField(\'' + docId + '\',\'resident_number\',\'app-si-resident\')">🔓 보기</button>'
+          : esc(si.resident_number))
+      : '-';
+    const siAccountDisplay = si.account_number
+      ? (isEncrypted(si.account_number)
+          ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealAppField(\'' + docId + '\',\'account_number\',\'app-si-account\')">🔓 보기</button>'
+          : esc(si.account_number))
+      : '-';
 
     const settlementSection = (item.settlement_info && !isJoin)
       ? '<div style="border-top:1px solid var(--gray-200);padding-top:14px;margin-top:4px;margin-bottom:14px;">' +
@@ -6694,17 +6711,17 @@
             '<div><span style="color:var(--gray-500);font-size:11px;">사업자 구분</span><br>' + esc(si.business_type === 'individual' ? '개인(사업자없음)' : si.business_type === 'business' ? '사업자' : '-') + '</div>' +
             (si.business_type === 'business' ? '<div><span style="color:var(--gray-500);font-size:11px;">사업자등록번호</span><br>' + esc(si.business_reg_number || '-') + '</div>' : '') +
             (si.business_type === 'business' ? '<div><span style="color:var(--gray-500);font-size:11px;">과세 유형</span><br>' + esc(si.taxation_type || '-') + '</div>' : '') +
-            (si.business_type === 'individual' ? '<div><span style="color:var(--gray-500);font-size:11px;">주민등록번호</span><br><span id="app-si-resident">' + esc(siResidentDisplay) + '</span></div>' : '') +
+            (si.business_type === 'individual' ? '<div><span style="color:var(--gray-500);font-size:11px;">주민등록번호</span><br><span id="app-si-resident">' + siResidentDisplay + '</span></div>' : '') +
             '<div><span style="color:var(--gray-500);font-size:11px;">은행</span><br>' + esc(si.bank_name || '-') + '</div>' +
             '<div><span style="color:var(--gray-500);font-size:11px;">예금주</span><br>' + esc(si.account_holder || '-') + '</div>' +
-            '<div style="grid-column:1/-1;"><span style="color:var(--gray-500);font-size:11px;">계좌번호</span><br><span id="app-si-account">' + esc(siAccountDisplay) + '</span></div>' +
+            '<div style="grid-column:1/-1;"><span style="color:var(--gray-500);font-size:11px;">계좌번호</span><br><span id="app-si-account">' + siAccountDisplay + '</span></div>' +
           '</div>' +
         '</div>'
       : '';
 
     const websiteSection = (item.website_urls && item.website_urls.length && !isJoin)
       ? '<div style="margin-bottom:10px;"><span style="color:var(--gray-500);font-size:11px;">관련 사이트</span><br>' +
-          item.website_urls.map(u => '<a href="' + esc(u) + '" target="_blank" style="font-size:13px;color:var(--blue);display:block;">' + esc(u) + '</a>').join('') + '</div>'
+          item.website_urls.map(u => '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer" style="font-size:13px;color:var(--blue);display:block;">' + esc(u) + '</a>').join('') + '</div>'
       : '';
 
     const typeLabel = { PB: '🏷 PB', '위탁': '🤝 위탁', '매입': '📦 매입' };
@@ -6993,7 +7010,7 @@
       '</div>' +
       '<div style="display:flex;flex-direction:column;gap:6px;">' +
       '<button onclick="openEmailJsSettingsModal()" class="btn btn-secondary" style="white-space:nowrap;font-size:12px;">⚙️ EmailJS 연동 설정</button>' +
-      '<a href="https://www.emailjs.com/" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:none;text-align:center;">EmailJS 대시보드 →</a>' +
+      '<a href="https://www.emailjs.com/" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:var(--blue);text-decoration:none;text-align:center;">EmailJS 대시보드 →</a>' +
       '</div>' +
       '</div>';
 
@@ -7219,7 +7236,7 @@
     var settings = window._emailJsCurrentSettings || {};
     showModal(
       'EmailJS 연동 설정',
-      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">EmailJS에서 발급받은 키를 입력하세요. <a href="https://www.emailjs.com/" target="_blank" style="color:var(--blue);text-decoration:none;">EmailJS 콘솔 →</a></div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">EmailJS에서 발급받은 키를 입력하세요. <a href="https://www.emailjs.com/" target="_blank" rel="noopener noreferrer" style="color:var(--blue);text-decoration:none;">EmailJS 콘솔 →</a></div>' +
       '<div class="form-group" style="margin-bottom:16px;">' +
       '<label class="form-label">Public Key</label>' +
       '<input id="ejs-public-key" class="form-input" type="text" placeholder="예: O4qANYVjrmK5AdY4i" value="' + esc(settings.public_key || '') + '" />' +
@@ -7271,7 +7288,7 @@
     return '<option value="' + value + '"' + (selected === value ? ' selected' : '') + '>' + label + '</option>';
   }
   function esc(str) {
-    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
   // ═══════════════════════════════════════════════
@@ -7554,7 +7571,7 @@
 
       if (okCount > 0) document.getElementById('btn-do-bulk-brand').style.display = '';
     } catch(e) {
-      summaryEl.innerHTML = '파일 읽기 오류: ' + e.message;
+      summaryEl.innerHTML = '파일 읽기 오류: ' + esc(e.message);
     }
   };
 
@@ -7925,7 +7942,7 @@
 
       if (okCount > 0) document.getElementById('btn-do-bulk-product').style.display = '';
     } catch(e) {
-      summaryEl.innerHTML = '파일 읽기 오류: ' + e.message;
+      summaryEl.innerHTML = '파일 읽기 오류: ' + esc(e.message);
     }
   };
 
