@@ -1542,12 +1542,9 @@
 
   async function renderBrandList(container) {
     window._brandSelected = window._brandSelected || new Set();
+    document.getElementById('page-header-actions').innerHTML = '';
     window._brandPageSize = window._brandPageSize || 20;
     window._brandPage = 1;
-
-    document.getElementById('page-header-actions').innerHTML =
-      '<button class="btn btn-secondary" id="btn-bulk-brand-status" onclick="bulkChangeBrandStatus()" style="display:none;">🔄 일괄 변경</button>' +
-      '<button class="btn btn-secondary" id="btn-export-brands" onclick="exportSelectedBrands()" style="display:none;">📥 선택 내보내기</button>';
 
     container.innerHTML =
       '<div id="brand-list-content"><div class="spinner" style="margin:60px auto;"></div></div>';
@@ -1577,7 +1574,8 @@
         '<select id="bl-page-size" onchange="window._brandPageSize=parseInt(this.value);window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
         '</select>' +
-        '<div data-register-wrap="1" style="position:relative;display:inline-block;margin-left:auto;">' +
+        '<div id="bl-bulk-actions" style="display:flex;gap:8px;margin-left:auto;align-items:center;"></div>' +
+        '<div data-register-wrap="1" style="position:relative;display:inline-block;">' +
         '<button class="btn btn-primary" onclick="toggleRegisterMenu(\'new-brand-menu\',this)">➕ 새 브랜드 등록 ▾</button>' +
         '<div id="new-brand-menu" class="register-dropdown" style="display:none;">' +
         '<div class="reg-menu-item" onclick="closeRegisterMenus();openBrandModal(null)">📝 일반 등록</div>' +
@@ -1632,17 +1630,14 @@
   };
 
   function updateBrandExportBtn() {
-    const btn = document.getElementById('btn-export-brands');
-    const bulkBtn = document.getElementById('btn-bulk-brand-status');
+    const area = document.getElementById('bl-bulk-actions');
+    if (!area) return;
     const cnt = (window._brandSelected || new Set()).size;
-    if (btn) {
-      if (cnt > 0) { btn.style.display = ''; btn.textContent = '📥 선택 내보내기 (' + cnt + '개)'; }
-      else btn.style.display = 'none';
-    }
-    if (bulkBtn) {
-      if (cnt > 0) { bulkBtn.style.display = ''; bulkBtn.textContent = '🔄 일괄 변경 (' + cnt + '개)'; }
-      else bulkBtn.style.display = 'none';
-    }
+    if (cnt === 0) { area.innerHTML = ''; return; }
+    area.innerHTML =
+      '<button class="btn btn-secondary" onclick="bulkChangeBrandStatus()" style="white-space:nowrap;">🔄 일괄 변경 (' + cnt + '개)</button>' +
+      '<button class="btn btn-secondary" onclick="exportSelectedBrands()" style="white-space:nowrap;">📥 내보내기 (' + cnt + '개)</button>' +
+      '<button class="btn btn-secondary" onclick="bulkDeleteBrands()" style="white-space:nowrap;color:var(--red);border-color:var(--red);">🗑 선택 삭제 (' + cnt + '개)</button>';
   }
 
   window.filterBrandList = function() {
@@ -3395,6 +3390,51 @@
   };
 
   /* ── 일괄 변경 (브랜드) ── */
+  window.bulkDeleteBrands = function() {
+    const ids = [...(window._brandSelected || new Set())];
+    if (!ids.length) return;
+    const names = ids.map(id => {
+      const b = (window._allBrands || []).find(x => x.id === id);
+      return b ? b.brand_name : id;
+    });
+    const formHTML =
+      '<div style="background:var(--red-light,#fff0f0);border:1px solid var(--red);border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:var(--red);font-weight:600;">⚠️ 이 작업은 되돌릴 수 없습니다.</div>' +
+      '<p style="font-size:13px;color:var(--gray-700);margin-bottom:12px;">선택된 <strong>' + ids.length + '</strong>개 브랜드와 하위 데이터(담당자, 계약)를 모두 영구 삭제합니다:</p>' +
+      '<ul style="font-size:13px;color:var(--gray-600);margin-bottom:16px;padding-left:20px;line-height:1.8;">' +
+      names.map(n => '<li>' + esc(n) + '</li>').join('') +
+      '</ul>' +
+      '<div class="form-group"><label class="form-label" style="color:var(--red);">확인을 위해 <strong>삭제</strong>를 입력하세요</label>' +
+      '<input class="form-input" id="bulk-delete-brand-confirm" placeholder="삭제" /></div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      '<button class="btn btn-primary" style="background:var(--red);border-color:var(--red);" onclick="executeBulkDeleteBrands()">영구 삭제</button>';
+    showModal('브랜드 일괄 삭제', formHTML, footerHTML);
+  };
+
+  window.executeBulkDeleteBrands = async function() {
+    const confirmVal = ((document.getElementById('bulk-delete-brand-confirm') || {}).value || '').trim();
+    if (confirmVal !== '삭제') { showToast('확인 텍스트를 정확히 입력해주세요.', 'error'); return; }
+    const ids = [...(window._brandSelected || new Set())];
+    closeModal();
+    showToast('삭제 중...', 'info');
+    let doneCount = 0, failCount = 0;
+    for (const brandId of ids) {
+      try {
+        const personsSnap = await getDocs(collection(db, 'brands', brandId, 'persons'));
+        for (const d of personsSnap.docs) await deleteDoc(doc(db, 'brands', brandId, 'persons', d.id));
+        const contractsSnap = await getDocs(collection(db, 'brands', brandId, 'contracts'));
+        for (const d of contractsSnap.docs) await deleteDoc(doc(db, 'brands', brandId, 'contracts', d.id));
+        await deleteDoc(doc(db, 'brands', brandId));
+        doneCount++;
+      } catch(e) { failCount++; }
+    }
+    window._brandSelected = new Set();
+    window._allBrands = (window._allBrands || []).filter(b => !ids.includes(b.id));
+    filterBrandList();
+    updateBrandExportBtn();
+    showToast(doneCount + '개 브랜드 삭제 완료.' + (failCount ? ' ' + failCount + '개 실패.' : ''));
+  };
+
   window.bulkChangeBrandStatus = function() {
     const ids = [...(window._brandSelected || new Set())];
     if (!ids.length) return;
@@ -3453,6 +3493,53 @@
   };
 
   /* ── 일괄 변경 (상품) ── */
+  window.bulkDeleteProducts = function() {
+    const ids = [...(window._productSelected || new Set())];
+    if (!ids.length) return;
+    const names = ids.map(id => {
+      const p = (window._allProducts || []).find(x => x.id === id);
+      return p ? (p.product_name || id) : id;
+    });
+    const formHTML =
+      '<div style="background:var(--red-light,#fff0f0);border:1px solid var(--red);border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:var(--red);font-weight:600;">⚠️ 이 작업은 되돌릴 수 없습니다.</div>' +
+      '<p style="font-size:13px;color:var(--gray-700);margin-bottom:12px;">선택된 <strong>' + ids.length + '</strong>개 상품과 하위 데이터(SKU, 개체)를 모두 영구 삭제합니다:</p>' +
+      '<ul style="font-size:13px;color:var(--gray-600);margin-bottom:16px;padding-left:20px;line-height:1.8;">' +
+      names.map(n => '<li>' + esc(n) + '</li>').join('') +
+      '</ul>' +
+      '<div class="form-group"><label class="form-label" style="color:var(--red);">확인을 위해 <strong>삭제</strong>를 입력하세요</label>' +
+      '<input class="form-input" id="bulk-delete-product-confirm" placeholder="삭제" /></div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      '<button class="btn btn-primary" style="background:var(--red);border-color:var(--red);" onclick="executeBulkDeleteProducts()">영구 삭제</button>';
+    showModal('상품 일괄 삭제', formHTML, footerHTML);
+  };
+
+  window.executeBulkDeleteProducts = async function() {
+    const confirmVal = ((document.getElementById('bulk-delete-product-confirm') || {}).value || '').trim();
+    if (confirmVal !== '삭제') { showToast('확인 텍스트를 정확히 입력해주세요.', 'error'); return; }
+    const ids = [...(window._productSelected || new Set())];
+    closeModal();
+    showToast('삭제 중...', 'info');
+    let doneCount = 0, failCount = 0;
+    for (const productId of ids) {
+      try {
+        const skusSnap = await getDocs(collection(db, 'products', productId, 'skus'));
+        for (const skuDoc of skusSnap.docs) {
+          const unitsSnap = await getDocs(collection(db, 'products', productId, 'skus', skuDoc.id, 'units'));
+          for (const unitDoc of unitsSnap.docs) await deleteDoc(doc(db, 'products', productId, 'skus', skuDoc.id, 'units', unitDoc.id));
+          await deleteDoc(doc(db, 'products', productId, 'skus', skuDoc.id));
+        }
+        await deleteDoc(doc(db, 'products', productId));
+        doneCount++;
+      } catch(e) { failCount++; }
+    }
+    window._productSelected = new Set();
+    window._allProducts = (window._allProducts || []).filter(p => !ids.includes(p.id));
+    filterProductList();
+    updateProductExportBtn();
+    showToast(doneCount + '개 상품 삭제 완료.' + (failCount ? ' ' + failCount + '개 실패.' : ''));
+  };
+
   window.bulkChangeProductStatus = function() {
     const ids = [...(window._productSelected || new Set())];
     if (!ids.length) return;
@@ -3543,10 +3630,7 @@
     window._productPageSize = window._productPageSize || 20;
     window._productPage = 1;
 
-    document.getElementById('page-header-actions').innerHTML =
-      '<button class="btn btn-secondary" id="btn-bulk-product-status" onclick="bulkChangeProductStatus()" style="display:none;">🔄 일괄 변경</button>' +
-      '<button class="btn btn-secondary" id="btn-export-products" onclick="exportSelectedProducts()" style="display:none;">📥 선택 내보내기 (토스포스)</button>';
-
+    document.getElementById('page-header-actions').innerHTML = '';
     container.innerHTML =
       '<div id="product-list-content"><div class="spinner" style="margin:60px auto;"></div></div>';
 
@@ -3565,7 +3649,8 @@
         '<select id="pl-page-size" onchange="window._productPageSize=parseInt(this.value);window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
         '</select>' +
-        '<div data-register-wrap="1" style="position:relative;display:inline-block;margin-left:auto;">' +
+        '<div id="pl-bulk-actions" style="display:flex;gap:8px;margin-left:auto;align-items:center;"></div>' +
+        '<div data-register-wrap="1" style="position:relative;display:inline-block;">' +
         '<button class="btn btn-primary" onclick="toggleRegisterMenu(\'new-product-menu\',this)">➕ 새 상품 등록 ▾</button>' +
         '<div id="new-product-menu" class="register-dropdown" style="display:none;">' +
         '<div class="reg-menu-item" onclick="closeRegisterMenus();openProductModal()">📝 일반 등록</div>' +
@@ -3620,17 +3705,14 @@
   };
 
   function updateProductExportBtn() {
-    const btn = document.getElementById('btn-export-products');
-    const bulkBtn = document.getElementById('btn-bulk-product-status');
+    const area = document.getElementById('pl-bulk-actions');
+    if (!area) return;
     const cnt = (window._productSelected || new Set()).size;
-    if (btn) {
-      if (cnt > 0) { btn.style.display = ''; btn.textContent = '📥 선택 내보내기 (' + cnt + '개, 토스포스)'; }
-      else btn.style.display = 'none';
-    }
-    if (bulkBtn) {
-      if (cnt > 0) { bulkBtn.style.display = ''; bulkBtn.textContent = '🔄 일괄 변경 (' + cnt + '개)'; }
-      else bulkBtn.style.display = 'none';
-    }
+    if (cnt === 0) { area.innerHTML = ''; return; }
+    area.innerHTML =
+      '<button class="btn btn-secondary" onclick="bulkChangeProductStatus()" style="white-space:nowrap;">🔄 일괄 변경 (' + cnt + '개)</button>' +
+      '<button class="btn btn-secondary" onclick="exportSelectedProducts()" style="white-space:nowrap;">📥 내보내기 (' + cnt + '개)</button>' +
+      '<button class="btn btn-secondary" onclick="bulkDeleteProducts()" style="white-space:nowrap;color:var(--red);border-color:var(--red);">🗑 선택 삭제 (' + cnt + '개)</button>';
   }
 
   window.filterProductList = function() {
