@@ -1970,33 +1970,44 @@
         '종료': '<span class="badge badge-gray">종료</span>'
       }[s] || '<span class="badge badge-gray">미계약</span>');
 
+      const adminConfirmed = b.onboarding_status === '승인' && b.brand_code;
+      const sectionLabel = (text, hint) =>
+        '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:16px;margin-bottom:8px;">' + text +
+        (hint ? ' <span style="font-weight:400;color:var(--gray-300);">· ' + hint + '</span>' : '') + '</div>';
+
       const body = '<div>' +
         logoSection +
-        '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-bottom:8px;">기본 정보</div>' +
-        row('브랜드코드', '<code style="background:var(--blue-light);color:var(--blue);padding:2px 7px;border-radius:4px;">' + esc(b.brand_code) + '</code>') +
-        row('브랜드명', '<strong>' + esc(b.brand_name) + '</strong>') +
-        row('거래 유형', typeLabel[b.brand_type] || esc(b.brand_type || '')) +
+
+        sectionLabel('어드민 확정 정보') +
+        '<div style="background:var(--blue-light);border-radius:8px;padding:10px 14px;margin-bottom:4px;">' +
+        (adminConfirmed
+          ? row('브랜드코드', '<code style="background:#fff;color:var(--blue);padding:2px 7px;border-radius:4px;font-weight:700;">' + esc(b.brand_code) + '</code>') +
+            row('거래 유형', typeLabel[b.brand_type] || esc(b.brand_type || '')) +
+            (fi.commission_rate !== undefined && b.brand_type === '위탁' ? row('위탁판매대행수수료', fi.commission_rate + '%') : '')
+          : '<div style="font-size:12px;color:var(--gray-500);padding:4px 0;">입점 승인 시 브랜드코드·거래유형·수수료가 확정됩니다.</div>') +
+        '</div>' +
         row('입점 상태', onboardingBadge(b.onboarding_status) +
           (b.onboarding_status_reason ? ' <span style="font-size:12px;color:var(--gray-500);">— ' + esc(b.onboarding_status_reason) + '</span>' : '') +
           ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openOnboardingModal(\'' + brandId + '\',\'' + esc(b.onboarding_status || '') + '\')">상태 변경</button>') +
+
+        sectionLabel('벤더 제출 정보') +
+        row('브랜드명', '<strong>' + esc(b.brand_name) + '</strong>') +
         row('브랜드 소개', esc(b.brand_desc || '')) +
-        (ci.phone || ci.email || ci.sns
-          ? '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:16px;margin-bottom:8px;">연락처</div>' +
-            row('전화번호', esc(ci.phone || '')) +
-            row('이메일', esc(ci.email || '')) +
-            row('SNS', esc(ci.sns || '')) : '') +
-        (fi.commission !== undefined || fi.tax_rate !== undefined
-          ? '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:16px;margin-bottom:8px;">수수료</div>' +
-            row('중개수수료', fi.commission_rate !== undefined ? fi.commission_rate + '%' : '') +
-            row('소득세율', fi.tax_rate !== undefined ? fi.tax_rate + '%' : '') : '') +
+        (Array.isArray(b.website_urls) && b.website_urls.length
+          ? row('관련 사이트', b.website_urls.map(u => '<a href="' + esc(u) + '" target="_blank" style="color:var(--blue);font-size:12px;">' + esc(u) + '</a>').join('<br>'))
+          : '') +
         (bizTypeText
-          ? '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:16px;margin-bottom:8px;">정산 정보</div>' +
+          ? sectionLabel('정산 정보 (벤더 제출)') +
             row('사업자 유형', bizTypeText) +
             row('사업자등록번호', esc(si.business_reg_number || '')) +
             row('과세 유형', esc(si.taxation_type || '')) +
             row('예금주', esc(si.account_holder || '')) +
             row('은행', esc(si.bank_name || '')) +
-            row('계좌번호', isEncrypted(si.account_number) ? '●●●● (암호화 보관 중)' : esc(si.account_number || '')) : '') +
+            row('계좌번호', isEncrypted(si.account_number) ? '●●●● (암호화 보관 중)' : esc(si.account_number || '')) +
+            (si.id_card_url ? row('신분증 사본', '<a href="' + esc(si.id_card_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a>') : '') +
+            (si.bank_book_url ? row('통장 사본', '<a href="' + esc(si.bank_book_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a>') : '') +
+            (si.biz_reg_url ? row('사업자등록증', '<a href="' + esc(si.biz_reg_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a>') : '')
+          : '') +
         '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">변경 이력</div>' +
         '<div id="brand-activity-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
         '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">담당자</div>' +
@@ -2271,6 +2282,61 @@
     }
   }
 
+  window.openContractDocsModal = function(brandId, contractId) {
+    const formHTML =
+      '<div style="font-size:13px;color:var(--gray-600);margin-bottom:16px;line-height:1.8;">' +
+      '계약 체결 완료 후 수령한 서류 사본을 업로드합니다.<br>' +
+      '업로드된 파일은 Firebase Storage에 저장되고 브랜드 정보에 연결됩니다.</div>' +
+      '<div class="form-group"><label class="form-label">신분증 사본</label>' +
+      '<input type="file" id="docs-id-card" accept="image/*,.pdf" class="form-input" /></div>' +
+      '<div class="form-group"><label class="form-label">통장 사본</label>' +
+      '<input type="file" id="docs-bank-book" accept="image/*,.pdf" class="form-input" /></div>' +
+      '<div class="form-group"><label class="form-label">사업자등록증 사본 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">사업자인 경우</span></label>' +
+      '<input type="file" id="docs-biz-reg" accept="image/*,.pdf" class="form-input" /></div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      '<button class="btn btn-primary" id="btn-upload-docs" onclick="saveContractDocs(\'' + brandId + '\',\'' + contractId + '\')">업로드</button>';
+    showModal('서류 업로드', formHTML, footerHTML);
+  };
+
+  window.saveContractDocs = async function(brandId, contractId) {
+    const btn = document.getElementById('btn-upload-docs');
+    if (btn) { btn.disabled = true; btn.textContent = '업로드 중...'; }
+    try {
+      const brandCode = (await getDoc(doc(db, 'brands', brandId))).data()?.brand_code || brandId;
+      const basePrefix = 'brands/' + brandCode + '/contracts/' + contractId + '/';
+      const updates = {};
+
+      const idCardFile = (document.getElementById('docs-id-card') || {}).files?.[0];
+      const bankBookFile = (document.getElementById('docs-bank-book') || {}).files?.[0];
+      const bizRegFile = (document.getElementById('docs-biz-reg') || {}).files?.[0];
+
+      if (idCardFile) {
+        const snap = await uploadBytes(ref(storage, basePrefix + 'id_card'), idCardFile);
+        updates['settlement_info.id_card_url'] = await getDownloadURL(snap.ref);
+      }
+      if (bankBookFile) {
+        const snap = await uploadBytes(ref(storage, basePrefix + 'bank_book'), bankBookFile);
+        updates['settlement_info.bank_book_url'] = await getDownloadURL(snap.ref);
+      }
+      if (bizRegFile) {
+        const snap = await uploadBytes(ref(storage, basePrefix + 'biz_reg'), bizRegFile);
+        updates['settlement_info.biz_reg_url'] = await getDownloadURL(snap.ref);
+      }
+
+      if (Object.keys(updates).length === 0) { showToast('업로드할 파일을 선택해주세요.', 'error'); return; }
+
+      await updateDoc(doc(db, 'brands', brandId), { ...updates, updated_at: today() });
+      await writeActivityLog(brandId, 'contract', contractId, 'updated', null, { docs: Object.keys(updates) });
+      showToast('✅ 서류 업로드 완료. 브랜드 정보에 저장되었습니다.', 'success');
+      closeModal();
+      openBrandDetail(brandId);
+    } catch(e) {
+      showToast('업로드 실패: ' + e.message, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '업로드'; }
+    }
+  };
+
   function renderContractsSection(brandId, contracts, sec) {
     const eSignBadge = s => ({
       '발송대기': '<span class="badge badge-gray">📄 발송대기</span>',
@@ -2308,7 +2374,10 @@
           (c.ucansign_document_id ? '<br><span style="font-family:monospace;font-size:11px;color:var(--gray-400);">문서 ID: ' + esc(c.ucansign_document_id) + '</span>' : '') +
           '</div>' +
           (canResend
-            ? '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openSendContractModal(\'' + brandId + '\')">🔄 재발송</button>'
+            ? '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;margin-right:6px;" onclick="openSendContractModal(\'' + brandId + '\')">🔄 재발송</button>'
+            : '') +
+          (ucStatus === '체결완료'
+            ? '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openContractDocsModal(\'' + brandId + '\',\'' + c.id + '\')">📎 서류 업로드</button>'
             : '') +
           '</div>';
       });
@@ -2811,16 +2880,37 @@
   /* ════════════════════════════════
      12단계 입점 심사 워크플로우
   ════════════════════════════════ */
-  window.openOnboardingModal = function(brandId, currentStatus) {
+  window.openOnboardingModal = async function(brandId, currentStatus) {
     const opts = ['미계약', '계약완료', '심사중', '승인', '거절', '종료'];
+    // 기존 브랜드 정보 로드 (승인 시 기존값 채우기용)
+    let existingBrand = {};
+    try { const s = await getDoc(doc(db, 'brands', brandId)); existingBrand = s.data() || {}; } catch(e) {}
+    const fi = existingBrand.fee_info || {};
+
+    const approvalExtraHtml =
+      '<div id="section-approval-extra" style="display:' + (currentStatus === '승인' ? 'block' : 'none') + ';background:var(--blue-light);border-radius:10px;padding:14px 16px;margin-top:12px;">' +
+      '<div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:12px;">✅ 승인 시 확정 정보 입력</div>' +
+      '<div class="form-group"><label class="form-label">브랜드코드 <span style="color:var(--red);">*</span> <span style="font-size:11px;font-weight:400;color:var(--gray-400);">영문대문자·숫자 2~10자 · 중복불가</span></label>' +
+      '<input class="form-input" id="approval-brand-code" placeholder="예: ONG" value="' + esc(existingBrand.brand_code || '') + '" style="text-transform:uppercase;font-weight:700;font-family:monospace;" /></div>' +
+      '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">거래유형 최종확정 <span style="color:var(--red);">*</span></label>' +
+      '<select class="form-input" id="approval-brand-type">' +
+      ['PB','위탁','매입','기타'].map(t => '<option value="' + t + '"' + (existingBrand.brand_type === t ? ' selected' : '') + '>' + t + '</option>').join('') +
+      '</select></div>' +
+      '<div class="form-group"><label class="form-label">위탁판매대행수수료 (%)</label>' +
+      '<input class="form-input" id="approval-commission" type="number" min="0" max="100" step="0.1" value="' + (fi.commission_rate !== undefined ? fi.commission_rate : 15) + '" /></div>' +
+      '</div></div>';
+
     const formHTML =
       '<div class="form-group"><label class="form-label">입점 상태</label>' +
-      '<select class="form-input" id="onboarding-status">' +
+      '<select class="form-input" id="onboarding-status" onchange="document.getElementById(\'section-approval-extra\').style.display=this.value===\'승인\'?\'block\':\'none\'">' +
       '<option value="">미설정</option>' +
       opts.map(o => '<option value="' + o + '"' + (o === currentStatus ? ' selected' : '') + '>' + o + '</option>').join('') +
       '</select></div>' +
       '<div class="form-group"><label class="form-label">사유 <span style="font-size:11px;color:var(--gray-400);">(선택 — 거절·종료 시 입력 권장)</span></label>' +
-      '<input class="form-input" id="onboarding-reason" placeholder="상태 변경 사유를 입력하세요" /></div>';
+      '<input class="form-input" id="onboarding-reason" placeholder="상태 변경 사유를 입력하세요" /></div>' +
+      approvalExtraHtml;
+
     const footerHTML =
       '<button class="btn btn-secondary" onclick="openBrandDetail(\'' + brandId + '\')">취소</button>' +
       '<button class="btn btn-primary" onclick="saveOnboardingStatus(\'' + brandId + '\')">저장</button>';
@@ -2830,14 +2920,29 @@
   window.saveOnboardingStatus = async function(brandId) {
     const status = document.getElementById('onboarding-status').value;
     const reason = (document.getElementById('onboarding-reason').value || '').trim();
+    const updateData = {
+      onboarding_status: status || null,
+      onboarding_status_reason: reason || '',
+      onboarding_status_changed_at: today(),
+      updated_at: today()
+    };
+
+    // 승인 시 브랜드코드·거래유형·수수료 함께 저장
+    if (status === '승인') {
+      const brandCode = ((document.getElementById('approval-brand-code') || {}).value || '').trim().toUpperCase();
+      const brandType = (document.getElementById('approval-brand-type') || {}).value;
+      const commissionRate = parseFloat((document.getElementById('approval-commission') || {}).value) || 15;
+      if (!brandCode) { showToast('브랜드코드를 입력해주세요.', 'error'); return; }
+      if (!/^[A-Z0-9]{2,10}$/.test(brandCode)) { showToast('브랜드코드는 영문 대문자·숫자 2~10자만 가능합니다.', 'error'); return; }
+      updateData.brand_code = brandCode;
+      updateData.brand_type = brandType;
+      updateData.fee_info = brandType === '위탁' ? { commission_rate: commissionRate } : {};
+    }
+
     try {
-      await updateDoc(doc(db, 'brands', brandId), {
-        onboarding_status: status || null,
-        onboarding_status_reason: reason || '',
-        onboarding_status_changed_at: today(),
-        updated_at: today()
-      });
-      await writeActivityLog(brandId, 'admin_action', brandId, 'status_changed', null, { onboarding_status: status, reason });
+      await updateDoc(doc(db, 'brands', brandId), updateData);
+      await writeActivityLog(brandId, 'admin_action', brandId, 'status_changed', null,
+        { onboarding_status: status, reason, ...(status === '승인' ? { brand_code: updateData.brand_code, brand_type: updateData.brand_type } : {}) });
       showToast('입점 상태를 변경했습니다.');
       openBrandDetail(brandId);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
