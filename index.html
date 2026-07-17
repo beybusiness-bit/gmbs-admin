@@ -475,28 +475,6 @@
     return { ok: true };
   }
 
-  const BANK_ACCOUNT_LENGTHS = {
-    '국민은행': [14], 'KB국민': [14],
-    '신한은행': [12], '신한': [12],
-    '우리은행': [13], '우리': [13],
-    '하나은행': [14], '하나': [14],
-    '기업은행': [11], 'IBK': [11],
-    '농협은행': [12, 13], '농협': [12, 13],
-    '카카오뱅크': [13], '카카오': [13],
-    '토스뱅크': [11], '토스': [11],
-    '씨티은행': [11], '씨티': [11],
-    '수협은행': [11], '수협': [11],
-    '케이뱅크': [11], '케이': [11],
-  };
-
-  function getAccountLengthHint(bankName) {
-    if (!bankName) return null;
-    for (const [key, lengths] of Object.entries(BANK_ACCOUNT_LENGTHS)) {
-      if (bankName.includes(key)) return lengths;
-    }
-    return null;
-  }
-
   window.onBizRegNumInput = function(el) {
     const raw = el.value.replace(/[^\d-]/g, '');
     el.value = formatBizRegNumber(raw.replace(/-/g, ''));
@@ -536,22 +514,6 @@
 
   window.onAccountNumInput = function(el) {
     el.value = el.value.replace(/\D/g, '');
-    const hint = document.getElementById('account-num-hint');
-    if (!hint) return;
-    const len = el.value.length;
-    if (len === 0) { hint.textContent = ''; return; }
-    const bankName = (document.getElementById('f-bank-name') || {}).value || '';
-    const bankLengths = getAccountLengthHint(bankName);
-    if (len < 10) {
-      hint.innerHTML = '<span style="color:var(--red);">✗ 계좌번호는 최소 10자리입니다.</span>';
-    } else if (len > 14) {
-      hint.innerHTML = '<span style="color:var(--red);">✗ 계좌번호는 최대 14자리입니다.</span>';
-    } else if (bankLengths && !bankLengths.includes(len)) {
-      const expected = bankLengths.join(' 또는 ') + '자리';
-      hint.innerHTML = '<span style="color:#b45309;">⚠ ' + bankName + '은(는) 보통 ' + expected + '입니다. (현재 ' + len + '자리)</span>';
-    } else {
-      hint.innerHTML = '<span style="color:var(--green);">✓ 형식이 올바릅니다.</span>';
-    }
   };
 
   window.verifyBusinessNumber = async function() {
@@ -1958,7 +1920,6 @@
       '<div class="form-group">',
       '<label class="form-label" for="f-account-number">계좌번호</label>',
       '<input class="form-input" id="f-account-number" type="text" oninput="onAccountNumInput(this)" ' + (isEncrypted(si.account_number) ? 'placeholder="암호화 보관 중 · 변경 시 재입력" data-has-enc="1"' : 'value="' + esc(si.account_number || '') + '" placeholder="- 없이 숫자만 입력"') + ' />',
-      '<div id="account-num-hint" style="font-size:11px;margin-top:4px;"></div>',
       '</div>',
 
       /* 서류 이미지 */
