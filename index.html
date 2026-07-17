@@ -5606,25 +5606,25 @@
       '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">목록에서 한눈에 구분할 수 있도록 짧게 적어두는 메모예요. 계약 기능에는 영향 없습니다.</div></div>' +
 
       '<div class="form-group"><label class="form-label">계약서 변수 기본값 <span style="font-size:12px;font-weight:400;color:var(--gray-400);">(선택)</span></label>' +
-      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:8px;">유캔사인 계약서 안에 <strong>자동으로 채울 항목</strong>이 있으면 입력하세요. 계약 발송 시 수정도 가능합니다. 없으면 비워두세요.</div>' +
-      '<div id="ct-fields-rows" style="display:flex;flex-direction:column;gap:6px;"></div>' +
-      '<div style="display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap;">' +
-      '<button type="button" onclick="window._addCtFieldRow()" style="font-size:12px;padding:5px 12px;border:1px dashed var(--gray-300);border-radius:8px;background:none;cursor:pointer;color:var(--gray-500);">+ 항목 추가</button>' +
-      '<button type="button" id="btn-vars-toggle" onclick="(function(){var g=document.getElementById(\'ct-vars-panel\');var b=document.getElementById(\'btn-vars-toggle\');var open=g.style.display===\'none\';g.style.display=open?\'block\':\'none\';b.textContent=open?\'▲ 변수 목록 닫기\':\'▼ 사용 가능한 변수 보기\';})()" style="font-size:11px;background:none;border:none;color:var(--primary);cursor:pointer;text-decoration:underline;padding:0;">▼ 사용 가능한 변수 보기</button>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:8px;">유캔사인 계약서 안에 <strong>자동으로 채울 항목</strong>이 있으면 입력하세요. 없으면 비워두세요.</div>' +
+      '<div style="margin-bottom:10px;">' +
+      '<button type="button" id="btn-vars-toggle" onclick="(function(){var g=document.getElementById(\'ct-vars-panel\');var b=document.getElementById(\'btn-vars-toggle\');var open=g.style.display===\'none\';g.style.display=open?\'block\':\'none\';b.textContent=open?\'▲ 변수 목록 닫기\':\'▼ 사용 가능한 변수 보기\';})()" style="font-size:12px;background:none;border:1px solid var(--primary);color:var(--primary);cursor:pointer;border-radius:6px;padding:4px 10px;">▼ 사용 가능한 변수 보기</button>' +
       '</div>' +
-      '<div id="ct-vars-panel" style="display:none;background:#f8f7ff;border:1px solid #ddd6fe;border-radius:8px;padding:12px;margin-top:8px;font-size:12px;">' +
-      '<div style="color:#5b21b6;font-weight:700;margin-bottom:8px;">기본값 입력 시 아래 변수를 사용할 수 있습니다. 계약 발송 시 실제 값으로 자동 교체됩니다.</div>' +
-      '<table style="border-collapse:collapse;width:100%;line-height:2;">' +
-      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{brand_name}}</td><td style="padding:2px 12px;color:#374151;">브랜드명 (예: 온기)</td></tr>' +
-      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{brand_code}}</td><td style="padding:2px 12px;color:#374151;">브랜드코드 (예: ONG)</td></tr>' +
-      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{ceo_name}}</td><td style="padding:2px 12px;color:#374151;">대표자명</td></tr>' +
-      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{phone}}</td><td style="padding:2px 12px;color:#374151;">연락처</td></tr>' +
-      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{email}}</td><td style="padding:2px 12px;color:#374151;">이메일</td></tr>' +
-      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{commission_rate}}</td><td style="padding:2px 12px;color:#374151;">수수료율 (예: 20%)</td></tr>' +
-      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{yyyymmdd}}</td><td style="padding:2px 12px;color:#374151;">오늘 날짜 (예: 20260717)</td></tr>' +
-      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{yyyy-mm-dd}}</td><td style="padding:2px 12px;color:#374151;">오늘 날짜 (예: 2026-07-17)</td></tr>' +
-      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{yyyy년mm월dd일}}</td><td style="padding:2px 12px;color:#374151;">오늘 날짜 (예: 2026년 07월 17일)</td></tr>' +
-      '</table></div>' +
+      '<div id="ct-vars-panel" style="display:none;background:#f8f7ff;border:1px solid #ddd6fe;border-radius:8px;padding:12px;margin-bottom:10px;font-size:12px;">' +
+      '<div style="color:#5b21b6;font-weight:700;margin-bottom:6px;">기본값 입력 시 아래 변수를 사용할 수 있습니다. 클릭하면 클립보드에 복사됩니다.</div>' +
+      '<div style="background:#fff3cd;border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:11px;color:#856404;">⚠️ 변수 치환은 전자계약 발송 기능이 완성된 후 자동 적용됩니다. <strong>지금은 기본값으로 저장만 됩니다.</strong></div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;">' +
+      '<span onclick="window._cpVar(\'{{brand_name}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{brand_name}}</span><span style="color:#6b7280;font-size:10px;">브랜드명</span></span>' +
+      '<span onclick="window._cpVar(\'{{brand_code}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{brand_code}}</span><span style="color:#6b7280;font-size:10px;">브랜드코드</span></span>' +
+      '<span onclick="window._cpVar(\'{{ceo_name}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{ceo_name}}</span><span style="color:#6b7280;font-size:10px;">대표자명</span></span>' +
+      '<span onclick="window._cpVar(\'{{phone}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{phone}}</span><span style="color:#6b7280;font-size:10px;">연락처</span></span>' +
+      '<span onclick="window._cpVar(\'{{email}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{email}}</span><span style="color:#6b7280;font-size:10px;">이메일</span></span>' +
+      '<span onclick="window._cpVar(\'{{commission_rate}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{commission_rate}}</span><span style="color:#6b7280;font-size:10px;">수수료율</span></span>' +
+      '<span onclick="window._cpVar(\'{{yyyymmdd}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{yyyymmdd}}</span><span style="color:#6b7280;font-size:10px;">날짜(20260717)</span></span>' +
+      '<span onclick="window._cpVar(\'{{yyyy-mm-dd}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{yyyy-mm-dd}}</span><span style="color:#6b7280;font-size:10px;">날짜(2026-07-17)</span></span>' +
+      '<span onclick="window._cpVar(\'{{yyyy년mm월dd일}}\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;background:#ede9fe;border-radius:6px;padding:4px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;"><span style="font-family:monospace;color:#5b21b6;">{{yyyy년mm월dd일}}</span><span style="color:#6b7280;font-size:10px;">날짜(2026년07월17일)</span></span>' +
+      '</div></div>' +
+      '<div id="ct-fields-rows" style="display:flex;flex-direction:column;gap:6px;"></div>' +
       '</div>' +
 
       '<div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;">' +
@@ -5685,34 +5685,34 @@
             obj.forEach(function(item) { collectFields(item, collected); });
             return;
           }
-          // 이 객체가 필드 객체인지 확인 (fieldName 또는 name 속성 보유)
-          const name = obj.fieldName || obj.field_name || obj.name || obj.label || obj.title;
+          const fieldKey = obj.fieldName || obj.field_name;
           const type = (obj.fieldType || obj.field_type || obj.type || obj.componentType || '').toUpperCase();
-          // 서명/도장/이니셜/날짜/체크박스가 아닌 텍스트 입력 필드만
           const excludeTypes = ['SIGN', 'STAMP', 'INITIAL', 'CHECKBOX', 'DATE', 'IMAGE', 'SEAL'];
-          if (name && typeof name === 'string' && name.trim()) {
+          if (fieldKey && typeof fieldKey === 'string' && fieldKey.trim()) {
             const isExcluded = excludeTypes.some(function(ex) { return type.includes(ex); });
             if (!isExcluded) {
-              collected.push(name.trim());
+              const key = fieldKey.trim();
+              if (!collected.some(function(c) { return c.name === key; })) {
+                const descCandidates = [obj.label, obj.description, obj.placeholder, obj.componentLabel, obj.title];
+                const desc = descCandidates.find(function(d) { return d && typeof d === 'string' && d.trim() && d.trim() !== key; }) || '';
+                collected.push({ name: key, desc: typeof desc === 'string' ? desc.trim() : '' });
+              }
             }
           }
-          // 하위 속성 재귀 탐색
           Object.keys(obj).forEach(function(k) { collectFields(obj[k], collected); });
         }
 
         const collected = [];
         collectFields(json, collected);
-        // 중복 제거
-        const unique = collected.filter(function(v, i, a) { return a.indexOf(v) === i; });
 
-        console.log('[UCansign] 수집된 필드명:', unique);
+        console.log('[UCansign] 수집된 필드:', collected);
 
-        if (unique.length === 0) {
+        if (collected.length === 0) {
           showToast('입력 필드를 찾지 못했습니다. 브라우저 개발자 도구(F12) → Console에서 응답 구조를 확인해주세요.', 'info');
         } else {
           document.getElementById('ct-fields-rows').innerHTML = '';
-          unique.forEach(function(name) { window._addCtFieldRow(name, ''); });
-          showToast(unique.length + '개 필드를 불러왔습니다. 기본값을 입력하세요.', 'success');
+          collected.forEach(function(f) { window._addCtFieldRow(f.name, '', f.desc); });
+          showToast(collected.length + '개 필드를 불러왔습니다. 기본값을 입력하세요.', 'success');
         }
       } catch(e) {
         if (e instanceof TypeError || e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
@@ -5723,6 +5723,13 @@
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = '🔍 필드 가져오기'; }
       }
+    };
+
+    // 클립보드 복사 헬퍼 (변수 칩 클릭용)
+    window._cpVar = function(val) {
+      navigator.clipboard.writeText(val).then(function() {
+        showToast(val + ' 복사됨', 'success');
+      }).catch(function() {});
     };
 
     // 변수 행 추가 헬퍼
