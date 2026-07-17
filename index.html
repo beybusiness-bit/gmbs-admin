@@ -12,6 +12,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -5634,7 +5635,6 @@
           if (btn) { btn.disabled = false; btn.textContent = '🔍 필드 가져오기'; }
           return;
         }
-        // GET 방식으로 템플릿 상세조회 시도
         const res = await fetch('https://app.ucansign.com/openapi/templates/' + templateId, {
           method: 'GET',
           headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' }
@@ -5644,24 +5644,46 @@
           throw new Error((errJson.msg || res.statusText || '') + ' (HTTP ' + res.status + ')');
         }
         const json = await res.json();
-        // 응답에서 필드 목록 추출 (ucansign 응답 구조에 맞게 파싱)
-        const result = json.result || json;
-        const rawFields = result.fields || result.templateFields || [];
-        // 서명/도장 필드는 제외, fieldName 있는 것만
-        const textFields = rawFields.filter(function(f) {
-          const t = (f.fieldType || f.type || '').toUpperCase();
-          return f.fieldName && t !== 'SIGN' && t !== 'STAMP' && t !== 'INITIAL';
-        });
-        if (textFields.length === 0) {
-          showToast('가져올 수 있는 입력 필드가 없습니다. 템플릿에 "추가내용 입력하기" 텍스트 필드가 있는지 확인해주세요.', 'info');
+        console.log('[UCansign] 템플릿 상세 응답 전체:', JSON.stringify(json, null, 2));
+
+        // 응답 전체에서 fieldName 속성이 있는 객체를 재귀적으로 수집
+        function collectFields(obj, collected) {
+          if (!obj || typeof obj !== 'object') return;
+          if (Array.isArray(obj)) {
+            obj.forEach(function(item) { collectFields(item, collected); });
+            return;
+          }
+          // 이 객체가 필드 객체인지 확인 (fieldName 또는 name 속성 보유)
+          const name = obj.fieldName || obj.field_name || obj.name || obj.label || obj.title;
+          const type = (obj.fieldType || obj.field_type || obj.type || obj.componentType || '').toUpperCase();
+          // 서명/도장/이니셜/날짜/체크박스가 아닌 텍스트 입력 필드만
+          const excludeTypes = ['SIGN', 'STAMP', 'INITIAL', 'CHECKBOX', 'DATE', 'IMAGE', 'SEAL'];
+          if (name && typeof name === 'string' && name.trim()) {
+            const isExcluded = excludeTypes.some(function(ex) { return type.includes(ex); });
+            if (!isExcluded) {
+              collected.push(name.trim());
+            }
+          }
+          // 하위 속성 재귀 탐색
+          Object.keys(obj).forEach(function(k) { collectFields(obj[k], collected); });
+        }
+
+        const collected = [];
+        collectFields(json, collected);
+        // 중복 제거
+        const unique = collected.filter(function(v, i, a) { return a.indexOf(v) === i; });
+
+        console.log('[UCansign] 수집된 필드명:', unique);
+
+        if (unique.length === 0) {
+          showToast('입력 필드를 찾지 못했습니다. 브라우저 개발자 도구(F12) → Console에서 응답 구조를 확인해주세요.', 'info');
         } else {
           document.getElementById('ct-fields-rows').innerHTML = '';
-          textFields.forEach(function(f) { window._addCtFieldRow(f.fieldName, ''); });
-          showToast(textFields.length + '개 필드를 불러왔습니다. 기본값을 입력하세요.', 'success');
+          unique.forEach(function(name) { window._addCtFieldRow(name, ''); });
+          showToast(unique.length + '개 필드를 불러왔습니다. 기본값을 입력하세요.', 'success');
         }
       } catch(e) {
         if (e instanceof TypeError || e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
-          // CORS 차단 또는 네트워크 오류
           showToast('유캔사인 API가 브라우저 직접 호출을 허용하지 않습니다. 필드를 직접 추가해주세요.', 'error');
         } else {
           showToast('필드 조회 실패: ' + e.message, 'error');
@@ -6559,18 +6581,85 @@
   // ═══════════════════════════════════════════════
   //  브랜드 대량 등록
   // ═══════════════════════════════════════════════
-  window.downloadBrandTemplate = function() {
-    if (!window.XLSX) { showToast('라이브러리 로딩 중입니다. 잠시 후 다시 시도해주세요.', 'error'); return; }
-    var titleRow  = ['GMBS 브랜드 대량 등록 양식 | 3행(작성안내)은 수정하지 마세요. 4행부터 한 행씩 입력하세요. 필수(*) 항목 누락 시 해당 행은 등록되지 않습니다.'];
-    var headerRow = ['브랜드명*', '브랜드코드*', '거래유형*', '사업자구분', '대표자명', '연락처', '이메일', 'SNS', '브랜드소개'];
-    var guideRow  = ['예) 온기', '예) ONG  (영문대문자·숫자 2~10자, 중복불가)', 'PB / 위탁 / 매입 중 택1', '개인 / 법인 / 간이 / 비사업자', '대표 또는 작가 이름', '숫자만 입력(하이픈 자동)', '담당자 이메일', '인스타 등 SNS 계정', '브랜드 간단 소개'];
-    var ex1 = ['온기', 'ONG', '위탁', '개인', '홍길동', '01012345678', 'ong@email.com', '@ong_store', '핸드메이드 소품 브랜드'];
-    var ex2 = ['두루미상점', 'DRM', '위탁', '비사업자', '김두루', '', 'drm@email.com', '', '수공예 작가 브랜드'];
-    var wb = XLSX.utils.book_new();
-    var ws = XLSX.utils.aoa_to_sheet([titleRow, headerRow, guideRow, ex1, ex2]);
-    ws['!cols'] = [16,28,12,18,12,16,22,16,28].map(function(w){return {wch:w};});
-    XLSX.utils.book_append_sheet(wb, ws, '브랜드목록');
-    XLSX.writeFile(wb, 'GMBS_브랜드_대량등록_양식.xlsx');
+  window.downloadBrandTemplate = async function() {
+    if (!window.ExcelJS) { showToast('라이브러리 로딩 중입니다. 잠시 후 다시 시도해주세요.', 'error'); return; }
+    var wb = new ExcelJS.Workbook();
+    var ws = wb.addWorksheet('브랜드목록');
+
+    var PURPLE = '8c52ff'; var WHITE = 'ffffff'; var GRAY_BG = 'f3f4f6'; var GRAY_TEXT = '6b7280';
+    var GUIDE_BG = 'fef9ec'; var GUIDE_TEXT = '92400e';
+    var cols = [
+      { header: '브랜드명*',   key: 'a', width: 18 },
+      { header: '브랜드코드*', key: 'b', width: 22 },
+      { header: '거래유형*',   key: 'c', width: 14 },
+      { header: '사업자구분',  key: 'd', width: 18 },
+      { header: '대표자명',    key: 'e', width: 14 },
+      { header: '연락처',      key: 'f', width: 18 },
+      { header: '이메일',      key: 'g', width: 24 },
+      { header: 'SNS',         key: 'h', width: 18 },
+      { header: '브랜드소개',  key: 'i', width: 30 },
+    ];
+    ws.columns = cols;
+
+    // 1행: 제목 안내
+    ws.spliceRows(1, 0, ['GMBS 브랜드 대량 등록 양식 — 3행(작성안내)은 수정 금지. 4행부터 입력. 필수(*) 항목 누락 시 해당 행은 등록되지 않습니다.']);
+    ws.getRow(1).height = 24;
+    ws.getCell('A1').font = { bold: true, size: 11, color: { argb: 'ff' + GRAY_TEXT } };
+    ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + GRAY_BG } };
+    ws.mergeCells('A1:I1');
+
+    // 2행: 헤더 (보라색 배경, 흰 굵은 글씨)
+    var headerRow = ws.getRow(2);
+    headerRow.values = cols.map(function(c){ return c.header; });
+    headerRow.height = 24;
+    headerRow.eachCell(function(cell) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + PURPLE } };
+      cell.font = { bold: true, color: { argb: 'ff' + WHITE }, size: 11 };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+
+    // 3행: 작성 안내 (노란 배경, 줄바꿈 허용)
+    var guideRow = ws.getRow(3);
+    guideRow.values = ['예) 온기', '예) ONG\n(영문대문자·숫자 2~10자, 중복불가)', 'PB / 위탁 / 매입 중 택1', '개인 / 법인 / 간이 / 비사업자', '대표 또는 작가 이름', '숫자만 입력\n(하이픈 자동)', '담당자 이메일', '인스타 등 SNS', '브랜드 간단 소개'];
+    guideRow.height = 44;
+    guideRow.eachCell(function(cell) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + GUIDE_BG } };
+      cell.font = { italic: true, color: { argb: 'ff' + GUIDE_TEXT }, size: 10 };
+      cell.alignment = { vertical: 'top', wrapText: true };
+    });
+
+    // 4~5행: 예시 데이터
+    [
+      ['온기', 'ONG', '위탁', '개인', '홍길동', '01012345678', 'ong@email.com', '@ong_store', '핸드메이드 소품 브랜드'],
+      ['두루미상점', 'DRM', '위탁', '비사업자', '김두루', '', 'drm@email.com', '', '수공예 작가 브랜드'],
+    ].forEach(function(rowData, i) {
+      var r = ws.getRow(4 + i);
+      r.values = rowData;
+      r.height = 20;
+      r.eachCell(function(cell) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffffff' } };
+        cell.font = { color: { argb: 'ff374151' }, size: 11 };
+        cell.alignment = { vertical: 'middle' };
+      });
+    });
+
+    // 모든 셀 테두리
+    for (var ri = 1; ri <= 5; ri++) {
+      ws.getRow(ri).eachCell({ includeEmpty: true }, function(cell) {
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'ffe5e7eb' } },
+          left: { style: 'thin', color: { argb: 'ffe5e7eb' } },
+          bottom: { style: 'thin', color: { argb: 'ffe5e7eb' } },
+          right: { style: 'thin', color: { argb: 'ffe5e7eb' } }
+        };
+      });
+    }
+
+    var buf = await wb.xlsx.writeBuffer();
+    var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = 'GMBS_브랜드_대량등록_양식.xlsx'; a.click();
+    URL.revokeObjectURL(url);
   };
 
   window.openBulkBrandModal = function() {
@@ -6743,36 +6832,98 @@
   // ═══════════════════════════════════════════════
   //  상품 대량 등록
   // ═══════════════════════════════════════════════
-  window.downloadProductTemplate = function() {
-    if (!window.XLSX) { showToast('라이브러리 로딩 중입니다. 잠시 후 다시 시도해주세요.', 'error'); return; }
-    var titleRow  = ['GMBS 상품 대량 등록 양식 | 한 행 = SKU 1개. 같은 (브랜드코드+상품명)은 하나의 상품으로 묶입니다. 3행(작성안내)은 수정 금지. 4행부터 입력.'];
-    var headerRow = ['브랜드코드*','상품명*','관리방식*','기본판매가*','옵션1축이름','옵션1값','옵션2축이름','옵션2값','옵션3축이름','옵션3값','SKU판매가','개체수','메모'];
-    var guideRow  = [
-      '예) ONG (등록된 코드만)',
-      '예) 체크 파우치',
-      '수량관리 또는 개체관리',
-      '숫자만 입력(원)',
-      '예) 색상',
-      '예) 빨강',
-      '예) 크기',
-      '예) 소형',
-      '(옵션3 있을 때만)',
-      '(옵션3 있을 때만)',
-      '이 SKU만 별도 가격(비우면 기본가)',
-      '개체관리일 때 생성할 개체수(정수)',
-      '참고 메모'
+  window.downloadProductTemplate = async function() {
+    if (!window.ExcelJS) { showToast('라이브러리 로딩 중입니다. 잠시 후 다시 시도해주세요.', 'error'); return; }
+    var wb = new ExcelJS.Workbook();
+    var ws = wb.addWorksheet('상품목록');
+
+    var PURPLE = '8c52ff'; var WHITE = 'ffffff'; var GRAY_BG = 'f3f4f6'; var GRAY_TEXT = '6b7280';
+    var GUIDE_BG = 'fef9ec'; var GUIDE_TEXT = '92400e';
+    var cols = [
+      { header: '브랜드코드*', key: 'a', width: 16 },
+      { header: '상품명*',     key: 'b', width: 20 },
+      { header: '관리방식*',   key: 'c', width: 14 },
+      { header: '기본판매가*', key: 'd', width: 14 },
+      { header: '옵션1축이름', key: 'e', width: 14 },
+      { header: '옵션1값',     key: 'f', width: 12 },
+      { header: '옵션2축이름', key: 'g', width: 14 },
+      { header: '옵션2값',     key: 'h', width: 12 },
+      { header: '옵션3축이름', key: 'i', width: 14 },
+      { header: '옵션3값',     key: 'j', width: 12 },
+      { header: 'SKU판매가',   key: 'k', width: 14 },
+      { header: '개체수',      key: 'l', width: 10 },
+      { header: '메모',        key: 'm', width: 18 },
     ];
-    var ex1 = ['ONG','체크 파우치','수량관리',15000,'색상','빨강','크기','소형','','','','',''];
-    var ex2 = ['ONG','체크 파우치','수량관리',15000,'색상','빨강','크기','대형','','',18000,'',''];
-    var ex3 = ['ONG','체크 파우치','수량관리',15000,'색상','파랑','크기','소형','','','','',''];
-    var ex4 = ['DRM','손뜨개 고양이 인형','개체관리',28000,'','','','','','','',3,'소형 버전'];
-    var ex5 = ['DRM','민트 파우치','개체관리',35000,'색상','민트','','','','','',2,''];
-    var ex6 = ['DRM','민트 파우치','개체관리',35000,'색상','라벤더','','','','','',1,''];
-    var wb = XLSX.utils.book_new();
-    var ws = XLSX.utils.aoa_to_sheet([titleRow, headerRow, guideRow, ex1, ex2, ex3, ex4, ex5, ex6]);
-    ws['!cols'] = [22,18,12,14,12,10,12,10,14,14,18,10,16].map(function(w){return {wch:w};});
-    XLSX.utils.book_append_sheet(wb, ws, '상품목록');
-    XLSX.writeFile(wb, 'GMBS_상품_대량등록_양식.xlsx');
+    ws.columns = cols;
+
+    // 1행: 제목 안내
+    ws.spliceRows(1, 0, ['GMBS 상품 대량 등록 양식 — 한 행 = SKU 1개. 같은 (브랜드코드+상품명)은 하나의 상품으로 묶입니다. 3행(안내)은 수정 금지. 4행부터 입력.']);
+    ws.getRow(1).height = 24;
+    ws.getCell('A1').font = { bold: true, size: 11, color: { argb: 'ff' + GRAY_TEXT } };
+    ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + GRAY_BG } };
+    ws.mergeCells('A1:M1');
+
+    // 2행: 헤더 (보라색)
+    var headerRow = ws.getRow(2);
+    headerRow.values = cols.map(function(c){ return c.header; });
+    headerRow.height = 24;
+    headerRow.eachCell(function(cell) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + PURPLE } };
+      cell.font = { bold: true, color: { argb: 'ff' + WHITE }, size: 11 };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+
+    // 3행: 작성 안내 (노란 배경)
+    var guideRow = ws.getRow(3);
+    guideRow.values = [
+      '예) ONG\n(등록된 코드만)', '예) 체크 파우치', '수량관리\n또는 개체관리', '숫자만(원)',
+      '예) 색상', '예) 빨강', '예) 크기', '예) 소형',
+      '옵션3 있을 때만', '옵션3 있을 때만',
+      '이 SKU만 별도 가격\n(비우면 기본가)', '개체관리일 때\n생성할 개체수', '참고 메모'
+    ];
+    guideRow.height = 48;
+    guideRow.eachCell(function(cell) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + GUIDE_BG } };
+      cell.font = { italic: true, color: { argb: 'ff' + GUIDE_TEXT }, size: 10 };
+      cell.alignment = { vertical: 'top', wrapText: true };
+    });
+
+    // 4~9행: 예시 데이터
+    [
+      ['ONG','체크 파우치','수량관리',15000,'색상','빨강','크기','소형','','','','',''],
+      ['ONG','체크 파우치','수량관리',15000,'색상','빨강','크기','대형','','',18000,'',''],
+      ['ONG','체크 파우치','수량관리',15000,'색상','파랑','크기','소형','','','','',''],
+      ['DRM','손뜨개 고양이 인형','개체관리',28000,'','','','','','','',3,'소형 버전'],
+      ['DRM','민트 파우치','개체관리',35000,'색상','민트','','','','','',2,''],
+      ['DRM','민트 파우치','개체관리',35000,'색상','라벤더','','','','','',1,''],
+    ].forEach(function(rowData, i) {
+      var r = ws.getRow(4 + i);
+      r.values = rowData;
+      r.height = 20;
+      r.eachCell(function(cell) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffffff' } };
+        cell.font = { color: { argb: 'ff374151' }, size: 11 };
+        cell.alignment = { vertical: 'middle' };
+      });
+    });
+
+    // 모든 셀 테두리
+    for (var ri = 1; ri <= 9; ri++) {
+      ws.getRow(ri).eachCell({ includeEmpty: true }, function(cell) {
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'ffe5e7eb' } },
+          left: { style: 'thin', color: { argb: 'ffe5e7eb' } },
+          bottom: { style: 'thin', color: { argb: 'ffe5e7eb' } },
+          right: { style: 'thin', color: { argb: 'ffe5e7eb' } }
+        };
+      });
+    }
+
+    var buf = await wb.xlsx.writeBuffer();
+    var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = 'GMBS_상품_대량등록_양식.xlsx'; a.click();
+    URL.revokeObjectURL(url);
   };
 
   window.openBulkProductModal = function() {
