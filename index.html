@@ -2314,14 +2314,38 @@
   async function renderPersonsList(container) {
     container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
     try {
-      const [personsSnap, brandsSnap] = await Promise.all([
+      const [personsSnap, brandsSnap, usersSnap] = await Promise.all([
         getDocs(collection(db, 'persons')),
-        getDocs(collection(db, 'brands'))
+        getDocs(collection(db, 'brands')),
+        getDocs(query(collection(db, 'users'), where('member_status', '!=', null)))
       ]);
       const brandMap = {};
       brandsSnap.docs.forEach(d => { brandMap[d.id] = d.data().brand_name || d.id; });
 
-      const persons = personsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // persons 컬렉션에 있는 문서
+      const persons = personsSnap.docs.map(d => ({ id: d.id, _source: 'persons', ...d.data() }));
+      const personIdSet = new Set(persons.map(p => p.id));
+
+      // users 컬렉션에는 있지만 persons 문서가 없는 벤더 회원 → 미등록 담당자로 표시
+      usersSnap.docs.forEach(d => {
+        const u = d.data();
+        const alreadyIn = u.person_id && personIdSet.has(u.person_id);
+        if (!alreadyIn) {
+          persons.push({
+            id: d.id,
+            _source: 'users',
+            _uid: d.id,
+            name: u.display_name || u.displayName || '',
+            login_google_email: u.email || '',
+            contact_email: u.email || '',
+            role: '',
+            brand_id: u.brand_id || null,
+            active: u.member_status === '브랜드회원',
+            created_at: u.created_at || ''
+          });
+        }
+      });
+
       persons.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
 
       let html = '<div style="padding:16px 0;">';
@@ -2350,7 +2374,7 @@
     let t = '<div style="overflow-x:auto;">';
     t += '<table style="width:100%;border-collapse:collapse;font-size:14px;">';
     t += '<thead><tr style="background:var(--gray-50);border-bottom:2px solid var(--gray-200);">';
-    ['이름','역할','연락처 이메일','구글 로그인 이메일','소속 브랜드','상태','등록일'].forEach(h => {
+    ['이름','역할','연락처 이메일','구글 로그인 이메일','소속 브랜드','상태','등록일','비고'].forEach(h => {
       t += '<th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--gray-600);white-space:nowrap;">' + h + '</th>';
     });
     t += '</tr></thead><tbody>';
@@ -2367,6 +2391,10 @@
       t += '<td style="padding:10px 12px;">' + brandName + '</td>';
       t += '<td style="padding:10px 12px;">' + statusBadge + '</td>';
       t += '<td style="padding:10px 12px;color:var(--gray-500);">' + esc(p.created_at || '-') + '</td>';
+      const noteBadge = p._source === 'users'
+        ? '<span class="badge badge-yellow" title="벤더 포털 가입 계정이지만 persons 문서 미생성 상태">미등록</span>'
+        : '';
+      t += '<td style="padding:10px 12px;">' + noteBadge + '</td>';
       t += '</tr>';
     });
     t += '</tbody></table></div>';
