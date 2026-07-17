@@ -12,6 +12,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -234,6 +235,15 @@
       .form-row { grid-template-columns: 1fr; }
       .modal { max-width: 100%; border-radius: 16px 16px 0 0; margin-top: auto; }
     }
+    .register-dropdown { position:absolute; top:calc(100% + 4px); right:0; background:#fff; border:1px solid var(--gray-200); border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.12); z-index:200; min-width:150px; padding:4px 0; }
+    .reg-menu-item { padding:10px 16px; cursor:pointer; font-size:13px; color:var(--gray-800); transition:background .15s; }
+    .reg-menu-item:hover { background:var(--gray-50); }
+    .bulk-result-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .bulk-result-table th { background:#f4f4f8; padding:7px 10px; text-align:left; font-weight:600; white-space:nowrap; }
+    .bulk-result-table td { padding:6px 10px; border-bottom:1px solid var(--gray-100); vertical-align:top; }
+    .bulk-row-ok { background:#f0fdf4; }
+    .bulk-row-err { background:#fff5f5; }
+    .bulk-row-warn { background:#fffbeb; }
   </style>
 </head>
 <body>
@@ -245,9 +255,8 @@
 
 <div id="login-screen" style="display:none;">
   <div class="login-card">
-    <div class="login-logo">G</div>
-    <div class="login-title">GMBS 관리자</div>
-    <div class="login-sub">바코드 생성 · 상품 등록<br>관리자 전용 도구</div>
+    <div style="font-size:26px;font-weight:900;color:var(--blue);line-height:1.25;margin-bottom:8px;letter-spacing:-0.5px;">게을러서못열뻔한상점</div>
+    <div class="login-title" style="margin-bottom:24px;">메인 관리자</div>
     <button class="btn-google" id="btn-google-login">
       <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
         <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
@@ -303,11 +312,14 @@
       </div>
 
       <div class="nav-section-label">고객 지원</div>
-      <div class="nav-item" data-page="info-management" onclick="navigate('info-management')">
-        <span class="icon">📋</span><span class="nav-label"> 안내</span>
+      <div class="nav-item" data-page="customer-cs" onclick="navigate('customer-cs')">
+        <span class="icon">🛎️</span><span class="nav-label"> 고객 CS</span>
       </div>
       <div class="nav-item" data-page="inquiry-list" onclick="navigate('inquiry-list')">
-        <span class="icon">💬</span><span class="nav-label"> 문의</span>
+        <span class="icon">💬</span><span class="nav-label"> 브랜드 문의</span>
+      </div>
+      <div class="nav-item" data-page="info-management" onclick="navigate('info-management')">
+        <span class="icon">📋</span><span class="nav-label"> 안내</span>
       </div>
       <div class="nav-item" data-page="email-settings" onclick="navigate('email-settings')">
         <span class="icon">✉️</span><span class="nav-label"> 이메일 알림</span>
@@ -346,6 +358,7 @@
   import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
   import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, getDocs, query, where, orderBy, runTransaction, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
   import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
+  import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 
   const firebaseConfig = {
     apiKey: 'AIzaSyC8uy09XOeEYIs1m3Rga5BMqd7gS7o3roI',
@@ -360,6 +373,7 @@
   const auth = getAuth(app);
   const db = getFirestore(app);
   const storage = getStorage(app);
+  const fns = getFunctions(app, 'asia-northeast3');
 
   const ALLOWED_EMAILS = ['itsbeybusiness@gmail.com', 'baekeun0@gmail.com'];
 
@@ -372,6 +386,190 @@
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
+
+  /* ── 민감정보 암호화 (AES-GCM, 공유 키 방식) ── */
+  // app_configs/encryption.aes_key_b64 에 저장된 키를 admin·vendor가 공유
+  // 암호화된 값은 "ENC:" 접두사로 구분됨
+  const _ENC_PREFIX = 'ENC:';
+  let _sharedCryptoKey = null;
+  let _sharedKeyB64Cached = null;
+
+  async function _getSharedKey() {
+    try {
+      const snap = await getDoc(doc(db, 'app_configs', 'encryption'));
+      const keyB64 = snap.exists() ? (snap.data().aes_key_b64 || '') : '';
+      if (!keyB64) throw new Error('암호화 키가 설정되지 않았습니다. 설정 페이지에서 키를 생성해주세요.');
+      if (keyB64 === _sharedKeyB64Cached && _sharedCryptoKey) return _sharedCryptoKey;
+      const rawKey = Uint8Array.from(atob(keyB64), c => c.charCodeAt(0));
+      _sharedCryptoKey = await crypto.subtle.importKey('raw', rawKey, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+      _sharedKeyB64Cached = keyB64;
+      return _sharedCryptoKey;
+    } catch(e) {
+      throw new Error('암호화 키 로드 실패: ' + e.message);
+    }
+  }
+
+  async function encryptField(plaintext) {
+    if (!plaintext) return '';
+    try {
+      const key = await _getSharedKey();
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(String(plaintext)));
+      const combined = new Uint8Array(12 + ciphertext.byteLength);
+      combined.set(iv, 0);
+      combined.set(new Uint8Array(ciphertext), 12);
+      return _ENC_PREFIX + btoa(String.fromCharCode(...combined));
+    } catch(e) {
+      console.error('암호화 실패:', e);
+      throw e;
+    }
+  }
+
+  async function decryptField(encryptedValue) {
+    if (!encryptedValue || !encryptedValue.startsWith(_ENC_PREFIX)) return encryptedValue || '';
+    try {
+      const key = await _getSharedKey();
+      const combined = Uint8Array.from(atob(encryptedValue.slice(_ENC_PREFIX.length)), c => c.charCodeAt(0));
+      const iv = combined.slice(0, 12);
+      const ciphertext = combined.slice(12);
+      const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+      return new TextDecoder().decode(decrypted);
+    } catch(e) {
+      console.error('복호화 실패:', e);
+      return '';
+    }
+  }
+
+  function isEncrypted(value) {
+    return value && typeof value === 'string' && value.startsWith(_ENC_PREFIX);
+  }
+
+  /* ── 번호 형식 검증 ── */
+  function validateBizRegNumber(raw) {
+    const digits = raw.replace(/-/g, '').replace(/\s/g, '');
+    if (!/^\d{10}$/.test(digits)) return false;
+    const w = [1, 3, 7, 1, 3, 7, 1, 3, 5];
+    let sum = 0;
+    for (let i = 0; i < 9; i++) sum += w[i] * parseInt(digits[i]);
+    sum += Math.floor((5 * parseInt(digits[8])) / 10);
+    return parseInt(digits[9]) === (10 - (sum % 10)) % 10;
+  }
+
+  function formatBizRegNumber(raw) {
+    const d = raw.replace(/\D/g, '').slice(0, 10);
+    if (d.length <= 3) return d;
+    if (d.length <= 5) return d.slice(0, 3) + '-' + d.slice(3);
+    return d.slice(0, 3) + '-' + d.slice(3, 5) + '-' + d.slice(5);
+  }
+
+  function validateResidentNumber(raw) {
+    const digits = raw.replace(/-/g, '');
+    if (!/^\d{13}$/.test(digits)) return { ok: false, msg: '13자리 숫자를 입력하세요.' };
+    const gender = parseInt(digits[6]);
+    if (![1,2,3,4,5,6,7,8,9,0].includes(gender)) return { ok: false, msg: '7번째 자리(성별코드)가 올바르지 않습니다.' };
+    // 생년월일 기본 유효성
+    const yy = parseInt(digits.slice(0, 2));
+    const mm = parseInt(digits.slice(2, 4));
+    const dd = parseInt(digits.slice(4, 6));
+    if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return { ok: false, msg: '생년월일이 올바르지 않습니다.' };
+    // 체크섬
+    const w = [2,3,4,5,6,7,8,9,2,3,4,5];
+    let sum = 0;
+    for (let i = 0; i < 12; i++) sum += w[i] * parseInt(digits[i]);
+    const check = (11 - (sum % 11)) % 10;
+    if (parseInt(digits[12]) !== check) return { ok: false, msg: '주민등록번호 형식이 올바르지 않습니다. (체크digit 불일치)' };
+    return { ok: true };
+  }
+
+  window.onBizRegNumInput = function(el) {
+    const raw = el.value.replace(/[^\d-]/g, '');
+    el.value = formatBizRegNumber(raw.replace(/-/g, ''));
+    const hint = document.getElementById('biz-reg-num-hint');
+    if (!hint) return;
+    const digits = el.value.replace(/-/g, '');
+    if (digits.length === 10) {
+      if (validateBizRegNumber(digits)) {
+        hint.innerHTML = '<span style="color:var(--green);">✓ 올바른 형식입니다. "사업자 확인" 버튼으로 실제 조회하세요.</span>';
+      } else {
+        hint.innerHTML = '<span style="color:var(--red);">✗ 사업자등록번호 형식이 올바르지 않습니다.</span>';
+      }
+    } else {
+      hint.textContent = '';
+    }
+  };
+
+  window.onResidentNumInput = function(el) {
+    let raw = el.value.replace(/[^\d-]/g, '');
+    const digits = raw.replace(/-/g, '');
+    if (digits.length > 6 && !raw.includes('-')) {
+      raw = digits.slice(0, 6) + '-' + digits.slice(6, 13);
+    }
+    el.value = raw.slice(0, 14);
+    const hint = document.getElementById('resident-num-hint');
+    if (!hint) return;
+    const d = el.value.replace(/-/g, '');
+    if (d.length === 13) {
+      const r = validateResidentNumber(d);
+      hint.innerHTML = r.ok
+        ? '<span style="color:var(--green);">✓ 형식이 올바릅니다.</span>'
+        : '<span style="color:var(--red);">✗ ' + r.msg + '</span>';
+    } else {
+      hint.textContent = '';
+    }
+  };
+
+  window.onAccountNumInput = function(el) {
+    el.value = el.value.replace(/\D/g, '');
+  };
+
+  window.verifyBusinessNumber = async function() {
+    const el = document.getElementById('f-biz-reg-num');
+    const btn = document.getElementById('btn-verify-biz-num');
+    const hint = document.getElementById('biz-reg-num-hint');
+    if (!el || !hint) return;
+    const digits = (el.value || '').replace(/-/g, '').trim();
+    if (digits.length !== 10) { showToast('사업자등록번호 10자리를 입력하세요.', 'error'); return; }
+    if (!validateBizRegNumber(digits)) { showToast('사업자등록번호 형식이 올바르지 않습니다.', 'error'); return; }
+
+    let apiKey = '';
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'config'));
+      apiKey = snap.data()?.nts_api_key || '';
+    } catch(e) {}
+
+    if (!apiKey) {
+      hint.innerHTML = '<span style="color:#b45309;">⚠ 설정 페이지에서 국세청 API 키를 먼저 등록하세요.</span>';
+      showToast('설정 > 국세청 API 키를 먼저 등록해주세요.', 'error');
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = '조회 중...'; }
+    hint.innerHTML = '<span style="color:var(--gray-400);">조회 중...</span>';
+    try {
+      const url = 'https://api.odcloud.kr/api/nts-businessman/v1/status?serviceKey=' + encodeURIComponent(apiKey);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ b_no: [digits] })
+      });
+      const data = await res.json();
+      const item = data?.data?.[0];
+      if (!item) throw new Error('응답 없음');
+      if (item.b_stt_cd === '01') {
+        hint.innerHTML = '<span style="color:var(--green);">✅ 계속사업자 (과세유형: ' + (item.tax_type || '알 수 없음') + ')</span>';
+      } else if (item.b_stt_cd === '02') {
+        hint.innerHTML = '<span style="color:#b45309;">⚠ 휴업자</span>';
+      } else if (item.b_stt_cd === '03') {
+        hint.innerHTML = '<span style="color:var(--red);">✗ 폐업자</span>';
+      } else {
+        hint.innerHTML = '<span style="color:var(--gray-500);">국세청 응답: ' + (item.b_stt || '조회 결과 없음') + '</span>';
+      }
+    } catch(e) {
+      hint.innerHTML = '<span style="color:var(--red);">조회 오류: ' + esc(e.message) + '. API 키 또는 네트워크를 확인하세요.</span>';
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '사업자 확인'; }
+    }
+  };
 
   /* ── 로그인 ── */
   document.getElementById('btn-google-login').addEventListener('click', async () => {
@@ -446,6 +644,24 @@
       '</div></div>';
   }
 
+  // 이미 열린 모달의 body/footer만 교체 (title은 null이면 유지)
+  function updateModal(title, bodyHTML, footerHTML) {
+    if (title !== null) {
+      const t = document.querySelector('#modal-container .modal-title');
+      if (t) t.innerHTML = title;
+    }
+    const b = document.querySelector('#modal-container .modal-body');
+    if (b) b.innerHTML = bodyHTML;
+    const f = document.querySelector('#modal-container .modal-footer');
+    if (footerHTML !== undefined) {
+      if (f) { f.innerHTML = footerHTML; }
+      else {
+        const modal = document.querySelector('#modal-container .modal');
+        if (modal) modal.insertAdjacentHTML('beforeend', '<div class="modal-footer">' + footerHTML + '</div>');
+      }
+    }
+  }
+
   /* ── 사이드바 배지 ── */
   async function refreshSidebarBadges() {
     try {
@@ -493,7 +709,8 @@
     'application-review': '승인 관리',
     'settlement-list': '정산',
     'info-management': '안내 관리',
-    'inquiry-list': '문의',
+    'inquiry-list': '브랜드 문의',
+    'customer-cs': '고객 CS',
     settings: '설정',
     'email-settings': '이메일 알림'
   };
@@ -515,6 +732,7 @@
     else if (page === 'settlement-list') await renderSettlementList(content);
     else if (page === 'info-management') await renderInfoManagement(content);
     else if (page === 'inquiry-list') await renderInquiryList(content);
+    else if (page === 'customer-cs') await renderCustomerCSPage(content);
     else if (page === 'barcode') renderBarcodePage(content);
     else if (page === 'settings') await renderSettings(content);
     else if (page === 'email-settings') await renderEmailSettings(content);
@@ -636,7 +854,7 @@
         '</div>'
       ].join('');
     } catch (e) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">데이터를 불러오지 못했습니다.<br>' + e.message + '</div></div>';
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">데이터를 불러오지 못했습니다.<br>' + esc(e.message) + '</div></div>';
     }
   }
 
@@ -823,7 +1041,7 @@
       }).join('');
 
     } catch(e) {
-      if (resultsEl) resultsEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
+      if (resultsEl) resultsEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
     }
   };
 
@@ -1329,22 +1547,24 @@
 
     document.getElementById('page-header-actions').innerHTML =
       '<button class="btn btn-secondary" id="btn-bulk-brand-status" onclick="bulkChangeBrandStatus()" style="display:none;">🔄 일괄 변경</button>' +
-      '<button class="btn btn-secondary" id="btn-export-brands" onclick="exportSelectedBrands()" style="display:none;">📥 선택 내보내기</button>' +
-      '<button class="btn btn-primary" onclick="openBrandModal(null)">➕ 새 브랜드 등록</button>';
+      '<button class="btn btn-secondary" id="btn-export-brands" onclick="exportSelectedBrands()" style="display:none;">📥 선택 내보내기</button>';
 
-    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+    container.innerHTML =
+      '<div id="brand-list-content"><div class="spinner" style="margin:60px auto;"></div></div>';
+
     try {
       const snap = await getDocs(query(collection(db, 'brands'), orderBy('created_at', 'desc')));
       window._allBrands = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const _blContent = document.getElementById('brand-list-content');
 
       if (snap.empty) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🏬</div><div class="empty-state-text">등록된 브랜드가 없습니다.<br>새 브랜드를 등록해보세요.</div></div>';
+        _blContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🏬</div><div class="empty-state-text">등록된 브랜드가 없습니다.<br>새 브랜드를 등록해보세요.</div></div>';
         return;
       }
 
-      container.innerHTML =
+      _blContent.innerHTML =
         '<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">' +
-        '<input class="form-input" id="bl-search" placeholder="브랜드명, 브랜드코드 검색..." style="flex:1;min-width:220px;" oninput="window._brandPage=1;filterBrandList()" />' +
+        '<input class="form-input" id="bl-search" placeholder="브랜드명, 브랜드코드 검색..." style="flex:1;min-width:160px;max-width:260px;" oninput="window._brandPage=1;filterBrandList()" />' +
         '<select id="bl-type-filter" onchange="window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="">전체 유형</option><option value="PB">PB</option><option value="위탁">위탁</option><option value="매입">매입</option>' +
         '</select>' +
@@ -1354,6 +1574,12 @@
         '<select id="bl-page-size" onchange="window._brandPageSize=parseInt(this.value);window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
         '</select>' +
+        '<div data-register-wrap="1" style="position:relative;display:inline-block;margin-left:auto;">' +
+        '<button class="btn btn-primary" onclick="toggleRegisterMenu(\'new-brand-menu\',this)">➕ 새 브랜드 등록 ▾</button>' +
+        '<div id="new-brand-menu" class="register-dropdown" style="display:none;">' +
+        '<div class="reg-menu-item" onclick="closeRegisterMenus();openBrandModal(null)">📝 일반 등록</div>' +
+        '<div class="reg-menu-item" onclick="closeRegisterMenus();openBulkBrandModal()">📤 대량 등록</div>' +
+        '</div></div>' +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
         '<div id="bl-count" style="font-size:13px;color:var(--gray-500);"></div>' +
@@ -1368,7 +1594,9 @@
 
       filterBrandList();
     } catch (e) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
+      const _blContent = document.getElementById('brand-list-content');
+      if (_blContent) _blContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
+      else container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
     }
   }
 
@@ -1506,6 +1734,7 @@
         existing = { id: snap.id, ...snap.data() };
       } catch(e) { closeModal(); showToast('불러오기 실패: ' + e.message, 'error'); return; }
     }
+    window._brandModalExisting = existing || {};
 
     const si = existing && existing.settlement_info ? existing.settlement_info : {};
     const fi = existing && existing.fee_info ? existing.fee_info : {};
@@ -1519,13 +1748,38 @@
     document.getElementById('f-brand-type').addEventListener('change', function() {
       const show = this.value === '위탁' || this.value === '매입';
       document.getElementById('section-settlement').style.display = show ? '' : 'none';
-      document.getElementById('section-fee').style.display = show ? '' : 'none';
+      const commEl = document.getElementById('section-commission');
+      if (commEl) commEl.style.display = this.value === '위탁' ? '' : 'none';
     });
     document.getElementById('f-brand-code').addEventListener('input', function() {
       const pos = this.selectionStart;
       this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
       this.setSelectionRange(pos, pos);
+      document.getElementById('f-brand-code-msg').innerHTML = '';
     });
+    window.checkNewBrandCode = async function() {
+      const input = document.getElementById('f-brand-code');
+      const msg = document.getElementById('f-brand-code-msg');
+      if (!input || !msg) return;
+      const code = input.value.trim().toUpperCase();
+      if (!code) { msg.innerHTML = ''; return; }
+      if (!/^[A-Z0-9]{2,10}$/.test(code)) {
+        msg.innerHTML = '<span style="color:var(--red);">영문 대문자·숫자 2~10자만 입력 가능합니다.</span>';
+        return;
+      }
+      msg.innerHTML = '<span style="color:var(--gray-400);">확인 중...</span>';
+      try {
+        const dup = await getDocs(query(collection(db, 'brands'), where('brand_code', '==', code)));
+        const existingCode = (window._brandModalExisting || {}).brand_code || '';
+        if (!dup.empty && existingCode !== code) {
+          msg.innerHTML = '<span style="color:var(--red);">⚠️ 이미 사용 중인 코드입니다.</span>';
+        } else {
+          msg.innerHTML = '<span style="color:var(--green);">✅ 사용 가능한 코드입니다.</span>';
+        }
+      } catch(e) {
+        msg.innerHTML = '<span style="color:var(--red);">확인 실패: ' + esc(e.message) + '</span>';
+      }
+    };
     const descEl = document.getElementById('f-brand-desc');
     if (descEl) {
       descEl.addEventListener('input', function() {
@@ -1551,25 +1805,52 @@
     setupFileUpload('upload-id-card', 'preview-id-card', 'input-id-card');
     setupFileUpload('upload-bank-book', 'preview-bank-book', 'input-bank-book');
     document.getElementById('btn-save-brand').addEventListener('click', () => saveBrand(brandId, existing));
+
+    // 암호화된 사업자등록번호 복호화 후 인풋에 채우기
+    const bizRegEl = document.getElementById('f-biz-reg-num');
+    if (bizRegEl && si.business_reg_number && isEncrypted(si.business_reg_number)) {
+      bizRegEl.value = '';
+      bizRegEl.placeholder = '복호화 중...';
+      bizRegEl.dataset.hasEnc = '1';
+      decryptField(si.business_reg_number).then(v => {
+        bizRegEl.value = v || '';
+        bizRegEl.placeholder = '000-00-00000';
+      }).catch(() => { bizRegEl.placeholder = '복호화 실패'; });
+    }
   };
 
   function buildBrandFormHTML(existing, si, fi) {
     const v = (key, def) => existing ? (existing[key] !== undefined ? existing[key] : (def || '')) : (def || '');
     const bType = v('brand_type', 'PB');
     const showSI = bType === '위탁' || bType === '매입';
-    const contact = (existing && existing.contact_info) ? existing.contact_info : {};
+    const showCommission = bType === '위탁';
     const bizType = si.business_type || 'business';
     const taxType = si.taxation_type || '';
+    const existingUrls = (existing && Array.isArray(existing.website_urls) && existing.website_urls.length > 0)
+      ? existing.website_urls
+      : [''];
+
+    const urlRows = existingUrls.map((url, i) =>
+      '<div class="brand-url-row" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">' +
+      '<input class="form-input brand-url-input" type="url" placeholder="URL 입력 (예: https://instagram.com/gmbs_official)" value="' + esc(url) + '" style="flex:1;" />' +
+      (i === 0
+        ? '<button type="button" onclick="addBrandUrlRow()" style="flex-shrink:0;border:none;background:none;cursor:pointer;color:var(--blue);font-size:20px;padding:0 4px;" title="행 추가">＋</button>'
+        : '<button type="button" onclick="this.closest(\'.brand-url-row\').remove()" style="flex-shrink:0;border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:18px;padding:0 4px;" title="삭제">✕</button>') +
+      '</div>'
+    ).join('');
 
     return [
-      /* ── 기본 정보 ── */
+      /* ── 기본 정보 (소제목 없이 단일 섹션) ── */
       '<div class="form-section">',
-      '<div class="form-section-title">기본 정보</div>',
       '<div class="form-row">',
       formGroup('브랜드명', 'f-brand-name',
         '<input class="form-input" id="f-brand-name" type="text" placeholder="예: 온기" value="' + esc(v('brand_name')) + '" required />', true),
       formGroup('브랜드코드', 'f-brand-code',
-        '<input class="form-input" id="f-brand-code" type="text" placeholder="예: ONG" maxlength="10" value="' + esc(v('brand_code')) + '" ' + (existing ? 'style="font-family:monospace;font-weight:700;"' : '') + ' />' +
+        '<div style="display:flex;gap:8px;align-items:center;">' +
+        '<input class="form-input" id="f-brand-code" type="text" placeholder="예: ONG" maxlength="10" value="' + esc(v('brand_code')) + '" ' + (existing ? 'style="font-family:monospace;font-weight:700;"' : '') + ' oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,\'\');document.getElementById(\'f-brand-code-msg\').innerHTML=\'\'" />' +
+        '<button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;white-space:nowrap;" type="button" onclick="checkNewBrandCode()">중복 확인</button>' +
+        '</div>' +
+        '<div id="f-brand-code-msg" style="font-size:12px;margin-top:4px;"></div>' +
         '<div class="form-hint">영문 대문자+숫자, 최대 10자. 등록 후 변경 자제.</div>', true),
       '</div>',
       '<div class="form-row">',
@@ -1580,14 +1861,11 @@
         opt('매입', '매입 (직접 구매)', bType) +
         '</select>', true),
       '</div>',
-      '</div>',
 
-      /* ── 브랜드 소개 ── */
-      '<div class="form-section">',
-      '<div class="form-section-title">브랜드 소개 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택사항</span></div>',
-      '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">',
+      /* 대표 사진 + 간단 소개 */
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-bottom:16px;">',
       '<div style="flex:0 0 auto;">',
-      '<label class="form-label">대표 사진 (로고)</label>',
+      '<label class="form-label">대표 사진 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">권장 500×500px · JPG/PNG · 정사각형</span></label>',
       fileUploadArea('upload-brand-logo', 'preview-brand-logo', 'input-brand-logo', v('logo_url')),
       '</div>',
       '<div style="flex:1;min-width:200px;">',
@@ -1596,37 +1874,26 @@
       '<div class="form-hint" id="brand-desc-count">' + String(v('brand_desc')).length + '/100</div>',
       '</div>',
       '</div>',
-      '</div>',
 
-      /* ── 연락처 정보 ── */
-      '<div class="form-section">',
-      '<div class="form-section-title">연락처 정보 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택사항</span></div>',
-      '<div class="form-row">',
-      formGroup('연락처', 'f-contact-phone',
-        '<input class="form-input" id="f-contact-phone" type="tel" placeholder="010-0000-0000" value="' + esc(contact.phone || '') + '" />'),
-      formGroup('이메일', 'f-contact-email',
-        '<input class="form-input" id="f-contact-email" type="email" placeholder="example@email.com" value="' + esc(contact.email || '') + '" />'),
-      '</div>',
-      formGroup('SNS', 'f-contact-sns',
-        '<input class="form-input" id="f-contact-sns" type="text" placeholder="@인스타그램아이디 또는 링크" value="' + esc(contact.sns || '') + '" />'),
-      '</div>',
-
-      /* ── 수수료 정보 (위탁/매입만) ── */
-      '<div class="form-section" id="section-fee" style="' + (showSI ? '' : 'display:none;') + '">',
-      '<div class="form-section-title">수수료 정보</div>',
-      '<div class="form-row">',
-      formGroup('중개수수료 (%)', 'f-commission',
-        '<input class="form-input" id="f-commission" type="number" min="0" max="100" step="0.1" value="' + (fi.commission_rate !== undefined ? fi.commission_rate : 10) + '" />' +
-        '<div class="form-hint">기본값 10%. 판매 금액의 몇 %를 수수료로 받을지 입력.</div>'),
-      formGroup('제세공과금 (%)', 'f-tax-rate',
-        '<input class="form-input" id="f-tax-rate" type="number" min="0" max="100" step="0.1" value="' + (fi.tax_rate !== undefined ? fi.tax_rate : 5) + '" />' +
-        '<div class="form-hint">기본값 5%. 정산 시 공제할 제세공과금 비율.</div>'),
+      /* 관련 사이트 */
+      '<div class="form-group">',
+      '<label class="form-label">관련 사이트 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">웹사이트, SNS 등 원하는 만큼 추가</span></label>',
+      '<div id="brand-url-rows">' + urlRows + '</div>',
       '</div>',
       '</div>',
 
       /* ── 정산 정보 (위탁/매입만) ── */
       '<div class="form-section" id="section-settlement" style="' + (showSI ? '' : 'display:none;') + '">',
       '<div class="form-section-title">정산 정보 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택사항 — 나중에 추가해도 됩니다</span></div>',
+
+      /* 위탁판매대행수수료 (위탁만) */
+      '<div id="section-commission" style="' + (showCommission ? '' : 'display:none;') + '">',
+      '<div class="form-row">',
+      formGroup('위탁판매대행수수료 (%)', 'f-commission',
+        '<input class="form-input" id="f-commission" type="number" min="0" max="100" step="0.1" value="' + (fi.commission_rate !== undefined ? fi.commission_rate : 15) + '" />' +
+        '<div class="form-hint">기본값 10%. 판매 금액의 몇 %를 수수료로 받을지 입력.</div>'),
+      '</div>',
+      '</div>',
 
       /* 사업자 여부 */
       '<div class="form-group" style="margin-bottom:16px;">',
@@ -1655,16 +1922,24 @@
       '<div id="section-resident" style="' + (bizType === 'individual' ? '' : 'display:none;') + '">',
       '<div class="form-row" style="margin-bottom:16px;">',
       formGroup('주민등록번호', 'f-resident',
-        '<input class="form-input" id="f-resident" type="text" placeholder="000000-0000000" value="' + esc(si.resident_number || '') + '" />' +
-        '<div class="form-hint">세금 신고 목적으로만 사용됩니다.</div>'),
+        '<input class="form-input" id="f-resident" type="password" autocomplete="off" oninput="onResidentNumInput(this)" ' + (isEncrypted(si.resident_number) ? 'placeholder="암호화 보관 중 · 변경 시 재입력" data-has-enc="1"' : 'value="' + esc(si.resident_number || '') + '" placeholder="000000-0000000"') + ' />' +
+        '<div id="resident-num-hint" style="font-size:11px;margin-top:4px;"></div>' +
+        '<div class="form-hint">⚠️ 원천징수 세금신고 목적으로만 사용 · 암호화 보관 · 5년 후 파기</div>'),
       '</div>',
+      '<div class="form-hint" style="margin-bottom:14px;line-height:1.8;">🔒 주민등록번호는 소득세법에 따른 원천징수 의무 이행을 위해서만 수집됩니다. 암호화되어 저장되며, 세무법정 보관 기간(5년) 이후 파기됩니다.</div>',
       '</div>',
 
       /* 사업자: 사업자등록번호 + 과세유형 */
       '<div id="section-business-fields" style="' + (bizType === 'individual' ? 'display:none;' : '') + '">',
       '<div class="form-row" style="margin-bottom:4px;">',
       formGroup('사업자등록번호', 'f-biz-reg-num',
-        '<input class="form-input" id="f-biz-reg-num" type="text" placeholder="000-00-00000" value="' + esc(si.business_reg_number || '') + '" />'),
+        '<div style="display:flex;gap:6px;align-items:flex-start;">' +
+        '<div style="flex:1;">' +
+        '<input class="form-input" id="f-biz-reg-num" type="text" placeholder="000-00-00000" value="' + esc(si.business_reg_number || '') + '" oninput="onBizRegNumInput(this)" />' +
+        '<div id="biz-reg-num-hint" style="font-size:11px;margin-top:4px;"></div>' +
+        '</div>' +
+        '<button type="button" id="btn-verify-biz-num" onclick="verifyBusinessNumber()" style="white-space:nowrap;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:var(--gray-700);flex-shrink:0;margin-top:0;">사업자 확인</button>' +
+        '</div>'),
       formGroup('과세 유형', 'f-taxation-type',
         '<select class="form-select" id="f-taxation-type" onchange="onTaxationTypeChange()">' +
         '<option value=""' + (!taxType ? ' selected' : '') + '>선택 안 함</option>' +
@@ -1683,7 +1958,6 @@
       '</div>',
 
       /* 통장 정보 */
-      '<div class="form-section-title" style="font-size:13px;margin-top:8px;margin-bottom:12px;">통장 정보</div>',
       '<div class="form-row">',
       formGroup('은행', 'f-bank-name',
         '<input class="form-input" id="f-bank-name" type="text" placeholder="예: 국민은행" value="' + esc(si.bank_name || '') + '" />'),
@@ -1692,11 +1966,10 @@
       '</div>',
       '<div class="form-group">',
       '<label class="form-label" for="f-account-number">계좌번호</label>',
-      '<input class="form-input" id="f-account-number" type="text" placeholder="- 없이 숫자만 입력" value="' + esc(si.account_number || '') + '" />',
+      '<input class="form-input" id="f-account-number" type="text" oninput="onAccountNumInput(this)" ' + (isEncrypted(si.account_number) ? 'placeholder="암호화 보관 중 · 변경 시 재입력" data-has-enc="1"' : 'value="' + esc(si.account_number || '') + '" placeholder="- 없이 숫자만 입력"') + ' />',
       '</div>',
 
       /* 서류 이미지 */
-      '<div class="form-section-title" style="font-size:13px;margin-top:8px;margin-bottom:12px;">서류 이미지</div>',
       '<div class="form-row">',
       '<div class="form-group">',
       '<label class="form-label">신분증 사본</label>',
@@ -1711,6 +1984,17 @@
 
     ].join('');
   }
+
+  window.addBrandUrlRow = function() {
+    const container = document.getElementById('brand-url-rows');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'brand-url-row';
+    row.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px;';
+    row.innerHTML = '<input class="form-input brand-url-input" type="url" placeholder="URL 입력 (예: https://instagram.com/gmbs_official)" style="flex:1;" />' +
+      '<button type="button" onclick="this.closest(\'.brand-url-row\').remove()" style="flex-shrink:0;border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:18px;padding:0 4px;" title="삭제">✕</button>';
+    container.appendChild(row);
+  };
 
   /* ── 브랜드 저장 ── */
   async function saveBrand(brandId, existing) {
@@ -1752,12 +2036,9 @@
       /* 브랜드 소개 */
       data.brand_desc = (document.getElementById('f-brand-desc') || {}).value || '';
 
-      /* 연락처 정보 */
-      data.contact_info = {
-        phone: ((document.getElementById('f-contact-phone') || {}).value || '').trim(),
-        email: ((document.getElementById('f-contact-email') || {}).value || '').trim(),
-        sns: ((document.getElementById('f-contact-sns') || {}).value || '').trim()
-      };
+      /* 관련 사이트 (복수) */
+      data.website_urls = Array.from(document.querySelectorAll('.brand-url-input'))
+        .map(el => el.value.trim()).filter(Boolean);
 
       /* 로고 이미지 업로드 */
       let logoUrl = existing ? (existing.logo_url || '') : '';
@@ -1771,10 +2052,9 @@
 
       /* 정산/수수료 정보 (위탁/매입만) */
       if (brandType === '위탁' || brandType === '매입') {
-        data.fee_info = {
-          commission_rate: parseFloat(document.getElementById('f-commission').value) || 10,
-          tax_rate: parseFloat(document.getElementById('f-tax-rate').value) || 5
-        };
+        data.fee_info = brandType === '위탁' ? {
+          commission_rate: parseFloat((document.getElementById('f-commission') || {}).value) || 15
+        } : {};
 
         const bizInd = document.getElementById('f-biz-individual');
         const bizType = (bizInd && bizInd.checked) ? 'individual' : 'business';
@@ -1797,14 +2077,29 @@
           bankBookUrl = await getDownloadURL(snapFile.ref);
         }
 
+        const residentEl = document.getElementById('f-resident');
+        const accountEl = document.getElementById('f-account-number');
+        const rawResident = bizType === 'individual' ? ((residentEl || {}).value || '').trim() : '';
+        const rawAccount = ((accountEl || {}).value || '').trim();
+        // data-has-enc="1" + 빈 값: 사용자가 변경하지 않음 → 기존 암호화 값 유지
+        const keepResident = bizType === 'individual' && !rawResident && (residentEl || {}).dataset?.hasEnc === '1';
+        const keepAccount = !rawAccount && (accountEl || {}).dataset?.hasEnc === '1';
+        const encResident = keepResident ? (si.resident_number || '') : (rawResident ? await encryptField(rawResident) : '');
+        const encAccount = keepAccount ? (si.account_number || '') : (rawAccount ? await encryptField(rawAccount) : '');
+
+        const rawBizReg = bizType === 'business' ? ((document.getElementById('f-biz-reg-num') || {}).value || '').trim() : '';
+        const bizRegEl = document.getElementById('f-biz-reg-num');
+        const keepBizReg = bizType === 'business' && !rawBizReg && (bizRegEl || {}).dataset?.hasEnc === '1';
+        const encBizReg = keepBizReg ? (si.business_reg_number || '') : (rawBizReg ? await encryptField(rawBizReg) : '');
+
         data.settlement_info = {
           business_type: bizType,
-          resident_number: bizType === 'individual' ? ((document.getElementById('f-resident') || {}).value || '').trim() : '',
-          business_reg_number: bizType === 'business' ? ((document.getElementById('f-biz-reg-num') || {}).value || '').trim() : '',
+          resident_number: encResident,
+          business_reg_number: encBizReg,
           taxation_type: bizType === 'business' ? ((document.getElementById('f-taxation-type') || {}).value || '') : '',
           bank_name: ((document.getElementById('f-bank-name') || {}).value || '').trim(),
           account_holder: ((document.getElementById('f-account-holder') || {}).value || '').trim(),
-          account_number: ((document.getElementById('f-account-number') || {}).value || '').trim(),
+          account_number: encAccount,
           id_card_url: idCardUrl,
           bank_book_url: bankBookUrl
         };
@@ -1861,33 +2156,46 @@
         '종료': '<span class="badge badge-gray">종료</span>'
       }[s] || '<span class="badge badge-gray">미계약</span>');
 
+      const adminConfirmed = b.onboarding_status === '승인' && b.brand_code;
+      const sectionLabel = (text, hint) =>
+        '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:16px;margin-bottom:8px;">' + text +
+        (hint ? ' <span style="font-weight:400;color:var(--gray-300);">· ' + hint + '</span>' : '') + '</div>';
+
       const body = '<div>' +
         logoSection +
-        '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-bottom:8px;">기본 정보</div>' +
-        row('브랜드코드', '<code style="background:var(--blue-light);color:var(--blue);padding:2px 7px;border-radius:4px;">' + esc(b.brand_code) + '</code>') +
-        row('브랜드명', '<strong>' + esc(b.brand_name) + '</strong>') +
-        row('거래 유형', typeLabel[b.brand_type] || esc(b.brand_type || '')) +
+
+        sectionLabel('어드민 확정 정보') +
+        '<div style="background:var(--blue-light);border-radius:8px;padding:10px 14px;margin-bottom:4px;">' +
+        (adminConfirmed
+          ? row('브랜드코드', '<code style="background:#fff;color:var(--blue);padding:2px 7px;border-radius:4px;font-weight:700;">' + esc(b.brand_code) + '</code>') +
+            row('거래 유형', typeLabel[b.brand_type] || esc(b.brand_type || '')) +
+            (fi.commission_rate !== undefined && b.brand_type === '위탁' ? row('위탁판매대행수수료', fi.commission_rate + '%') : '')
+          : '<div style="font-size:12px;color:var(--gray-500);padding:4px 0;">입점 승인 시 브랜드코드·거래유형·수수료가 확정됩니다.</div>') +
+        '</div>' +
         row('입점 상태', onboardingBadge(b.onboarding_status) +
           (b.onboarding_status_reason ? ' <span style="font-size:12px;color:var(--gray-500);">— ' + esc(b.onboarding_status_reason) + '</span>' : '') +
           ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openOnboardingModal(\'' + brandId + '\',\'' + esc(b.onboarding_status || '') + '\')">상태 변경</button>') +
+
+        sectionLabel('벤더 제출 정보') +
+        row('브랜드명', '<strong>' + esc(b.brand_name) + '</strong>') +
         row('브랜드 소개', esc(b.brand_desc || '')) +
-        (ci.phone || ci.email || ci.sns
-          ? '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:16px;margin-bottom:8px;">연락처</div>' +
-            row('전화번호', esc(ci.phone || '')) +
-            row('이메일', esc(ci.email || '')) +
-            row('SNS', esc(ci.sns || '')) : '') +
-        (fi.commission !== undefined || fi.tax_rate !== undefined
-          ? '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:16px;margin-bottom:8px;">수수료</div>' +
-            row('중개수수료', fi.commission_rate !== undefined ? fi.commission_rate + '%' : '') +
-            row('소득세율', fi.tax_rate !== undefined ? fi.tax_rate + '%' : '') : '') +
+        (Array.isArray(b.website_urls) && b.website_urls.length
+          ? row('관련 사이트', b.website_urls.map(u => '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer" style="color:var(--blue);font-size:12px;">' + esc(u) + '</a>').join('<br>'))
+          : '') +
         (bizTypeText
-          ? '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:16px;margin-bottom:8px;">정산 정보</div>' +
+          ? sectionLabel('정산 정보 (벤더 제출)') +
             row('사업자 유형', bizTypeText) +
-            row('사업자등록번호', esc(si.business_reg_number || '')) +
+            row('사업자등록번호', isEncrypted(si.business_reg_number)
+              ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealBrandBizReg(\'' + brandId + '\')">🔓 보기</button><span id="bd-biz-reg" style="margin-left:8px;font-family:monospace;"></span>'
+              : esc(si.business_reg_number || '')) +
             row('과세 유형', esc(si.taxation_type || '')) +
             row('예금주', esc(si.account_holder || '')) +
             row('은행', esc(si.bank_name || '')) +
-            row('계좌번호', esc(si.account_number || '')) : '') +
+            row('계좌번호', isEncrypted(si.account_number) ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealBrandAccountNumber(\'' + brandId + '\')">🔓 보기</button><span id="bd-account-number" style="margin-left:8px;font-family:monospace;"></span>' : esc(si.account_number || '')) +
+            row('신분증 사본', (si.id_card_url ? '<a href="' + esc(si.id_card_url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' : '') + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUrlModal(\'' + brandId + '\',\'id_card_url\')">🔗 URL 입력</button>') +
+            row('통장 사본', (si.bank_book_url ? '<a href="' + esc(si.bank_book_url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' : '') + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUrlModal(\'' + brandId + '\',\'bank_book_url\')">🔗 URL 입력</button>') +
+            (si.business_type === 'business' ? row('사업자등록증', (si.biz_reg_url ? '<a href="' + esc(si.biz_reg_url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' : '') + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUrlModal(\'' + brandId + '\',\'biz_reg_url\')">🔗 URL 입력</button>') : '')
+          : '') +
         '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">변경 이력</div>' +
         '<div id="brand-activity-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
         '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">담당자</div>' +
@@ -1906,6 +2214,7 @@
       loadBrandActivity(brandId);
       loadBrandPersons(brandId);
       loadBrandContracts(brandId);
+      // 계좌번호는 버튼 클릭 시에만 복호화 (revealBrandAccountNumber)
     } catch(e) {
       document.querySelector('#modal-container .modal-body').innerHTML =
         '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
@@ -2152,119 +2461,456 @@
     const sec = document.getElementById('brand-contracts-section');
     if (!sec) return;
     try {
-      const snap = await getDocs(query(
-        collection(db, 'brands', brandId, 'contracts'),
-        orderBy('created_at', 'desc')
-      ));
-      const contracts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // orderBy 제거 → 복합 인덱스 불필요, 클라이언트 정렬
+      const snap = await getDocs(collection(db, 'brands', brandId, 'contracts'));
+      const contracts = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
       renderContractsSection(brandId, contracts, sec);
     } catch(e) {
       if (sec) sec.innerHTML = '<div style="font-size:12px;color:var(--gray-400);">계약 로드 실패: ' + esc(e.message) + '</div>';
     }
   }
 
+  window.revealBrandBizReg = async function(brandId) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '복호화 중...';
+    try {
+      const snap = await getDoc(doc(db, 'brands', brandId));
+      const encVal = snap.data()?.settlement_info?.business_reg_number || '';
+      const plain = isEncrypted(encVal) ? await decryptField(encVal) : encVal;
+      const el = document.getElementById('bd-biz-reg');
+      if (el) el.textContent = plain || '(없음)';
+      btn.remove();
+    } catch(e) {
+      btn.disabled = false;
+      btn.textContent = '🔓 보기';
+      showToast('복호화 실패: ' + e.message, 'error');
+    }
+  };
+
+  window.revealBrandAccountNumber = async function(brandId) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '복호화 중...';
+    try {
+      const snap = await getDoc(doc(db, 'brands', brandId));
+      const accountEnc = snap.data()?.settlement_info?.account_number || '';
+      const plain = isEncrypted(accountEnc) ? await decryptField(accountEnc) : accountEnc;
+      const el = document.getElementById('bd-account-number');
+      if (el) el.textContent = plain || '(없음)';
+      btn.remove();
+    } catch(e) {
+      btn.disabled = false;
+      btn.textContent = '🔓 보기';
+      showToast('복호화 실패: ' + e.message, 'error');
+    }
+  };
+
+  // 입점 신청 상세 팝업: 주민번호/계좌번호 버튼 클릭 시 복호화
+  window.revealAppField = async function(docId, fieldName, spanId) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '복호화 중...';
+    try {
+      const snap = await getDoc(doc(db, 'applications', docId));
+      const encVal = snap.data()?.settlement_info?.[fieldName] || '';
+      const plain = isEncrypted(encVal) ? await decryptField(encVal) : encVal;
+      const el = document.getElementById(spanId);
+      if (el) { el.textContent = plain || '(없음)'; }
+      btn.remove();
+    } catch(e) {
+      btn.disabled = false;
+      btn.textContent = '🔓 보기';
+      showToast('복호화 실패: ' + e.message, 'error');
+    }
+  };
+
+  window.openDocUrlModal = function(brandId, field) {
+    const labels = { id_card_url: '신분증 사본', bank_book_url: '통장 사본', biz_reg_url: '사업자등록증' };
+    const label = labels[field] || field;
+    const formHTML =
+      '<div class="form-group"><label class="form-label">' + esc(label) + ' URL</label>' +
+      '<input class="form-input" id="doc-url-input" type="url" placeholder="https://..." /></div>' +
+      '<div style="font-size:12px;color:var(--gray-400);">Firebase Storage 또는 외부 URL을 입력하세요. 유캔사인 서명 완료 후 자동 저장된 경우 여기서 확인할 수 있습니다.</div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="openBrandDetail(\'' + brandId + '\')">취소</button>' +
+      '<button class="btn btn-primary" onclick="saveDocUrl(\'' + brandId + '\',\'' + field + '\')">저장</button>';
+    showModal(label + ' URL 저장', formHTML, footerHTML);
+  };
+
+  window.saveDocUrl = async function(brandId, field) {
+    const url = ((document.getElementById('doc-url-input') || {}).value || '').trim();
+    if (!url) { showToast('URL을 입력해주세요.', 'error'); return; }
+    try {
+      await updateDoc(doc(db, 'brands', brandId), {
+        ['settlement_info.' + field]: url,
+        updated_at: today()
+      });
+      showToast('저장되었습니다.');
+      openBrandDetail(brandId);
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  window.openContractDocsModal = function(brandId, contractId) {
+    const formHTML =
+      '<div style="font-size:13px;color:var(--gray-600);margin-bottom:16px;line-height:1.8;">' +
+      '계약 체결 완료 후 수령한 서류 사본을 업로드합니다.<br>' +
+      '업로드된 파일은 Firebase Storage에 저장되고 브랜드 정보에 연결됩니다.</div>' +
+      '<div class="form-group"><label class="form-label">신분증 사본</label>' +
+      '<input type="file" id="docs-id-card" accept="image/*,.pdf" class="form-input" /></div>' +
+      '<div class="form-group"><label class="form-label">통장 사본</label>' +
+      '<input type="file" id="docs-bank-book" accept="image/*,.pdf" class="form-input" /></div>' +
+      '<div class="form-group"><label class="form-label">사업자등록증 사본 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">사업자인 경우</span></label>' +
+      '<input type="file" id="docs-biz-reg" accept="image/*,.pdf" class="form-input" /></div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      '<button class="btn btn-primary" id="btn-upload-docs" onclick="saveContractDocs(\'' + brandId + '\',\'' + contractId + '\')">업로드</button>';
+    showModal('서류 업로드', formHTML, footerHTML);
+  };
+
+  window.saveContractDocs = async function(brandId, contractId) {
+    const btn = document.getElementById('btn-upload-docs');
+    if (btn) { btn.disabled = true; btn.textContent = '업로드 중...'; }
+    try {
+      const brandCode = (await getDoc(doc(db, 'brands', brandId))).data()?.brand_code || brandId;
+      const basePrefix = 'brands/' + brandCode + '/contracts/' + contractId + '/';
+      const updates = {};
+
+      const idCardFile = (document.getElementById('docs-id-card') || {}).files?.[0];
+      const bankBookFile = (document.getElementById('docs-bank-book') || {}).files?.[0];
+      const bizRegFile = (document.getElementById('docs-biz-reg') || {}).files?.[0];
+
+      if (idCardFile) {
+        const snap = await uploadBytes(ref(storage, basePrefix + 'id_card'), idCardFile);
+        updates['settlement_info.id_card_url'] = await getDownloadURL(snap.ref);
+      }
+      if (bankBookFile) {
+        const snap = await uploadBytes(ref(storage, basePrefix + 'bank_book'), bankBookFile);
+        updates['settlement_info.bank_book_url'] = await getDownloadURL(snap.ref);
+      }
+      if (bizRegFile) {
+        const snap = await uploadBytes(ref(storage, basePrefix + 'biz_reg'), bizRegFile);
+        updates['settlement_info.biz_reg_url'] = await getDownloadURL(snap.ref);
+      }
+
+      if (Object.keys(updates).length === 0) { showToast('업로드할 파일을 선택해주세요.', 'error'); return; }
+
+      await updateDoc(doc(db, 'brands', brandId), { ...updates, updated_at: today() });
+      await writeActivityLog(brandId, 'contract', contractId, 'updated', null, { docs: Object.keys(updates) });
+      showToast('✅ 서류 업로드 완료. 브랜드 정보에 저장되었습니다.', 'success');
+      closeModal();
+      openBrandDetail(brandId);
+    } catch(e) {
+      showToast('업로드 실패: ' + e.message, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '업로드'; }
+    }
+  };
+
   function renderContractsSection(brandId, contracts, sec) {
-    const statusBadge = s => ({
-      '진행중': '<span class="badge badge-green">진행중</span>',
-      '만료': '<span class="badge badge-gray">만료</span>',
-      '해지': '<span class="badge badge-red">해지</span>'
-    }[s] || '<span class="badge badge-gray">' + esc(s || '') + '</span>');
-
-    // 유캔사인 전자계약 상태 배지
     const eSignBadge = s => ({
-      '발송대기': '<span class="badge badge-gray" title="전자계약 아직 미발송">📄 발송대기</span>',
-      '발송됨':   '<span class="badge badge-blue" title="서명 대기 중">✉️ 발송됨</span>',
-      '서명진행중': '<span class="badge badge-yellow" title="담당자 서명 진행 중">✍️ 서명진행중</span>',
-      '체결완료': '<span class="badge badge-green" title="전자계약 완료">✅ 체결완료</span>',
-      '취소됨':   '<span class="badge badge-red" title="전자계약 취소">❌ 취소됨</span>',
-    }[s] || '');
+      '발송대기': '<span class="badge badge-gray">📄 발송대기</span>',
+      '발송됨':   '<span class="badge badge-blue">✉️ 발송됨</span>',
+      '서명진행중': '<span class="badge badge-yellow">✍️ 서명진행중</span>',
+      '체결완료': '<span class="badge badge-green">✅ 체결완료</span>',
+      '취소됨':   '<span class="badge badge-red">❌ 취소됨</span>',
+      '발송실패': '<span class="badge badge-red">⚠️ 발송실패</span>',
+    }[s] || '<span class="badge badge-gray">📄 발송대기</span>');
 
-    let html = '<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">' +
-      '<button class="btn btn-secondary" style="font-size:12px;padding:5px 12px;" onclick="openContractModal(\'' + brandId + '\',null)">+ 계약 추가</button>' +
+    // 최상단: 전자계약 발송 버튼 (계약 여부와 무관하게 항상 노출)
+    let html =
+      '<div style="display:flex;justify-content:flex-end;margin-bottom:14px;">' +
+      '<button class="btn btn-primary" style="font-size:12px;padding:6px 14px;" onclick="openSendContractModal(\'' + brandId + '\')">📨 전자계약 발송</button>' +
       '</div>';
 
     if (contracts.length === 0) {
-      html += '<div style="font-size:13px;color:var(--gray-400);padding:12px 0;">등록된 계약이 없습니다.</div>';
+      html += '<div style="font-size:13px;color:var(--gray-400);padding:4px 0;">발송된 계약이 없습니다.</div>';
     } else {
       contracts.forEach(c => {
-        const period = (c.signed_at || '?') + ' ~ ' + (c.end_at || '무기한');
-        const ucStatus = c.ucansign_status || c.status_ucansign || '';
-        const canSend = !ucStatus || ucStatus === '발송대기' || ucStatus === '취소됨';
-        html += '<div style="padding:14px 0;border-bottom:1px solid var(--gray-100);">' +
-          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">' +
-          '<span style="font-size:13px;font-weight:600;color:var(--gray-800);">v' + esc(String(c.version || 1)) + '</span>' +
-          statusBadge(c.status) +
-          (ucStatus ? eSignBadge(ucStatus) : '') +
-          (c.auto_renew ? '<span style="font-size:11px;color:var(--gray-400);">자동갱신</span>' : '') +
-          '<span style="font-size:12px;color:var(--gray-500);margin-left:4px;">' + esc(period) + '</span>' +
+        const ucStatus = c.status || '';
+        const canResend = ucStatus === '취소됨' || ucStatus === '발송실패';
+        const isActive = !ucStatus || ucStatus === '발송대기' || ucStatus === '발송됨' || ucStatus === '서명진행중';
+        html +=
+          '<div style="padding:14px 0;border-bottom:1px solid var(--gray-100);">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">' +
+          '<span style="font-size:12px;font-weight:700;color:var(--gray-700);">v' + esc(String(c.version || 1)) + '</span>' +
+          eSignBadge(ucStatus) +
+          (c.participant_name ? '<span style="font-size:12px;color:var(--gray-600);">서명자: ' + esc(c.participant_name) + '</span>' : '') +
           '</div>' +
-          // 전자계약 발송 버튼 (functions 콜러블 연결 예정)
-          '<div style="background:var(--gray-50);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;">' +
-          '<span style="font-size:12px;color:var(--gray-600);flex:1;">전자계약 (유캔사인)' +
-          (c.ucansign_document_id ? ' · <span style="font-family:monospace;font-size:11px;color:var(--gray-400);">' + esc(c.ucansign_document_id) + '</span>' : '') +
-          (c.sent_at ? ' · 발송 ' + esc(fmtDate(c.sent_at)) : '') +
-          (c.completed_at ? ' · 체결 ' + esc(fmtDate(c.completed_at)) : '') +
-          '</span>' +
-          (canSend
-            ? '<button class="btn btn-primary" style="font-size:11px;padding:5px 12px;" onclick="sendElectronicContract(\'' + brandId + '\',\'' + c.id + '\')">' +
-              (ucStatus === '취소됨' ? '🔄 다시 발송' : '📨 전자계약 발송') + '</button>'
+          '<div style="font-size:12px;color:var(--gray-500);margin-bottom:8px;line-height:1.8;">' +
+          (c.template_name ? '📄 ' + esc(c.template_name) + '&nbsp;&nbsp;' : '') +
+          (c.signing_method ? (c.signing_method === 'kakao' ? '💬 카카오톡' : '📧 이메일') + '&nbsp;&nbsp;' : '') +
+          (c.sent_at ? '발송 ' + esc(fmtDate(c.sent_at)) + '&nbsp;&nbsp;' : '') +
+          (c.completed_at ? '· 체결 ' + esc(fmtDate(c.completed_at)) : '') +
+          (c.ucansign_document_id ? '<br><span style="font-family:monospace;font-size:11px;color:var(--gray-400);">문서 ID: ' + esc(c.ucansign_document_id) + '</span>' : '') +
+          '</div>' +
+          (canResend
+            ? '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;margin-right:6px;" onclick="openSendContractModal(\'' + brandId + '\')">🔄 재발송</button>'
             : '') +
-          '</div>' +
-          '<div style="display:flex;gap:6px;">' +
-          (c.file_url
-            ? '<a href="' + esc(c.file_url) + '" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:4px 10px;text-decoration:none;">📄 계약서 보기</a>'
-            : '<span style="font-size:11px;color:var(--gray-400);padding:4px 0;">파일 없음</span>') +
-          '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openContractModal(\'' + brandId + '\',\'' + c.id + '\')">수정</button>' +
-          '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openContractStatusModal(\'' + brandId + '\',\'' + c.id + '\',\'' + esc(c.status || '진행중') + '\')">상태 변경</button>' +
-          '</div></div>';
+          (ucStatus === '체결완료'
+            ? (c.signed_pdf_url
+                ? '<a href="' + esc(c.signed_pdf_url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size:11px;padding:4px 10px;margin-right:6px;">📄 계약서 PDF</a>'
+                : '<span style="font-size:11px;color:var(--gray-400);margin-right:8px;">PDF 자동저장 대기중</span>')
+            + '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openContractDocsModal(\'' + brandId + '\',\'' + c.id + '\')">📎 서류 업로드</button>'
+            : '') +
+          '</div>';
       });
     }
     sec.innerHTML = html;
   }
 
-  // 전자계약 발송 — gmbs-functions 콜러블 함수 호출
-  window.sendElectronicContract = async function(brandId, contractId) {
-    if (!confirm('전자계약 발송을 진행하시겠습니까?\n담당자에게 카카오톡/이메일로 서명 요청이 발송됩니다.')) return;
+  // 전자계약 발송 모달 — 템플릿 선택 · 서명자 확인 · 발송
+  window.openSendContractModal = async function(brandId) {
+    showModal('전자계약 발송', '<div class="spinner" style="margin:40px auto;"></div>', '', 'lg');
     try {
-      // 브랜드·계약·담당자 정보 수집
-      const [brandSnap, contractSnap, personsSnap] = await Promise.all([
+      const [brandSnap, personsSnap, templatesSnap] = await Promise.all([
         getDoc(doc(db, 'brands', brandId)),
-        getDoc(doc(db, 'brands', brandId, 'contracts', contractId)),
-        getDocs(query(collection(db, 'brands', brandId, 'persons'), where('active', '==', true))),
+        getDocs(collection(db, 'brands', brandId, 'persons')),
+        getDocs(collection(db, 'contract_templates')),
       ]);
-      if (!brandSnap.exists() || !contractSnap.exists()) {
-        showToast('브랜드 또는 계약 정보를 찾을 수 없습니다.', 'error'); return;
-      }
-      const brand = brandSnap.data();
-      const contract = contractSnap.data();
-      const persons = personsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (!brandSnap.exists()) { showToast('브랜드 정보를 찾을 수 없습니다.', 'error'); closeModal(); return; }
+      const brand = { id: brandId, ...brandSnap.data() };
+      const persons = personsSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.active !== false);
+      const templates = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => t.is_active !== false);
 
-      if (persons.length === 0) {
-        showToast('담당자 정보가 없습니다. 먼저 담당자를 등록해주세요.', 'error'); return;
-      }
-
-      // functions 콜러블 함수 호출 (firebase/functions 모듈이 없으면 미구현 안내)
-      if (typeof firebase === 'undefined' || !firebase.functions) {
-        // gmbs-functions 미연결 상태 — 발송 상태만 임시로 업데이트
-        showToast('⚠️ gmbs-functions 미연결 상태입니다. functions 완성 후 실제 발송이 가능합니다.', 'error');
+      if (templates.length === 0) {
+        const body = '<div style="padding:16px;background:var(--gray-50);border-radius:10px;font-size:13px;color:var(--gray-600);line-height:1.7;">' +
+          '⚠️ 등록된 계약서 템플릿이 없습니다.<br>' +
+          '<b>설정 → 계약서 템플릿</b>에서 먼저 템플릿을 추가해주세요.' +
+          '</div>';
+        updateModal(null, body, '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>');
         return;
       }
 
-      const sendContract = firebase.functions().httpsCallable('sendElectronicContract');
-      const result = await sendContract({
+      const ci = brand.contact_info || {};
+      const si = brand.supply_info || {};
+      const typeLabel = { PB: 'PB', 위탁: '위탁', 매입: '매입', 기타: '기타' };
+
+      // 브랜드 정보 요약 표시
+      const brandInfoHtml =
+        '<div style="background:var(--blue-light);border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:13px;">' +
+        '<div style="font-weight:700;margin-bottom:8px;color:var(--gray-800);">브랜드 정보 확인</div>' +
+        '<div style="display:grid;grid-template-columns:80px 1fr;gap:4px 12px;color:var(--gray-700);">' +
+        '<span style="color:var(--gray-500);">브랜드명</span><span style="font-weight:600;">' + esc(brand.brand_name || '') + '</span>' +
+        '<span style="color:var(--gray-500);">브랜드코드</span><span>' + esc(brand.brand_code || '') + '</span>' +
+        '<span style="color:var(--gray-500);">거래유형</span><span>' + esc(typeLabel[brand.brand_type] || brand.brand_type || '-') + '</span>' +
+        (si.business_type ? '<span style="color:var(--gray-500);">사업자구분</span><span>' + (si.business_type === 'business' ? '사업자' : '개인') + '</span>' : '') +
+        (si.business_number ? '<span style="color:var(--gray-500);">사업자번호</span><span>' + esc(si.business_number) + '</span>' : '') +
+        '</div>' +
+        (persons.length === 0
+          ? '<div style="margin-top:10px;color:var(--red);font-size:12px;">⚠️ 등록된 담당자가 없습니다. 브랜드 수정에서 담당자를 먼저 추가해주세요.</div>'
+          : '') +
+        '</div>';
+
+      const personOpts = persons.map(p =>
+        '<option value="' + esc(p.id) + '" data-name="' + esc(p.name || '') + '" data-phone="' + esc(p.phone || '') + '" data-email="' + esc(p.email || '') + '">' +
+        esc(p.name || '') + (p.role ? ' (' + esc(p.role) + ')' : '') + '</option>'
+      ).join('');
+
+      const templateOpts = templates.map(t =>
+        '<option value="' + esc(t.id) + '" data-fields=\'' + esc(JSON.stringify(t.default_fields || {})) + '\'>' + esc(t.name || t.id) + '</option>'
+      ).join('');
+
+      const adminEmail = firebase.auth().currentUser?.email || '';
+      const adminName = adminEmail.split('@')[0] || 'GMBS';
+
+      const formHtml = brandInfoHtml +
+        '<div class="form-group"><label class="form-label">계약서 템플릿 <span style="color:var(--red);">*</span></label>' +
+        '<select class="form-input" id="sc-template" onchange="onSendContractTemplateChange()">' + templateOpts + '</select></div>' +
+
+        '<div style="background:var(--gray-50);border-radius:10px;padding:14px 16px;margin-bottom:14px;">' +
+        '<div style="font-size:12px;font-weight:600;color:var(--gray-600);margin-bottom:10px;">① 발신인 (GMBS) 정보</div>' +
+        '<div class="form-row">' +
+        '<div class="form-group"><label class="form-label">발신인 이름 <span style="color:var(--red);">*</span></label>' +
+        '<input class="form-input" id="sc-sender-name" placeholder="GMBS 담당자 이름" value="' + esc(adminName) + '" /></div>' +
+        '<div class="form-group"><label class="form-label">발신인 이메일 <span style="color:var(--red);">*</span></label>' +
+        '<input class="form-input" id="sc-sender-email" type="email" placeholder="gmbs@email.com" value="' + esc(adminEmail) + '" /></div>' +
+        '</div></div>' +
+
+        '<div style="background:var(--gray-50);border-radius:10px;padding:14px 16px;margin-bottom:14px;">' +
+        '<div style="font-size:12px;font-weight:600;color:var(--gray-600);margin-bottom:10px;">② 수신인 (입점자) 정보</div>' +
+        '<div class="form-group"><label class="form-label">담당자 선택</label>' +
+        '<select class="form-input" id="sc-person" onchange="onSendContractPersonChange()">' +
+        '<option value="">직접 입력</option>' + personOpts +
+        '</select></div>' +
+
+        '<div class="form-group"><label class="form-label">수신인 이름 <span style="color:var(--red);">*</span></label>' +
+        '<input class="form-input" id="sc-name" placeholder="서명자 이름" /></div>' +
+
+        '<div class="form-group"><label class="form-label">서명 방식 <span style="color:var(--red);">*</span></label>' +
+        '<div style="display:flex;gap:10px;">' +
+        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">' +
+        '<input type="radio" name="sc-method" value="kakao" onchange="onSendMethodChange()" checked /> 💬 카카오톡</label>' +
+        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">' +
+        '<input type="radio" name="sc-method" value="email" onchange="onSendMethodChange()" /> 📧 이메일</label>' +
+        '</div></div>' +
+
+        '<div class="form-group"><label class="form-label" id="sc-contact-label">전화번호 <span style="color:var(--red);">*</span></label>' +
+        '<input class="form-input" id="sc-contact" placeholder="010-0000-0000" /></div>' +
+        '</div>' +
+
+        '<div id="sc-fields-section"></div>' +
+
+        '<div class="form-group" style="margin-top:8px;">' +
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--gray-600);">' +
+        '<input type="checkbox" id="sc-testmode" /> 테스트 모드 (포인트 차감 없음 · 워터마크 표시)</label></div>';
+
+      const footer =
+        '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+        '<button class="btn btn-primary" onclick="submitSendContract(\'' + brandId + '\')">📨 발송</button>';
+
+      updateModal(null, formHtml, footer);
+
+      // 첫 담당자 자동 선택
+      if (persons.length > 0) {
+        const sel = document.getElementById('sc-person');
+        if (sel) { sel.value = persons[0].id; onSendContractPersonChange(); }
+      }
+      // 첫 템플릿 동적 필드 렌더
+      onSendContractTemplateChange();
+
+    } catch(e) {
+      showToast('로드 실패: ' + e.message, 'error');
+      closeModal();
+    }
+  };
+
+  window.onSendContractPersonChange = function() {
+    const sel = document.getElementById('sc-person');
+    if (!sel) return;
+    const opt = sel.options[sel.selectedIndex];
+    const name = opt ? (opt.getAttribute('data-name') || '') : '';
+    const phone = opt ? (opt.getAttribute('data-phone') || '') : '';
+    const email = opt ? (opt.getAttribute('data-email') || '') : '';
+    const nameEl = document.getElementById('sc-name');
+    const contactEl = document.getElementById('sc-contact');
+    if (nameEl && name) nameEl.value = name;
+    // 서명 방식에 맞춰 연락처 자동 입력
+    const method = (document.querySelector('input[name="sc-method"]:checked') || {}).value || 'kakao';
+    if (contactEl) contactEl.value = method === 'kakao' ? phone : email;
+  };
+
+  window.onSendMethodChange = function() {
+    const method = (document.querySelector('input[name="sc-method"]:checked') || {}).value || 'kakao';
+    const label = document.getElementById('sc-contact-label');
+    const contactEl = document.getElementById('sc-contact');
+    if (label) label.innerHTML = (method === 'kakao' ? '전화번호' : '이메일') + ' <span style="color:var(--red);">*</span>';
+    // 담당자가 선택된 경우 자동 전환
+    const sel = document.getElementById('sc-person');
+    if (sel && sel.value) {
+      const opt = sel.options[sel.selectedIndex];
+      const phone = opt ? (opt.getAttribute('data-phone') || '') : '';
+      const email = opt ? (opt.getAttribute('data-email') || '') : '';
+      if (contactEl) contactEl.value = method === 'kakao' ? phone : email;
+    }
+  };
+
+  window.onSendContractTemplateChange = function() {
+    const sel = document.getElementById('sc-template');
+    const sec = document.getElementById('sc-fields-section');
+    if (!sel || !sec) return;
+    const opt = sel.options[sel.selectedIndex];
+    let fields = {};
+    try { fields = JSON.parse(opt ? (opt.getAttribute('data-fields') || '{}') : '{}'); } catch(e) { fields = {}; }
+    const keys = Object.keys(fields);
+    if (keys.length === 0) { sec.innerHTML = ''; return; }
+    sec.innerHTML =
+      '<div class="form-group"><label class="form-label">계약 동적 필드</label>' +
+      '<div style="display:grid;gap:8px;">' +
+      keys.map(k =>
+        '<div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:center;">' +
+        '<span style="font-size:13px;color:var(--gray-600);">' + esc(k) + '</span>' +
+        '<input class="form-input" id="sc-field-' + esc(k) + '" value="' + esc(fields[k] || '') + '" style="font-size:13px;" />' +
+        '</div>'
+      ).join('') +
+      '</div></div>';
+  };
+
+  window.submitSendContract = async function(brandId) {
+    const templateSel = document.getElementById('sc-template');
+    const nameEl = document.getElementById('sc-name');
+    const contactEl = document.getElementById('sc-contact');
+    const methodEl = document.querySelector('input[name="sc-method"]:checked');
+    const testMode = (document.getElementById('sc-testmode') || {}).checked || false;
+    const senderName = ((document.getElementById('sc-sender-name') || {}).value || '').trim();
+    const senderEmail = ((document.getElementById('sc-sender-email') || {}).value || '').trim();
+
+    const templateDocId = templateSel ? templateSel.value : '';
+    const templateName = templateSel ? (templateSel.options[templateSel.selectedIndex] || {}).text : '';
+    const participantName = (nameEl ? nameEl.value : '').trim();
+    const signingMethod = methodEl ? methodEl.value : 'kakao';
+    const contactInfo = (contactEl ? contactEl.value : '').trim();
+
+    if (!templateDocId) { showToast('계약서 템플릿을 선택해주세요.', 'error'); return; }
+    if (!senderName) { showToast('발신인 이름을 입력해주세요.', 'error'); return; }
+    if (!senderEmail) { showToast('발신인 이메일을 입력해주세요.', 'error'); return; }
+    if (!participantName) { showToast('수신인 이름을 입력해주세요.', 'error'); return; }
+    if (!contactInfo) { showToast(signingMethod === 'kakao' ? '전화번호를 입력해주세요.' : '이메일을 입력해주세요.', 'error'); return; }
+
+    // 동적 필드 수집
+    let fields = {};
+    try {
+      const opt = templateSel ? templateSel.options[templateSel.selectedIndex] : null;
+      const defaultFields = JSON.parse(opt ? (opt.getAttribute('data-fields') || '{}') : '{}');
+      Object.keys(defaultFields).forEach(k => {
+        const el = document.getElementById('sc-field-' + k);
+        if (el) fields[k] = el.value;
+      });
+    } catch(e) { fields = {}; }
+
+    // Firestore에 contract 문서 먼저 생성 (version 자동 증가)
+    let contractId;
+    try {
+      const existingSnap = await getDocs(collection(db, 'brands', brandId, 'contracts'));
+      const version = existingSnap.size + 1;
+      const contractRef = await addDoc(collection(db, 'brands', brandId, 'contracts'), {
+        version,
+        template_doc_id: templateDocId,
+        template_name: templateName,
+        participant_name: participantName,
+        signing_method: signingMethod,
+        signing_contact: contactInfo,
+        fields,
+        status: '발송대기',
+        test_mode: testMode,
+        created_at: today(),
+        updated_at: today(),
+      });
+      contractId = contractRef.id;
+    } catch(e) {
+      showToast('계약 문서 생성 실패: ' + e.message, 'error'); return;
+    }
+
+    // functions 콜러블 호출
+    try {
+      const sendContractCallable = httpsCallable(fns, 'sendContractCallable');
+      const result = await sendContractCallable({
         brandId,
         contractId,
-        brandName: brand.brand_name || '',
-        persons: persons.map(p => ({ name: p.name, email: p.email, phone: p.phone })),
-        contractVersion: contract.version || 1,
-        signedAt: contract.signed_at || '',
-        endAt: contract.end_at || '',
+        contractTemplateDocId: templateDocId,
+        senderName,
+        senderEmail,
+        participantName,
+        signingMethodType: signingMethod,
+        signingContactInfo: contactInfo,
+        fields,
+        testMode,
       });
-
-      showToast('전자계약 발송 완료: ' + (result.data && result.data.message || '성공'));
+      showToast('✅ 전자계약 발송 완료. 서명자에게 ' + (signingMethod === 'kakao' ? '카카오톡' : '이메일') + '이 발송됩니다.');
+      closeModal();
       openBrandDetail(brandId);
     } catch(e) {
-      showToast('발송 실패: ' + e.message, 'error');
+      // functions 미연결 또는 오류 시 — 생성된 contract 문서는 유지 (이력 보존)
+      const isUnimplemented = e.code === 'functions/unimplemented' || e.code === 'functions/not-found' || e.message.includes('NOT_FOUND');
+      if (isUnimplemented) {
+        showToast('⚠️ gmbs-functions 미연결 상태입니다. 계약 문서는 저장됐으나 실제 발송은 functions 연결 후 가능합니다.', 'error');
+      } else {
+        // 발송 실패 시 contract 문서 status를 '발송실패'로 업데이트
+        try { await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), { status: '발송실패', updated_at: today() }); } catch(_) {}
+        showToast('발송 실패: ' + e.message, 'error');
+      }
+      closeModal();
+      openBrandDetail(brandId);
     }
   };
 
@@ -2508,16 +3154,37 @@
   /* ════════════════════════════════
      12단계 입점 심사 워크플로우
   ════════════════════════════════ */
-  window.openOnboardingModal = function(brandId, currentStatus) {
+  window.openOnboardingModal = async function(brandId, currentStatus) {
     const opts = ['미계약', '계약완료', '심사중', '승인', '거절', '종료'];
+    // 기존 브랜드 정보 로드 (승인 시 기존값 채우기용)
+    let existingBrand = {};
+    try { const s = await getDoc(doc(db, 'brands', brandId)); existingBrand = s.data() || {}; } catch(e) {}
+    const fi = existingBrand.fee_info || {};
+
+    const approvalExtraHtml =
+      '<div id="section-approval-extra" style="display:' + (currentStatus === '승인' ? 'block' : 'none') + ';background:var(--blue-light);border-radius:10px;padding:14px 16px;margin-top:12px;">' +
+      '<div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:12px;">✅ 승인 시 확정 정보 입력</div>' +
+      '<div class="form-group"><label class="form-label">브랜드코드 <span style="color:var(--red);">*</span> <span style="font-size:11px;font-weight:400;color:var(--gray-400);">영문대문자·숫자 2~10자 · 중복불가</span></label>' +
+      '<input class="form-input" id="approval-brand-code" placeholder="예: ONG" value="' + esc(existingBrand.brand_code || '') + '" style="text-transform:uppercase;font-weight:700;font-family:monospace;" /></div>' +
+      '<div class="form-row">' +
+      '<div class="form-group"><label class="form-label">거래유형 최종확정 <span style="color:var(--red);">*</span></label>' +
+      '<select class="form-input" id="approval-brand-type">' +
+      ['PB','위탁','매입','기타'].map(t => '<option value="' + t + '"' + (existingBrand.brand_type === t ? ' selected' : '') + '>' + t + '</option>').join('') +
+      '</select></div>' +
+      '<div class="form-group"><label class="form-label">위탁판매대행수수료 (%)</label>' +
+      '<input class="form-input" id="approval-commission" type="number" min="0" max="100" step="0.1" value="' + (fi.commission_rate !== undefined ? fi.commission_rate : 15) + '" /></div>' +
+      '</div></div>';
+
     const formHTML =
       '<div class="form-group"><label class="form-label">입점 상태</label>' +
-      '<select class="form-input" id="onboarding-status">' +
+      '<select class="form-input" id="onboarding-status" onchange="document.getElementById(\'section-approval-extra\').style.display=this.value===\'승인\'?\'block\':\'none\'">' +
       '<option value="">미설정</option>' +
       opts.map(o => '<option value="' + o + '"' + (o === currentStatus ? ' selected' : '') + '>' + o + '</option>').join('') +
       '</select></div>' +
       '<div class="form-group"><label class="form-label">사유 <span style="font-size:11px;color:var(--gray-400);">(선택 — 거절·종료 시 입력 권장)</span></label>' +
-      '<input class="form-input" id="onboarding-reason" placeholder="상태 변경 사유를 입력하세요" /></div>';
+      '<input class="form-input" id="onboarding-reason" placeholder="상태 변경 사유를 입력하세요" /></div>' +
+      approvalExtraHtml;
+
     const footerHTML =
       '<button class="btn btn-secondary" onclick="openBrandDetail(\'' + brandId + '\')">취소</button>' +
       '<button class="btn btn-primary" onclick="saveOnboardingStatus(\'' + brandId + '\')">저장</button>';
@@ -2527,14 +3194,34 @@
   window.saveOnboardingStatus = async function(brandId) {
     const status = document.getElementById('onboarding-status').value;
     const reason = (document.getElementById('onboarding-reason').value || '').trim();
+    const updateData = {
+      onboarding_status: status || null,
+      onboarding_status_reason: reason || '',
+      onboarding_status_changed_at: today(),
+      updated_at: today()
+    };
+
+    // 승인 시 브랜드코드·거래유형·수수료 함께 저장
+    if (status === '승인') {
+      const brandCode = ((document.getElementById('approval-brand-code') || {}).value || '').trim().toUpperCase();
+      const brandType = (document.getElementById('approval-brand-type') || {}).value;
+      const commissionRate = parseFloat((document.getElementById('approval-commission') || {}).value) || 15;
+      if (!brandCode) { showToast('브랜드코드를 입력해주세요.', 'error'); return; }
+      if (!/^[A-Z0-9]{2,10}$/.test(brandCode)) { showToast('브랜드코드는 영문 대문자·숫자 2~10자만 가능합니다.', 'error'); return; }
+      // 중복 확인 (기존 코드와 다를 때만)
+      if (existingBrand.brand_code !== brandCode) {
+        const dup = await getDocs(query(collection(db, 'brands'), where('brand_code', '==', brandCode)));
+        if (!dup.empty) { showToast('이미 사용 중인 브랜드코드입니다: ' + brandCode, 'error'); return; }
+      }
+      updateData.brand_code = brandCode;
+      updateData.brand_type = brandType;
+      updateData.fee_info = brandType === '위탁' ? { commission_rate: commissionRate } : {};
+    }
+
     try {
-      await updateDoc(doc(db, 'brands', brandId), {
-        onboarding_status: status || null,
-        onboarding_status_reason: reason || '',
-        onboarding_status_changed_at: today(),
-        updated_at: today()
-      });
-      await writeActivityLog(brandId, 'admin_action', brandId, 'status_changed', null, { onboarding_status: status, reason });
+      await updateDoc(doc(db, 'brands', brandId), updateData);
+      await writeActivityLog(brandId, 'admin_action', brandId, 'status_changed', null,
+        { onboarding_status: status, reason, ...(status === '승인' ? { brand_code: updateData.brand_code, brand_type: updateData.brand_type } : {}) });
       showToast('입점 상태를 변경했습니다.');
       openBrandDetail(brandId);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
@@ -2691,24 +3378,32 @@
 
     document.getElementById('page-header-actions').innerHTML =
       '<button class="btn btn-secondary" id="btn-bulk-product-status" onclick="bulkChangeProductStatus()" style="display:none;">🔄 일괄 변경</button>' +
-      '<button class="btn btn-secondary" id="btn-export-products" onclick="exportSelectedProducts()" style="display:none;">📥 선택 내보내기 (토스포스)</button>' +
-      '<button class="btn btn-primary" onclick="openProductModal()">➕ 새 상품 등록</button>';
+      '<button class="btn btn-secondary" id="btn-export-products" onclick="exportSelectedProducts()" style="display:none;">📥 선택 내보내기 (토스포스)</button>';
 
-    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+    container.innerHTML =
+      '<div id="product-list-content"><div class="spinner" style="margin:60px auto;"></div></div>';
+
     try {
       const snap = await getDocs(collection(db, 'products'));
       window._allProducts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       window._allProducts.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+      const _plContent = document.getElementById('product-list-content');
 
-      container.innerHTML =
+      _plContent.innerHTML =
         '<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">' +
-        '<input class="form-input" id="pl-search" placeholder="상품명, 상품ID, 브랜드코드 검색..." style="flex:1;min-width:220px;" oninput="window._productPage=1;filterProductList()" />' +
+        '<input class="form-input" id="pl-search" placeholder="상품명, 상품ID, 브랜드코드 검색..." style="flex:1;min-width:160px;max-width:280px;" oninput="window._productPage=1;filterProductList()" />' +
         '<select id="pl-approval-filter" onchange="window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="">전체 상태</option><option value="승인대기">승인대기</option><option value="승인">승인</option><option value="거절">거절</option><option value="판매중지">판매중지</option>' +
         '</select>' +
         '<select id="pl-page-size" onchange="window._productPageSize=parseInt(this.value);window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
         '</select>' +
+        '<div data-register-wrap="1" style="position:relative;display:inline-block;margin-left:auto;">' +
+        '<button class="btn btn-primary" onclick="toggleRegisterMenu(\'new-product-menu\',this)">➕ 새 상품 등록 ▾</button>' +
+        '<div id="new-product-menu" class="register-dropdown" style="display:none;">' +
+        '<div class="reg-menu-item" onclick="closeRegisterMenus();openProductModal()">📝 일반 등록</div>' +
+        '<div class="reg-menu-item" onclick="closeRegisterMenus();openBulkProductModal()">📤 대량 등록</div>' +
+        '</div></div>' +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
         '<div id="pl-count" style="font-size:13px;color:var(--gray-500);"></div>' +
@@ -2723,7 +3418,9 @@
 
       filterProductList();
     } catch(e) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
+      const _plContent = document.getElementById('product-list-content');
+      if (_plContent) _plContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
+      else container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
     }
   }
 
@@ -4649,6 +5346,447 @@
   };
 
   /* ════════════════════════════════
+     고객 CS (매장 문의)
+  ════════════════════════════════ */
+  const CS_TYPES = ['상품', '재입고', '불량/고장', '기타'];
+  const CS_STATUS = {
+    '답변대기':   { badge: 'badge-yellow', label: '답변대기' },
+    '답변완료':   { badge: 'badge-blue',   label: '답변완료' },
+    '재응답 필요': { badge: 'badge-red',    label: '재응답 필요' },
+    '처리완료':   { badge: 'badge-green',  label: '처리완료' },
+  };
+
+  async function renderCustomerCSPage(container) {
+    document.getElementById('page-header-actions').innerHTML = '';
+
+    container.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid var(--gray-200);margin-bottom:20px;">' +
+      '<div style="display:flex;gap:0;">' +
+      '<button id="cs-tab-store" onclick="window._csSwitchTab(\'store\')" style="padding:10px 20px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:var(--blue);border-bottom:3px solid var(--blue);margin-bottom:-2px;transition:all .15s;">🏪 매장 문의</button>' +
+      '</div>' +
+      '<button class="btn btn-primary" style="font-size:13px;margin-bottom:8px;" onclick="openCustomerInquiryModal(null)">+ 문의 등록</button>' +
+      '</div>' +
+      '<div id="cs-content"><div class="spinner" style="margin:60px auto;"></div></div>';
+
+    window._csSwitchTab = function(tab) {};
+    await loadStoreInquiries();
+  }
+
+  async function loadStoreInquiries(filterStatus) {
+    const wrap = document.getElementById('cs-content');
+    if (!wrap) return;
+    wrap.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+    try {
+      const snap = await getDocs(collection(db, 'customer_inquiries'));
+      let list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+      if (filterStatus) list = list.filter(i => i.status === filterStatus);
+
+      // 필터 바
+      const statusCounts = {};
+      snap.docs.forEach(d => {
+        const s = d.data().status || '답변대기';
+        statusCounts[s] = (statusCounts[s] || 0) + 1;
+      });
+      const filterBar =
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">' +
+        '<button class="btn ' + (!filterStatus ? 'btn-primary' : 'btn-secondary') + '" style="font-size:12px;padding:4px 10px;" onclick="loadStoreInquiries()">전체 ' + snap.size + '</button>' +
+        Object.entries(CS_STATUS).map(([k, v]) =>
+          '<button class="btn ' + (filterStatus === k ? 'btn-primary' : 'btn-secondary') + '" style="font-size:12px;padding:4px 10px;" onclick="loadStoreInquiries(\'' + k + '\')">' +
+          v.label + ' ' + (statusCounts[k] || 0) + '</button>'
+        ).join('') +
+        '</div>';
+
+      if (list.length === 0) {
+        wrap.innerHTML = filterBar + '<div class="empty-state"><div class="empty-state-icon">🛎️</div><div class="empty-state-text">등록된 문의가 없습니다.</div></div>';
+        return;
+      }
+
+      const rows = list.map(i => {
+        const s = CS_STATUS[i.status] || CS_STATUS['답변대기'];
+        return '<tr style="cursor:pointer;" onclick="openCustomerInquiryDetail(\'' + i.id + '\')">' +
+          '<td><span class="badge ' + s.badge + '">' + s.label + '</span></td>' +
+          '<td><span class="badge badge-gray" style="font-size:11px;">' + esc(i.type || '-') + '</span></td>' +
+          '<td style="font-weight:600;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(i.title || '') + '</td>' +
+          '<td style="font-size:12px;color:var(--gray-500);">' + esc(i.brand_name || '-') + '</td>' +
+          '<td style="font-size:12px;color:var(--gray-500);">' + esc(i.product_name || '-') + '</td>' +
+          '<td style="font-size:12px;color:var(--gray-400);">' + esc(fmtDate(i.created_at)) + '</td>' +
+          '</tr>';
+      }).join('');
+
+      wrap.innerHTML = filterBar +
+        '<div style="overflow-x:auto;"><table class="table"><thead><tr>' +
+        '<th>상태</th><th>종류</th><th>제목</th><th>브랜드</th><th>상품</th><th>등록일</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    } catch(e) {
+      wrap.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
+    }
+  }
+
+  /* 문의 등록/수정 모달 */
+  window.openCustomerInquiryModal = async function(inquiryId) {
+    let existing = null;
+    if (inquiryId) {
+      const snap = await getDoc(doc(db, 'customer_inquiries', inquiryId));
+      if (snap.exists()) existing = { id: snap.id, ...snap.data() };
+    }
+    const ci = existing || {};
+    showModal(existing ? '문의 수정' : '매장 문의 등록', '<div class="spinner" style="margin:40px auto;"></div>', '', 'lg');
+    try {
+      const brandsSnap = await getDocs(collection(db, 'brands'));
+      const brands = brandsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(b => b.active !== false)
+        .sort((a, b) => (a.brand_name || '').localeCompare(b.brand_name || ''));
+
+      const typeOpts = CS_TYPES.map(t =>
+        '<option value="' + t + '"' + (ci.type === t ? ' selected' : '') + '>' + t + '</option>'
+      ).join('');
+      const brandOpts = '<option value="">브랜드 선택 안 함</option>' +
+        brands.map(b => '<option value="' + b.id + '"' + (ci.brand_id === b.id ? ' selected' : '') + '>' + esc(b.brand_name) + '</option>').join('');
+
+      const formHtml =
+        '<div class="form-group"><label class="form-label">종류 <span style="color:var(--red);">*</span></label>' +
+        '<select class="form-input" id="ci-type">' + typeOpts + '</select></div>' +
+
+        '<div class="form-group"><label class="form-label">제목 <span style="color:var(--red);">*</span></label>' +
+        '<input class="form-input" id="ci-title" value="' + esc(ci.title || '') + '" placeholder="문의 제목" /></div>' +
+
+        '<div class="form-group"><label class="form-label">내용</label>' +
+        '<textarea class="form-input" id="ci-content" rows="4" style="resize:vertical;" placeholder="고객 문의 내용을 입력하세요">' + esc(ci.content || '') + '</textarea></div>' +
+
+        '<div style="border-top:1px solid var(--gray-100);margin:16px 0;padding-top:16px;">' +
+        '<div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:12px;">관련 상품 (선택)</div>' +
+
+        '<div class="form-group"><label class="form-label">브랜드</label>' +
+        '<select class="form-input" id="ci-brand" onchange="onCSBrandChange()">' + brandOpts + '</select></div>' +
+
+        '<div id="ci-product-area"></div>' +
+        '</div>';
+
+      const footer =
+        '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+        '<button class="btn btn-primary" onclick="saveCustomerInquiry(\'' + (existing ? existing.id : '') + '\')">저장</button>';
+
+      updateModal(null, formHtml, footer);
+
+      // 기존 값 있으면 상품 영역 복원
+      if (ci.brand_id) {
+        const brandSel = document.getElementById('ci-brand');
+        if (brandSel) brandSel.value = ci.brand_id;
+        await onCSBrandChange(ci.product_id, ci.sku_id, ci.unit_id);
+      }
+    } catch(e) {
+      showToast('로드 실패: ' + e.message, 'error'); closeModal();
+    }
+  };
+
+  window.onCSBrandChange = async function(preProductId, preSkuId, preUnitId) {
+    const brandId = (document.getElementById('ci-brand') || {}).value;
+    const area = document.getElementById('ci-product-area');
+    if (!area) return;
+    if (!brandId) { area.innerHTML = ''; return; }
+    area.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:8px 0;"></div>';
+    try {
+      const snap = await getDocs(collection(db, 'products'));
+      const products = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(p => p.brand_id === brandId && p.status !== '판매중지')
+        .sort((a, b) => (a.product_name || '').localeCompare(b.product_name || ''));
+
+      if (products.length === 0) {
+        area.innerHTML = '<div style="font-size:12px;color:var(--gray-400);margin-bottom:12px;">이 브랜드의 등록 상품이 없습니다.</div>';
+        return;
+      }
+      const prodOpts = '<option value="">상품 선택 안 함</option>' +
+        products.map(p => '<option value="' + p.id + '"' + (preProductId === p.id ? ' selected' : '') + '>' +
+          esc(p.product_name || p.id) + ' (' + esc(p.product_number || '') + ')' + '</option>').join('');
+
+      area.innerHTML =
+        '<div class="form-group"><label class="form-label">상품</label>' +
+        '<select class="form-input" id="ci-product" onchange="onCSProductChange()">' + prodOpts + '</select></div>' +
+        '<div id="ci-sku-area"></div>';
+
+      if (preProductId) {
+        const prodSel = document.getElementById('ci-product');
+        if (prodSel) prodSel.value = preProductId;
+        await onCSProductChange(preSkuId, preUnitId);
+      }
+    } catch(e) { area.innerHTML = '<div style="font-size:12px;color:var(--red);">로드 실패</div>'; }
+  };
+
+  window.onCSProductChange = async function(preSkuId, preUnitId) {
+    const productId = (document.getElementById('ci-product') || {}).value;
+    const area = document.getElementById('ci-sku-area');
+    if (!area) return;
+    if (!productId) { area.innerHTML = ''; return; }
+    area.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:8px 0;"></div>';
+    try {
+      const [productSnap, skusSnap] = await Promise.all([
+        getDoc(doc(db, 'products', productId)),
+        getDocs(collection(db, 'products', productId, 'skus')),
+      ]);
+      const product = productSnap.exists() ? productSnap.data() : {};
+      const skus = skusSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.option_sort_order || 0) - (b.option_sort_order || 0));
+
+      // 상품 썸네일
+      const prodThumb = product.photo_url
+        ? '<img src="' + esc(product.photo_url) + '" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);margin-bottom:10px;" />'
+        : '';
+
+      // SKU 선택 — 썸네일 그리드
+      const skuGrid = skus.map(s => {
+        const optLabel = [s.option_1_value, s.option_2_value, s.option_3_value].filter(Boolean).join(' / ') || '기본';
+        const thumb = s.photo_url || product.photo_url || '';
+        return '<div id="sku-card-' + s.id + '" onclick="selectCSsku(\'' + s.id + '\')" ' +
+          'style="cursor:pointer;border:2px solid ' + (preSkuId === s.id ? 'var(--blue)' : 'var(--gray-200)') + ';border-radius:10px;padding:8px;text-align:center;min-width:80px;">' +
+          (thumb ? '<img src="' + esc(thumb) + '" style="width:56px;height:56px;object-fit:cover;border-radius:6px;margin-bottom:4px;" />' :
+            '<div style="width:56px;height:56px;background:var(--gray-100);border-radius:6px;margin:0 auto 4px;display:flex;align-items:center;justify-content:center;font-size:20px;">📦</div>') +
+          '<div style="font-size:11px;color:var(--gray-700);font-weight:600;">' + esc(optLabel) + '</div>' +
+          '<div style="font-size:10px;color:var(--gray-400);">' + esc(s.barcode_value || '') + '</div>' +
+          '</div>';
+      }).join('');
+
+      area.innerHTML =
+        prodThumb +
+        (skus.length > 0
+          ? '<div class="form-group"><label class="form-label">옵션(SKU)</label>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:8px;">' + skuGrid + '</div></div>'
+          : '') +
+        '<input type="hidden" id="ci-sku" value="' + esc(preSkuId || '') + '" />' +
+        '<input type="hidden" id="ci-sku-tracking" value="' + esc(product.tracking_type || '') + '" />' +
+        '<div id="ci-unit-area"></div>';
+
+      if (preSkuId) {
+        const skuEl = document.getElementById('ci-sku');
+        if (skuEl) skuEl.value = preSkuId;
+        const sku = skus.find(s => s.id === preSkuId);
+        if (sku && product.tracking_type === 'individual') {
+          await loadCSUnits(productId, preSkuId, preUnitId);
+        }
+      }
+    } catch(e) { area.innerHTML = ''; }
+  };
+
+  window.selectCSsku = async function(skuId) {
+    // 이전 선택 해제
+    document.querySelectorAll('[id^="sku-card-"]').forEach(el => {
+      el.style.borderColor = 'var(--gray-200)';
+    });
+    const card = document.getElementById('sku-card-' + skuId);
+    if (card) card.style.borderColor = 'var(--blue)';
+    const skuEl = document.getElementById('ci-sku');
+    if (skuEl) skuEl.value = skuId;
+    document.getElementById('ci-unit-area').innerHTML = '';
+
+    const tracking = (document.getElementById('ci-sku-tracking') || {}).value;
+    if (tracking === 'individual') {
+      const productId = (document.getElementById('ci-product') || {}).value;
+      if (productId) await loadCSUnits(productId, skuId, null);
+    }
+  };
+
+  async function loadCSUnits(productId, skuId, preUnitId) {
+    const area = document.getElementById('ci-unit-area');
+    if (!area) return;
+    area.innerHTML = '<div class="spinner" style="width:18px;height:18px;margin:6px 0;"></div>';
+    try {
+      const snap = await getDocs(collection(db, 'products', productId, 'skus', skuId, 'units'));
+      const units = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(u => u.unit_status === '판매중')
+        .sort((a, b) => (a.unit_number || '').localeCompare(b.unit_number || ''));
+      if (units.length === 0) { area.innerHTML = ''; return; }
+      const opts = '<option value="">개체 선택 안 함</option>' +
+        units.map(u => '<option value="' + u.id + '"' + (preUnitId === u.id ? ' selected' : '') + '>' +
+          esc(u.barcode_value || u.unit_number || u.id) + (u.memo ? ' (' + esc(u.memo) + ')' : '') + '</option>').join('');
+      area.innerHTML =
+        '<div class="form-group"><label class="form-label">개체 번호</label>' +
+        '<select class="form-input" id="ci-unit">' + opts + '</select></div>';
+    } catch(e) { area.innerHTML = ''; }
+  }
+
+  window.saveCustomerInquiry = async function(inquiryId) {
+    const type = (document.getElementById('ci-type') || {}).value;
+    const title = ((document.getElementById('ci-title') || {}).value || '').trim();
+    const content = ((document.getElementById('ci-content') || {}).value || '').trim();
+    if (!title) { showToast('제목을 입력해주세요.', 'error'); return; }
+
+    const brandSel = document.getElementById('ci-brand');
+    const brandId = brandSel ? brandSel.value : '';
+    const brandName = brandSel && brandId ? (brandSel.options[brandSel.selectedIndex] || {}).text : '';
+    const productSel = document.getElementById('ci-product');
+    const productId = productSel ? productSel.value : '';
+    const productName = productSel && productId ? (productSel.options[productSel.selectedIndex] || {}).text : '';
+    const skuEl = document.getElementById('ci-sku');
+    const skuId = skuEl ? skuEl.value : '';
+    const unitSel = document.getElementById('ci-unit');
+    const unitId = unitSel ? unitSel.value : '';
+
+    const data = {
+      type, title, content,
+      brand_id: brandId || '',
+      brand_name: brandId ? brandName : '',
+      product_id: productId || '',
+      product_name: productId ? productName : '',
+      sku_id: skuId || '',
+      unit_id: unitId || '',
+      updated_at: today(),
+    };
+
+    try {
+      if (inquiryId) {
+        await updateDoc(doc(db, 'customer_inquiries', inquiryId), data);
+        showToast('수정되었습니다.');
+      } else {
+        data.status = '답변대기';
+        data.created_at = today();
+        data.created_by = auth.currentUser ? auth.currentUser.email : '';
+        await addDoc(collection(db, 'customer_inquiries'), data);
+        showToast('문의가 등록되었습니다.');
+      }
+      closeModal();
+      await loadStoreInquiries();
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  /* 문의 상세 */
+  window.openCustomerInquiryDetail = async function(inquiryId) {
+    showModal('문의 상세', '<div class="spinner" style="margin:40px auto;"></div>', '', 'lg');
+    try {
+      const [inqSnap, responsesSnap] = await Promise.all([
+        getDoc(doc(db, 'customer_inquiries', inquiryId)),
+        getDocs(collection(db, 'customer_inquiries', inquiryId, 'responses')),
+      ]);
+      if (!inqSnap.exists()) { showToast('문의를 찾을 수 없습니다.', 'error'); closeModal(); return; }
+      const inq = { id: inqSnap.id, ...inqSnap.data() };
+      const responses = responsesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+
+      const st = CS_STATUS[inq.status] || CS_STATUS['답변대기'];
+      const statusBadge = '<span class="badge ' + st.badge + '">' + st.label + '</span>';
+
+      // 기본 정보 섹션
+      let body =
+        '<div style="display:grid;grid-template-columns:70px 1fr;gap:6px 12px;font-size:13px;margin-bottom:16px;">' +
+        '<span style="color:var(--gray-500);">상태</span><span>' + statusBadge + '</span>' +
+        '<span style="color:var(--gray-500);">종류</span><span><span class="badge badge-gray">' + esc(inq.type || '-') + '</span></span>' +
+        '<span style="color:var(--gray-500);">등록일</span><span style="color:var(--gray-400);">' + esc(fmtDate(inq.created_at)) + '</span>' +
+        (inq.brand_name ? '<span style="color:var(--gray-500);">브랜드</span><span>' + esc(inq.brand_name) + '</span>' : '') +
+        (inq.product_name ? '<span style="color:var(--gray-500);">상품</span><span>' + esc(inq.product_name) + '</span>' : '') +
+        '</div>' +
+        '<div style="font-size:15px;font-weight:700;margin-bottom:8px;">' + esc(inq.title) + '</div>' +
+        '<div style="font-size:13px;color:var(--gray-700);white-space:pre-wrap;background:var(--gray-50);border-radius:8px;padding:12px;margin-bottom:16px;">' + esc(inq.content || '') + '</div>';
+
+      // 재응답 필요 사유
+      if (inq.status === '재응답 필요' && inq.re_response_note) {
+        body +=
+          '<div style="background:#fff3cd;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;">' +
+          '<div style="font-weight:700;margin-bottom:4px;color:#856404;">⚠️ 재응답 요청 사유</div>' +
+          '<div style="color:#664d03;white-space:pre-wrap;">' + esc(inq.re_response_note) + '</div>' +
+          '</div>';
+      }
+
+      // 응답 이력
+      body += '<div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:10px;border-top:1px solid var(--gray-100);padding-top:14px;">응답 이력</div>';
+      if (responses.length === 0) {
+        body += '<div style="font-size:13px;color:var(--gray-400);margin-bottom:16px;">아직 응답이 없습니다.</div>';
+      } else {
+        body += responses.map(r => {
+          const isVendor = r.author_type === 'vendor';
+          return '<div style="margin-bottom:12px;' + (isVendor ? 'padding-left:0;' : 'padding-left:0;') + '">' +
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
+            '<span style="font-size:12px;font-weight:700;color:' + (isVendor ? 'var(--blue)' : 'var(--gray-700)') + ';">' +
+            (isVendor ? '🏬 ' : '👤 ') + esc(r.author_name || r.author_email || '') + '</span>' +
+            '<span style="font-size:11px;color:var(--gray-400);">' + esc(fmtTs(r.created_at)) + '</span>' +
+            '</div>' +
+            '<div style="font-size:13px;color:var(--gray-700);white-space:pre-wrap;background:' + (isVendor ? 'var(--blue-light)' : 'var(--gray-50)') + ';border-radius:8px;padding:10px;">' +
+            esc(r.content || '') + '</div>' +
+            '</div>';
+        }).join('');
+      }
+
+      // 관리자 응답 작성
+      body +=
+        '<div style="border-top:1px solid var(--gray-100);padding-top:14px;margin-top:4px;">' +
+        '<div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:8px;">관리자 응답 작성</div>' +
+        '<textarea class="form-input" id="ci-admin-response" rows="3" style="resize:vertical;" placeholder="응답 내용을 입력하세요..."></textarea>' +
+        '</div>';
+
+      // 하단 버튼
+      const canClose = inq.status === '답변완료';
+      const canReRequest = inq.status === '답변완료' && inq.brand_id;
+      const footer =
+        '<button class="btn btn-secondary" onclick="openCustomerInquiryModal(\'' + inquiryId + '\')">수정</button>' +
+        '<div style="flex:1;"></div>' +
+        (canReRequest
+          ? '<button class="btn btn-secondary" style="color:var(--red);" onclick="openCSReResponseModal(\'' + inquiryId + '\')">재응답 요청</button>'
+          : '') +
+        (canClose
+          ? '<button class="btn btn-secondary" style="color:var(--green);" onclick="updateCSStatus(\'' + inquiryId + '\',\'처리완료\')">처리완료</button>'
+          : '') +
+        '<button class="btn btn-primary" onclick="submitCSAdminResponse(\'' + inquiryId + '\')">응답 저장</button>';
+
+      updateModal('문의 상세 — ' + esc(inq.title), body,
+        '<div style="display:flex;gap:8px;align-items:center;width:100%;">' + footer + '</div>');
+    } catch(e) {
+      showToast('로드 실패: ' + e.message, 'error'); closeModal();
+    }
+  };
+
+  window.submitCSAdminResponse = async function(inquiryId) {
+    const content = ((document.getElementById('ci-admin-response') || {}).value || '').trim();
+    if (!content) { showToast('응답 내용을 입력해주세요.', 'error'); return; }
+    try {
+      const user = auth.currentUser;
+      await addDoc(collection(db, 'customer_inquiries', inquiryId, 'responses'), {
+        content,
+        author_type: 'admin',
+        author_email: user ? user.email : '',
+        author_name: user ? (user.displayName || user.email) : '관리자',
+        created_at: today(),
+      });
+      await updateDoc(doc(db, 'customer_inquiries', inquiryId), { status: '답변완료', updated_at: today() });
+      showToast('응답이 저장되었습니다.');
+      await openCustomerInquiryDetail(inquiryId);
+      await loadStoreInquiries();
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  window.updateCSStatus = async function(inquiryId, status) {
+    try {
+      await updateDoc(doc(db, 'customer_inquiries', inquiryId), { status, updated_at: today() });
+      showToast('상태가 변경되었습니다.');
+      await openCustomerInquiryDetail(inquiryId);
+      await loadStoreInquiries();
+    } catch(e) { showToast('상태 변경 실패: ' + e.message, 'error'); }
+  };
+
+  window.openCSReResponseModal = function(inquiryId) {
+    const formHtml =
+      '<div style="font-size:13px;color:var(--gray-600);margin-bottom:12px;">브랜드 담당자에게 추가 정보를 요청합니다. 담당자 포털에서 이 내용과 함께 재응답 요청이 표시됩니다.</div>' +
+      '<div class="form-group"><label class="form-label">재응답 요청 사유 / 추가 문의 내용</label>' +
+      '<textarea class="form-input" id="cs-re-note" rows="4" style="resize:vertical;" placeholder="예: 제품 불량 여부 확인 필요, 교환 가능 여부 알려주세요..."></textarea></div>';
+    const footer =
+      '<button class="btn btn-secondary" onclick="openCustomerInquiryDetail(\'' + inquiryId + '\')">취소</button>' +
+      '<button class="btn btn-primary" style="background:var(--red);border-color:var(--red);" onclick="submitCSReResponse(\'' + inquiryId + '\')">재응답 요청 전송</button>';
+    showModal('재응답 요청', formHtml, footer);
+  };
+
+  window.submitCSReResponse = async function(inquiryId) {
+    const note = ((document.getElementById('cs-re-note') || {}).value || '').trim();
+    if (!note) { showToast('요청 사유를 입력해주세요.', 'error'); return; }
+    try {
+      await updateDoc(doc(db, 'customer_inquiries', inquiryId), {
+        status: '재응답 필요',
+        re_response_note: note,
+        updated_at: today(),
+      });
+      showToast('재응답 요청이 전송되었습니다.');
+      closeModal();
+      await loadStoreInquiries();
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  /* ════════════════════════════════
      17단계 문의(Inquiry) 관리
   ════════════════════════════════ */
   async function renderInquiryList(container) {
@@ -4800,7 +5938,7 @@
       '<div style="max-width:660px;">' +
 
       /* ── 앱 설치 ── */
-      '<div class="card" style="margin-bottom:20px;">' +
+      '<div class="card" style="padding:24px;margin-bottom:20px;">' +
       '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">홈 화면에 앱 설치</div>' +
       '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">이 관리 도구를 스마트폰 또는 컴퓨터의 홈 화면에 앱처럼 설치할 수 있습니다.</div>' +
       '<div id="pwa-install-area">' +
@@ -4817,8 +5955,51 @@
       '</div>' +
       '</div>' +
 
+      /* ── 암호화 키 관리 ── */
+      '<div class="card" style="padding:24px;margin-bottom:20px;">' +
+      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">암호화 키 관리</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">주민등록번호·계좌번호 암호화에 사용되는 AES-256 키입니다. Admin과 Vendor가 동일한 키를 공유해야 서로 복호화가 가능합니다.</div>' +
+      '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">⚠️ 키를 새로 생성하면 기존에 암호화된 데이터를 읽을 수 없게 됩니다. 기존 암호화 데이터가 없을 때만 생성하세요.</div>' +
+      '<div id="enc-key-status" style="font-size:13px;margin-bottom:12px;color:var(--gray-400);">확인 중...</div>' +
+      '<button class="btn btn-secondary" onclick="generateEncryptionKey()">🔑 새 암호화 키 생성 및 저장</button>' +
+      '</div>' +
+
+      /* ── 국세청 사업자 조회 API 키 ── */
+      '<div class="card" style="padding:24px;margin-bottom:20px;">' +
+      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">국세청 사업자 조회 API 키</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">브랜드 정산 정보 입력 시 사업자등록번호 실시간 조회에 사용됩니다.</div>' +
+      '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;"><a href="https://www.data.go.kr/data/15081808/openapi.do" target="_blank" rel="noopener noreferrer" style="color:var(--blue);">공공데이터포털(data.go.kr)</a>에서 "국세청_사업자등록정보 진위확인 및 상태조회 서비스" 신청 → 일반 인증키(Encoding)를 붙여넣으세요.</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;">' +
+      '<input class="form-input" id="nts-api-key-input" type="password" placeholder="국세청 오픈API 서비스키" style="flex:1;font-family:monospace;font-size:13px;" />' +
+      '<button class="btn btn-primary" style="white-space:nowrap;" onclick="saveNtsApiKey()">저장</button>' +
+      '</div>' +
+      '<div id="nts-key-status" style="font-size:12px;margin-top:8px;color:var(--gray-400);">로딩 중...</div>' +
+      '</div>' +
+
+      /* ── 유캔사인 API 키 ── */
+      '<div class="card" style="padding:24px;margin-bottom:20px;">' +
+      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">유캔사인 API 키</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">템플릿 필드 자동 가져오기 및 전자계약 발송에 사용됩니다.</div>' +
+      '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">유캔사인 로그인 → 우측 상단 프로필 → <strong>개발자</strong> → <strong>API KEY</strong> 탭에서 발급받은 키를 붙여넣으세요. (accessToken이 아닌 API KEY 원본값)</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;">' +
+      '<input class="form-input" id="ucansign-api-key-input" type="password" placeholder="유캔사인 API KEY (영구 발급된 키)" style="flex:1;font-family:monospace;font-size:13px;" />' +
+      '<button class="btn btn-primary" style="white-space:nowrap;" onclick="saveUcansignApiKey()">저장</button>' +
+      '</div>' +
+      '<div id="ucansign-key-status" style="font-size:12px;margin-top:8px;color:var(--gray-400);">로딩 중...</div>' +
+      '</div>' +
+
+      /* ── 계약서 템플릿 관리 ── */
+      '<div class="card" style="padding:24px;margin-bottom:20px;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
+      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);">계약서 템플릿 관리</div>' +
+      '<button class="btn btn-primary" style="font-size:12px;padding:5px 12px;" onclick="openContractTemplateModal(null)">+ 템플릿 추가</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">유캔사인 템플릿 ID와 연결합니다. 전자계약 발송 시 이 목록에서 계약서 종류를 선택합니다.</div>' +
+      '<div id="contract-templates-list"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
+      '</div>' +
+
       /* ── Firebase 연결 상태 ── */
-      '<div class="card">' +
+      '<div class="card" style="padding:24px;">' +
       '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:16px;">Firebase 연결 상태</div>' +
       '<div id="firebase-status-area"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
       '</div>' +
@@ -4826,7 +6007,396 @@
       '</div>';
 
     checkFirebaseStatus();
+    loadContractTemplatesList();
+    loadUcansignApiKeyStatus();
+    loadNtsApiKeyStatus();
+    loadEncKeyStatus();
   }
+
+  /* ── 암호화 키 로드·생성 ── */
+  async function loadEncKeyStatus() {
+    const el = document.getElementById('enc-key-status');
+    if (!el) return;
+    try {
+      const snap = await getDoc(doc(db, 'app_configs', 'encryption'));
+      if (snap.exists() && snap.data().aes_key_b64) {
+        el.innerHTML = '<span style="color:var(--green);">✅ 암호화 키가 설정되어 있습니다.</span> Admin·Vendor 양쪽에서 동일 키로 암호화/복호화됩니다.';
+      } else {
+        el.innerHTML = '<span style="color:var(--red);">⚠ 암호화 키가 없습니다.</span> 아래 버튼으로 키를 생성하세요. 키가 없으면 주민등록번호·계좌번호 저장이 불가합니다.';
+      }
+    } catch(e) {
+      el.textContent = '확인 오류: ' + e.message;
+    }
+  }
+
+  window.generateEncryptionKey = async function() {
+    const el = document.getElementById('enc-key-status');
+    const confirmed = confirm('새 암호화 키를 생성합니다.\n\n⚠️ 기존에 암호화된 데이터(주민등록번호·계좌번호)가 있다면 읽을 수 없게 됩니다.\n\n계속하시겠습니까?');
+    if (!confirmed) return;
+    try {
+      const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+      const rawKey = await crypto.subtle.exportKey('raw', key);
+      const keyB64 = btoa(String.fromCharCode(...new Uint8Array(rawKey)));
+      await setDoc(doc(db, 'app_configs', 'encryption'), { aes_key_b64: keyB64, created_at: today() });
+      // 캐시 초기화
+      _sharedCryptoKey = null;
+      _sharedKeyB64Cached = null;
+      if (el) el.innerHTML = '<span style="color:var(--green);">✅ 새 암호화 키가 생성·저장되었습니다.</span> Vendor 앱에서 자동으로 동일 키를 사용합니다.';
+      showToast('암호화 키가 생성되었습니다.', 'success');
+    } catch(e) {
+      showToast('키 생성 오류: ' + e.message, 'error');
+    }
+  };
+
+  /* ── 국세청 API 키 로드·저장 ── */
+  async function loadNtsApiKeyStatus() {
+    const statusEl = document.getElementById('nts-key-status');
+    const inputEl = document.getElementById('nts-api-key-input');
+    if (!statusEl) return;
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'config'));
+      const key = snap.data()?.nts_api_key || '';
+      if (key) {
+        statusEl.innerHTML = '<span style="color:var(--green);">✅ API 키가 저장되어 있습니다.</span> 변경하려면 새 값을 입력 후 저장하세요.';
+        if (inputEl) inputEl.placeholder = '••••••••••••••••••••••• (저장됨)';
+      } else {
+        statusEl.textContent = '아직 저장된 API 키가 없습니다. 브랜드 정산 정보에서 사업자 조회 버튼을 사용하려면 키가 필요합니다.';
+      }
+    } catch(e) {
+      statusEl.textContent = '로드 오류: ' + e.message;
+    }
+  }
+
+  window.saveNtsApiKey = async function() {
+    const inputEl = document.getElementById('nts-api-key-input');
+    const statusEl = document.getElementById('nts-key-status');
+    const key = (inputEl?.value || '').trim();
+    if (!key) { showToast('API 키를 입력해주세요.', 'error'); return; }
+    try {
+      await setDoc(doc(db, 'settings', 'config'), { nts_api_key: key }, { merge: true });
+      if (inputEl) { inputEl.value = ''; inputEl.placeholder = '••••••••••••••••••••••• (저장됨)'; }
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--green);">✅ API 키가 저장되어 있습니다.</span> 변경하려면 새 값을 입력 후 저장하세요.';
+      showToast('국세청 API 키가 저장되었습니다.', 'success');
+    } catch(e) {
+      showToast('저장 오류: ' + e.message, 'error');
+    }
+  };
+
+  /* ── 유캔사인 API 키 로드·저장 ── */
+  async function loadUcansignApiKeyStatus() {
+    const statusEl = document.getElementById('ucansign-key-status');
+    const inputEl = document.getElementById('ucansign-api-key-input');
+    if (!statusEl) return;
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'config'));
+      const key = snap.data()?.ucansign_api_key || '';
+      if (key) {
+        statusEl.innerHTML = '<span style="color:var(--green);">✅ API 키가 저장되어 있습니다.</span> 변경하려면 새 값을 입력 후 저장하세요.';
+        if (inputEl) inputEl.placeholder = '••••••••••••••••••••••• (저장됨)';
+      } else {
+        statusEl.textContent = '아직 저장된 API 키가 없습니다.';
+      }
+    } catch(e) {
+      statusEl.textContent = '로드 오류: ' + e.message;
+    }
+  }
+
+  window.saveUcansignApiKey = async function() {
+    const inputEl = document.getElementById('ucansign-api-key-input');
+    const statusEl = document.getElementById('ucansign-key-status');
+    const key = (inputEl?.value || '').trim();
+    if (!key) { showToast('API 키를 입력해주세요.', 'error'); return; }
+    try {
+      await setDoc(doc(db, 'settings', 'config'), { ucansign_api_key: key }, { merge: true });
+      if (inputEl) { inputEl.value = ''; inputEl.placeholder = '••••••••••••••••••••••• (저장됨)'; }
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--green);">✅ API 키가 저장되어 있습니다.</span> 변경하려면 새 값을 입력 후 저장하세요.';
+      showToast('유캔사인 API 키가 저장되었습니다.', 'success');
+    } catch(e) {
+      showToast('저장 오류: ' + e.message, 'error');
+    }
+  };
+
+  /* ── 계약서 템플릿 목록 로드 ── */
+  async function loadContractTemplatesList() {
+    const area = document.getElementById('contract-templates-list');
+    if (!area) return;
+    try {
+      const snap = await getDocs(collection(db, 'contract_templates'));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      if (list.length === 0) {
+        area.innerHTML = '<div style="font-size:13px;color:var(--gray-400);">등록된 템플릿이 없습니다. + 템플릿 추가 버튼으로 등록해주세요.</div>';
+        return;
+      }
+      area.innerHTML = list.map(t =>
+        '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--gray-100);">' +
+        '<div style="flex:1;">' +
+        '<div style="font-size:14px;font-weight:600;color:var(--gray-800);">' + esc(t.name || t.id) + '</div>' +
+        '<div style="font-size:12px;color:var(--gray-500);margin-top:2px;">' +
+        'ID: <code style="font-size:11px;background:var(--gray-100);padding:1px 5px;border-radius:3px;">' + esc(t.ucansign_template_id || '미설정') + '</code>' +
+        (t.type ? ' &nbsp;· 유형: ' + esc(t.type) : '') +
+        '</div></div>' +
+        '<label style="position:relative;display:inline-block;width:40px;height:22px;cursor:pointer;flex-shrink:0;" title="' + (t.is_active !== false ? '활성 — 클릭해서 비활성화' : '비활성 — 클릭해서 활성화') + '">' +
+        '<input type="checkbox" ' + (t.is_active !== false ? 'checked' : '') + ' onchange="toggleContractTemplateActive(\'' + t.id + '\',this.checked)" style="opacity:0;width:0;height:0;" />' +
+        '<span style="position:absolute;inset:0;border-radius:11px;background:' + (t.is_active !== false ? 'var(--blue)' : 'var(--gray-300)') + ';transition:background .2s;">' +
+        '<span style="position:absolute;top:3px;left:' + (t.is_active !== false ? '21px' : '3px') + ';width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;"></span>' +
+        '</span>' +
+        '</label>' +
+        '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openContractTemplateModal(\'' + t.id + '\')">수정</button>' +
+        '</div>'
+      ).join('');
+    } catch(e) {
+      area.innerHTML = '<div style="font-size:13px;color:var(--red);">로드 실패: ' + esc(e.message) + '</div>';
+    }
+  }
+
+  window.openContractTemplateModal = async function(templateId) {
+    let existing = null;
+    if (templateId) {
+      const snap = await getDoc(doc(db, 'contract_templates', templateId));
+      if (snap.exists()) existing = { id: snap.id, ...snap.data() };
+    }
+    const t = existing || { is_active: true };
+    const formHtml =
+      '<div class="form-group"><label class="form-label">계약서 이름 <span style="color:var(--red);">*</span></label>' +
+      '<input class="form-input" id="ct-name" value="' + esc(t.name || '') + '" placeholder="예: (사업자) 오프라인 위탁판매 입점계약서" /></div>' +
+
+      '<div class="form-group"><label class="form-label">유캔사인 템플릿 ID <span style="color:var(--red);">*</span></label>' +
+      '<div style="display:flex;gap:8px;align-items:center;">' +
+      '<input class="form-input" id="ct-ucansign-id" value="' + esc(t.ucansign_template_id || '') + '" placeholder="유캔사인 → 템플릿 메뉴 → 해당 템플릿 클릭 → URL의 숫자 ID" style="flex:1;" />' +
+      '<button type="button" class="btn btn-secondary" id="btn-fetch-fields" onclick="window._fetchUcansignFields()" style="white-space:nowrap;font-size:12px;">🔍 필드 가져오기</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">유캔사인 로그인 → 템플릿 메뉴 → 해당 템플릿 클릭 → URL 또는 상세 화면의 ID 복사</div></div>' +
+
+      '<div class="form-group"><label class="form-label">계약 종류 태그 <span style="font-size:12px;font-weight:400;color:var(--gray-400);">(선택 · 목록 구분용 메모)</span></label>' +
+      '<input class="form-input" id="ct-type" value="' + esc(t.type || '') + '" placeholder="예: 사업자 / 예: 비사업자 / 예: PB계약" />' +
+      '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">목록에서 한눈에 구분할 수 있도록 짧게 적어두는 메모예요. 계약 기능에는 영향 없습니다.</div></div>' +
+
+      '<div class="form-group"><label class="form-label">계약서 변수 기본값 <span style="font-size:12px;font-weight:400;color:var(--gray-400);">(선택)</span></label>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:8px;">유캔사인 계약서 안에 <strong>자동으로 채울 항목</strong>이 있으면 입력하세요. 없으면 비워두세요.</div>' +
+      '<div style="margin-bottom:10px;">' +
+      '<button type="button" id="btn-vars-toggle" onclick="(function(){var g=document.getElementById(\'ct-vars-panel\');var b=document.getElementById(\'btn-vars-toggle\');var open=g.style.display===\'none\';g.style.display=open?\'block\':\'none\';b.textContent=open?\'▲ 변수 목록 닫기\':\'▼ 사용 가능한 변수 보기\';})()" style="font-size:12px;background:none;border:1px solid var(--primary);color:var(--primary);cursor:pointer;border-radius:6px;padding:4px 10px;">▼ 사용 가능한 변수 보기</button>' +
+      '</div>' +
+      '<div id="ct-vars-panel" style="display:none;background:#f8f7ff;border:1px solid #ddd6fe;border-radius:8px;padding:12px;margin-bottom:10px;font-size:12px;">' +
+      '<div style="color:#5b21b6;font-weight:700;margin-bottom:6px;">기본값 입력 시 아래 변수를 사용할 수 있습니다. 클릭하면 클립보드에 복사됩니다.</div>' +
+      '<div style="background:#fff3cd;border-radius:6px;padding:6px 10px;margin-bottom:8px;font-size:11px;color:#856404;">⚠️ 변수 치환은 전자계약 발송 기능이 완성된 후 자동 적용됩니다. <strong>지금은 기본값으로 저장만 됩니다.</strong></div>' +
+      '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:11px;color:#166534;line-height:1.7;">' +
+      '📅 <strong>날짜 변수</strong>: 발송 시점의 <strong>오늘 날짜</strong>가 자동으로 채워집니다. 특정 날짜를 고정하려면 기본값 칸에 <code style="background:#dcfce7;padding:1px 4px;border-radius:3px;">2026-08-01</code> 처럼 직접 입력하세요.<br>' +
+      '💰 <strong>수수료율</strong>: 숫자만 들어갑니다 (예: <code style="background:#dcfce7;padding:1px 4px;border-radius:3px;">10</code>). %기호는 포함되지 않으므로 계약서 템플릿에 "%" 를 직접 붙여두세요.' +
+      '</div>' +
+      '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">📋 브랜드 정보</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">' +
+      ctVarChip('{{brand_name}}', '브랜드명', '예: 온기') +
+      ctVarChip('{{brand_code}}', '브랜드코드', '예: ONG') +
+      ctVarChip('{{commission_rate}}', '위탁판매대행수수료', '예: 10 (%기호 없이)') +
+      '</div>' +
+      '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">👤 담당자 정보</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">' +
+      ctVarChip('{{ceo_name}}', '담당자명/대표자명', '예: 홍길동') +
+      ctVarChip('{{phone}}', '연락처', '예: 010-1234-5678') +
+      ctVarChip('{{email}}', '이메일', '예: hello@brand.com') +
+      '</div>' +
+      '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">📅 날짜 (발송 시 오늘 날짜 자동 적용)</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">' +
+      ctVarChip('{{yyyymmdd}}', '날짜', '예: 20260717') +
+      ctVarChip('{{yyyy-mm-dd}}', '날짜(하이픈)', '예: 2026-07-17') +
+      ctVarChip('{{yyyy년mm월dd일}}', '날짜(한글)', '예: 2026년07월17일') +
+      '</div>' +
+      '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">✍️ 서명 참여자 (유캔사인 발송 시 자동 입력)</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
+      ctVarChip('{{sender_name}}', '발신인 이름', '예: GMBS 담당자명') +
+      ctVarChip('{{sender_email}}', '발신인 이메일', '예: gmbs@example.com') +
+      ctVarChip('{{receiver_name}}', '수신인 이름', '예: 브랜드 담당자명') +
+      ctVarChip('{{receiver_email}}', '수신인 이메일', '예: brand@example.com') +
+      ctVarChip('{{receiver_kakao}}', '수신인 카카오번호', '예: 010-1234-5678') +
+      '</div>' +
+      '</div>' +
+      '<div id="ct-fields-rows" style="display:flex;flex-direction:column;gap:6px;"></div>' +
+      '</div>' +
+
+      '<div class="form-group">' +
+      '<label class="form-label">활성 <span style="font-size:12px;font-weight:400;color:var(--gray-400);">— 비활성 시 발송 화면에서 선택 불가</span></label>' +
+      '<label style="display:inline-flex;align-items:center;gap:10px;cursor:pointer;">' +
+      '<span style="position:relative;display:inline-block;width:40px;height:22px;">' +
+      '<input type="checkbox" id="ct-active"' + (t.is_active !== false ? ' checked' : '') + ' style="opacity:0;width:0;height:0;" onchange="(function(cb){var s=cb.parentElement.querySelector(\'span\');s.style.background=cb.checked?\'var(--blue)\':\' var(--gray-300)\';s.querySelector(\'span\').style.left=cb.checked?\'21px\':\'3px\';})(this)" />' +
+      '<span style="position:absolute;inset:0;border-radius:11px;background:' + (t.is_active !== false ? 'var(--blue)' : 'var(--gray-300)') + ';transition:background .2s;">' +
+      '<span style="position:absolute;top:3px;left:' + (t.is_active !== false ? '21px' : '3px') + ';width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;"></span>' +
+      '</span>' +
+      '</span>' +
+      '<span style="font-size:13px;font-weight:500;" id="ct-active-label">' + (t.is_active !== false ? '활성' : '비활성') + '</span>' +
+      '</label>' +
+      '</div>';
+
+    const footer =
+      (existing ? '<button class="btn btn-secondary" style="color:var(--red);" onclick="deleteContractTemplate(\'' + existing.id + '\')">삭제</button>' : '') +
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      '<button class="btn btn-primary" onclick="saveContractTemplate(\'' + (existing ? existing.id : '') + '\')">저장</button>';
+
+    showModal((existing ? '계약서 템플릿 수정' : '계약서 템플릿 추가'), formHtml, footer);
+
+    // 유캔사인 템플릿 필드 자동 가져오기
+    window._fetchUcansignFields = async function() {
+      const templateId = (document.getElementById('ct-ucansign-id') || {}).value?.trim();
+      if (!templateId) { showToast('템플릿 ID를 먼저 입력해주세요.', 'error'); return; }
+      const btn = document.getElementById('btn-fetch-fields');
+      if (btn) { btn.disabled = true; btn.textContent = '가져오는 중...'; }
+      try {
+        const cfgSnap = await getDoc(doc(db, 'settings', 'config'));
+        const storedApiKey = cfgSnap.data()?.ucansign_api_key;
+        if (!storedApiKey) {
+          showToast('설정 페이지에서 유캔사인 API 키를 먼저 저장해주세요.', 'error');
+          if (btn) { btn.disabled = false; btn.textContent = '🔍 필드 가져오기'; }
+          return;
+        }
+
+        // 1단계: API KEY로 accessToken 발급 (유효기간 30분)
+        if (btn) btn.textContent = '토큰 발급 중...';
+        const tokenRes = await fetch('https://app.ucansign.com/openapi/user/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: storedApiKey })
+        });
+        const tokenJson = await tokenRes.json();
+        // 토큰 발급 결과는 콘솔에 출력하지 않음 (보안)
+        if (tokenJson.code !== 0 || !tokenJson.result?.accessToken) {
+          throw new Error('토큰 발급 실패: ' + (tokenJson.msg || '알 수 없는 오류') + ' — 설정 페이지에서 API 키를 다시 확인해주세요.');
+        }
+        const accessToken = tokenJson.result.accessToken;
+
+        // 2단계: accessToken으로 템플릿 상세 조회
+        if (btn) btn.textContent = '필드 조회 중...';
+        const res = await fetch('https://app.ucansign.com/openapi/templates/' + templateId, {
+          method: 'GET',
+          headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' }
+        });
+        const json = await res.json();
+        // 템플릿 상세 응답 전체 로그 제거 (보안)
+        if (json.code !== undefined && json.code !== 0) {
+          throw new Error((json.msg || '알 수 없는 오류') + ' (code: ' + json.code + ')');
+        }
+
+        // 응답 전체에서 fieldName 속성이 있는 객체를 재귀적으로 수집
+        function collectFields(obj, collected) {
+          if (!obj || typeof obj !== 'object') return;
+          if (Array.isArray(obj)) {
+            obj.forEach(function(item) { collectFields(item, collected); });
+            return;
+          }
+          const fieldKey = obj.fieldName || obj.field_name || obj.name;
+          const type = (obj.fieldType || obj.field_type || obj.type || obj.componentType || '').toUpperCase();
+          if (fieldKey && typeof fieldKey === 'string' && fieldKey.trim()) {
+            const key = fieldKey.trim();
+            if (!collected.some(function(c) { return c.name === key; })) {
+              const descCandidates = [obj.label, obj.description, obj.placeholder, obj.componentLabel, obj.title];
+              const desc = descCandidates.find(function(d) { return d && typeof d === 'string' && d.trim() && d.trim() !== key; }) || '';
+              const typeLabel = type ? ' [' + type + ']' : '';
+              collected.push({ name: key, desc: (typeof desc === 'string' ? desc.trim() : '') + typeLabel });
+            }
+          }
+          Object.keys(obj).forEach(function(k) { collectFields(obj[k], collected); });
+        }
+
+        const collected = [];
+        collectFields(json, collected);
+
+
+        if (collected.length === 0) {
+          showToast('입력 필드를 찾지 못했습니다. 브라우저 개발자 도구(F12) → Console에서 응답 구조를 확인해주세요.', 'info');
+        } else {
+          document.getElementById('ct-fields-rows').innerHTML = '';
+          collected.forEach(function(f) { window._addCtFieldRow(f.name, '', f.desc); });
+          showToast(collected.length + '개 필드를 불러왔습니다. 기본값을 입력하세요.', 'success');
+        }
+      } catch(e) {
+        if (e instanceof TypeError || e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
+          showToast('유캔사인 API가 브라우저 직접 호출을 허용하지 않습니다. 필드를 직접 추가해주세요.', 'error');
+        } else {
+          showToast('필드 조회 실패: ' + e.message, 'error');
+        }
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔍 필드 가져오기'; }
+      }
+    };
+
+    // 클립보드 복사 헬퍼 (변수 칩 클릭용)
+    window._cpVar = function(val) {
+      navigator.clipboard.writeText(val).then(function() {
+        showToast(val + ' 복사됨', 'success');
+      }).catch(function() {});
+    };
+
+    // 변수 행 추가 헬퍼
+    window._addCtFieldRow = function(k, v, desc) {
+      var row = document.createElement('div');
+      row.className = 'ct-field-row';
+      row.style.cssText = 'display:flex;flex-direction:column;gap:2px;padding:8px;background:var(--gray-50);border-radius:8px;border:1px solid var(--gray-200);';
+      var labelHtml = desc
+        ? '<div style="font-size:11px;color:var(--gray-500);margin-bottom:2px;font-weight:500;">' + esc(desc) + '</div>'
+        : '';
+      row.innerHTML =
+        labelHtml +
+        '<div style="display:flex;gap:6px;align-items:center;">' +
+        '<input class="form-input ct-field-key" placeholder="유캔사인 필드명" value="' + esc(k || '') + '" style="flex:1;font-size:13px;font-family:monospace;" />' +
+        '<span style="color:var(--gray-400);flex-shrink:0;font-size:12px;">→</span>' +
+        '<input class="form-input ct-field-val" placeholder="기본값 또는 {{변수}}" value="' + esc(v || '') + '" style="flex:1.5;font-size:13px;" title="비워두면 발송 시 직접 입력합니다." />' +
+        '<button type="button" onclick="this.closest(\'.ct-field-row\').remove()" style="flex-shrink:0;border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:16px;padding:0 4px;">✕</button>' +
+        '</div>';
+      document.getElementById('ct-fields-rows').appendChild(row);
+    };
+
+    // 기존 데이터 복원
+    if (t.default_fields && typeof t.default_fields === 'object') {
+      Object.entries(t.default_fields).forEach(([k, v]) => window._addCtFieldRow(k, String(v), (t.field_descs || {})[k] || ''));
+    }
+  };
+
+  window.saveContractTemplate = async function(templateId) {
+    const name = (document.getElementById('ct-name') || {}).value?.trim();
+    const ucansignId = (document.getElementById('ct-ucansign-id') || {}).value?.trim();
+    const type = (document.getElementById('ct-type') || {}).value?.trim();
+    const isActive = (document.getElementById('ct-active') || {}).checked;
+
+    if (!name) { showToast('계약서 이름을 입력해주세요.', 'error'); return; }
+    if (!ucansignId) { showToast('유캔사인 템플릿 ID를 입력해주세요.', 'error'); return; }
+
+    // 키-값 행에서 defaultFields 수집
+    const defaultFields = {};
+    document.querySelectorAll('.ct-field-row').forEach(function(row) {
+      const k = (row.querySelector('.ct-field-key') || {}).value?.trim();
+      const v = (row.querySelector('.ct-field-val') || {}).value?.trim();
+      if (k) { defaultFields[k] = v || ''; }
+    });
+
+    const data = { name, ucansign_template_id: ucansignId, type: type || '', default_fields: defaultFields, is_active: isActive, updated_at: today() };
+    try {
+      if (templateId) {
+        await updateDoc(doc(db, 'contract_templates', templateId), data);
+      } else {
+        data.created_at = today();
+        await addDoc(collection(db, 'contract_templates'), data);
+      }
+      showToast('저장되었습니다.');
+      closeModal();
+      loadContractTemplatesList();
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  window.deleteContractTemplate = async function(templateId) {
+    if (!confirm('이 템플릿을 삭제하시겠습니까?\n이미 발송된 계약의 이력은 유지됩니다.')) return;
+    try {
+      await deleteDoc(doc(db, 'contract_templates', templateId));
+      showToast('삭제되었습니다.');
+      closeModal();
+      loadContractTemplatesList();
+    } catch(e) { showToast('삭제 실패: ' + e.message, 'error'); }
+  };
+
+  window.toggleContractTemplateActive = async function(templateId, isActive) {
+    try {
+      await updateDoc(doc(db, 'contract_templates', templateId), { is_active: isActive, updated_at: today() });
+      showToast(isActive ? '활성화되었습니다.' : '비활성화되었습니다.', 'success');
+    } catch(e) { showToast('변경 실패: ' + e.message, 'error'); loadContractTemplatesList(); }
+  };
 
   function settingNumField(label, id, val, min, max) {
     return '<div>' +
@@ -5158,6 +6728,47 @@
     const isPending = item.status === '제출됨';
     const statusBadge = { '제출됨': '<span class="badge badge-blue">제출됨</span>', '승인': '<span class="badge badge-green">승인</span>', '거절': '<span class="badge badge-red">거절</span>' }[item.status] || '';
 
+    // 정산 정보 (암호화 필드는 버튼 클릭 시에만 복호화)
+    const si = item.settlement_info || {};
+    const siResidentDisplay = si.resident_number
+      ? (isEncrypted(si.resident_number)
+          ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealAppField(\'' + docId + '\',\'resident_number\',\'app-si-resident\')">🔓 보기</button>'
+          : esc(si.resident_number))
+      : '-';
+    const siAccountDisplay = si.account_number
+      ? (isEncrypted(si.account_number)
+          ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealAppField(\'' + docId + '\',\'account_number\',\'app-si-account\')">🔓 보기</button>'
+          : esc(si.account_number))
+      : '-';
+
+    const settlementSection = (item.settlement_info && !isJoin)
+      ? '<div style="border-top:1px solid var(--gray-200);padding-top:14px;margin-top:4px;margin-bottom:14px;">' +
+          '<div class="form-label" style="margin-bottom:8px;font-size:12px;font-weight:700;">정산 정보 (벤더 제출)</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">' +
+            '<div><span style="color:var(--gray-500);font-size:11px;">사업자 구분</span><br>' + esc(si.business_type === 'individual' ? '개인(사업자없음)' : si.business_type === 'business' ? '사업자' : '-') + '</div>' +
+            (si.business_type === 'business' ? '<div><span style="color:var(--gray-500);font-size:11px;">사업자등록번호</span><br>' +
+              (si.business_reg_number
+                ? (isEncrypted(si.business_reg_number)
+                    ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealAppField(\'' + docId + '\',\'business_reg_number\',\'app-si-biz-reg\')">🔓 보기</button><span id="app-si-biz-reg" style="margin-left:8px;font-family:monospace;"></span>'
+                    : esc(si.business_reg_number))
+                : '-') +
+              '</div>' : '') +
+            (si.business_type === 'business' ? '<div><span style="color:var(--gray-500);font-size:11px;">과세 유형</span><br>' + esc(si.taxation_type || '-') + '</div>' : '') +
+            (si.business_type === 'individual' ? '<div><span style="color:var(--gray-500);font-size:11px;">주민등록번호</span><br><span id="app-si-resident">' + siResidentDisplay + '</span></div>' : '') +
+            '<div><span style="color:var(--gray-500);font-size:11px;">은행</span><br>' + esc(si.bank_name || '-') + '</div>' +
+            '<div><span style="color:var(--gray-500);font-size:11px;">예금주</span><br>' + esc(si.account_holder || '-') + '</div>' +
+            '<div style="grid-column:1/-1;"><span style="color:var(--gray-500);font-size:11px;">계좌번호</span><br><span id="app-si-account">' + siAccountDisplay + '</span></div>' +
+          '</div>' +
+        '</div>'
+      : '';
+
+    const websiteSection = (item.website_urls && item.website_urls.length && !isJoin)
+      ? '<div style="margin-bottom:10px;"><span style="color:var(--gray-500);font-size:11px;">관련 사이트</span><br>' +
+          item.website_urls.map(u => '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer" style="font-size:13px;color:var(--blue);display:block;">' + esc(u) + '</a>').join('') + '</div>'
+      : '';
+
+    const typeLabel = { PB: '🏷 PB', '위탁': '🤝 위탁', '매입': '📦 매입' };
+
     const bodyHTML =
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">' +
         '<div><div class="form-label" style="margin-bottom:2px;">상태</div><div>' + statusBadge + '</div></div>' +
@@ -5168,9 +6779,36 @@
         '<div><div class="form-label" style="margin-bottom:2px;">전화번호</div><div style="font-size:13px;">' + esc(item.applicant_phone || '-') + '</div></div>' +
         '<div><div class="form-label" style="margin-bottom:2px;">연락 이메일</div><div style="font-size:13px;">' + esc(item.applicant_contact_email || '-') + '</div></div>' +
         '<div><div class="form-label" style="margin-bottom:2px;">' + (isJoin ? '합류 대상 브랜드' : '브랜드명') + '</div><div style="font-size:13px;">' + esc(brandNameDisplay) + '</div></div>' +
+        (!isJoin && item.brand_type ? '<div><div class="form-label" style="margin-bottom:2px;">거래유형 (신청)</div><div style="font-size:13px;">' + esc(typeLabel[item.brand_type] || item.brand_type) + '</div></div>' : '') +
+        (!isJoin && item.requested_commission_rate ? '<div><div class="form-label" style="margin-bottom:2px;">요청 수수료율</div><div style="font-size:13px;">' + esc(String(item.requested_commission_rate)) + '%</div></div>' : '') +
       '</div>' +
+      (item.brand_description ? '<div style="margin-bottom:10px;"><span style="color:var(--gray-500);font-size:11px;">브랜드 소개</span><p style="font-size:13px;margin-top:2px;">' + esc(item.brand_description) + '</p></div>' : '') +
+      websiteSection +
+      settlementSection +
       (item.rejection_reason ? '<div style="padding:10px;background:#fee2e2;border-radius:6px;font-size:12px;color:#991b1b;margin-bottom:12px;">거절 사유: ' + esc(item.rejection_reason) + '</div>' : '') +
-      (isPending
+      (isPending && !isJoin
+        ? '<div style="border-top:1px solid var(--gray-200);padding-top:16px;margin-top:4px;background:var(--blue-light);border-radius:10px;padding:14px 16px;margin-bottom:12px;">' +
+            '<div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:10px;">✅ 승인 시 확정 정보</div>' +
+            '<div class="form-group" style="margin-bottom:8px;">' +
+              '<label class="form-label">브랜드코드 <span style="color:var(--red);">*</span> <span style="font-size:11px;font-weight:400;color:var(--gray-400);">영문대문자·숫자 2~10자</span></label>' +
+              '<div style="display:flex;gap:8px;align-items:center;">' +
+              '<input class="form-input" id="app-brand-code" type="text" placeholder="예: ONG" maxlength="10" style="text-transform:uppercase;font-weight:700;font-family:monospace;flex:1;" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,\'\')" />' +
+              '<button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;white-space:nowrap;" type="button" onclick="checkAppBrandCode()">중복 확인</button>' +
+              '</div>' +
+              '<div id="app-brand-code-msg" style="font-size:12px;margin-top:4px;"></div>' +
+            '</div>' +
+            '<div class="form-row" style="margin-bottom:8px;">' +
+              '<div class="form-group"><label class="form-label">거래유형 <span style="color:var(--red);">*</span></label>' +
+              '<select class="form-input" id="app-brand-type">' +
+              ['PB','위탁','매입','기타'].map(t => '<option value="' + t + '"' + ((item.brand_type||'위탁') === t ? ' selected' : '') + '>' + t + '</option>').join('') +
+              '</select></div>' +
+              '<div class="form-group"><label class="form-label">위탁수수료 (%)</label>' +
+              '<input class="form-input" id="app-commission" type="number" min="0" max="100" step="0.1" value="' + esc(String(item.requested_commission_rate || 15)) + '" /></div>' +
+            '</div>' +
+            '<div class="form-label" style="margin-bottom:4px;">승인/거절 사유 <span style="font-size:11px;color:var(--gray-400);">(선택 — 이메일로 전달됩니다)</span></div>' +
+            '<textarea id="app-reject-reason" class="form-input" rows="2" placeholder="예: 서류 확인 완료 / 기준 미달 등"></textarea>' +
+          '</div>'
+        : isPending
         ? '<div style="border-top:1px solid var(--gray-200);padding-top:16px;margin-top:4px;">' +
             '<div class="form-label" style="margin-bottom:4px;">승인/거절 사유 <span style="font-size:11px;color:var(--gray-400);">(선택 — 이메일로 전달됩니다)</span></div>' +
             '<textarea id="app-reject-reason" class="form-input" rows="3" placeholder="예: 서류 확인 완료 / 기준 미달 등"></textarea>' +
@@ -5191,6 +6829,29 @@
 
     // 승인 시 필요한 전체 데이터를 전역에 보관
     window._pendingAppItem = { ...item, id: docId, _type: type, _brandNameDisplay: brandNameDisplay };
+  };
+
+  window.checkAppBrandCode = async function() {
+    const input = document.getElementById('app-brand-code');
+    const msg = document.getElementById('app-brand-code-msg');
+    if (!input || !msg) return;
+    const code = input.value.trim().toUpperCase();
+    if (!code) { msg.innerHTML = ''; return; }
+    if (!/^[A-Z0-9]{2,10}$/.test(code)) {
+      msg.innerHTML = '<span style="color:var(--red);">영문 대문자·숫자 2~10자만 입력 가능합니다.</span>';
+      return;
+    }
+    msg.innerHTML = '<span style="color:var(--gray-400);">확인 중...</span>';
+    try {
+      const dup = await getDocs(query(collection(db, 'brands'), where('brand_code', '==', code)));
+      if (dup.empty) {
+        msg.innerHTML = '<span style="color:var(--green);">✅ 사용 가능한 코드입니다.</span>';
+      } else {
+        msg.innerHTML = '<span style="color:var(--red);">⚠️ 이미 사용 중인 코드입니다.</span>';
+      }
+    } catch(e) {
+      msg.innerHTML = '<span style="color:var(--red);">확인 실패: ' + esc(e.message) + '</span>';
+    }
   };
 
   window.approveApplication = async function(docId, type) {
@@ -5244,11 +6905,24 @@
         });
 
       } else {
-        // 신규 브랜드 등록 신청 승인
+        // 신규 브랜드 등록 신청 승인 — brand_applications 데이터를 brands로 복사
+        // vendor가 신청 폼에서 brand_type을 제거했으므로 admin 확정 폼에서 읽음
+        const adminBrandCode = ((document.getElementById('app-brand-code') || {}).value || '').trim().toUpperCase();
+        const adminBrandType = ((document.getElementById('app-brand-type') || {}).value) || item.brand_type || '위탁';
+        const adminCommission = parseFloat(((document.getElementById('app-commission') || {}).value) || '') || item.requested_commission_rate || 15;
+        if (!adminBrandCode) { showToast('브랜드코드를 입력해주세요.', 'error'); return; }
+        if (!/^[A-Z0-9]{2,10}$/.test(adminBrandCode)) { showToast('브랜드코드는 영문 대문자·숫자 2~10자만 가능합니다.', 'error'); return; }
+        const dupCheck = await getDocs(query(collection(db, 'brands'), where('brand_code', '==', adminBrandCode)));
+        if (!dupCheck.empty) { showToast('이미 사용 중인 브랜드코드입니다: ' + adminBrandCode, 'error'); return; }
         const brandRef = await addDoc(collection(db, 'brands'), {
           brand_name: item.brand_name || item.applicant_name + '의 브랜드',
-          brand_code: '',
-          onboarding_status: '미계약',
+          brand_code: adminBrandCode,
+          brand_type: adminBrandType,
+          brand_desc: item.brand_description || '',
+          website_urls: item.website_urls || [],
+          settlement_info: item.settlement_info || {},
+          fee_info: adminBrandType === '위탁' ? { commission_rate: adminCommission } : {},
+          onboarding_status: '심사중',
           created_at: today(), updated_at: today()
         });
         const brandId = brandRef.id;
@@ -5379,7 +7053,7 @@
       '</div>' +
       '<div style="display:flex;flex-direction:column;gap:6px;">' +
       '<button onclick="openEmailJsSettingsModal()" class="btn btn-secondary" style="white-space:nowrap;font-size:12px;">⚙️ EmailJS 연동 설정</button>' +
-      '<a href="https://www.emailjs.com/" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:none;text-align:center;">EmailJS 대시보드 →</a>' +
+      '<a href="https://www.emailjs.com/" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:var(--blue);text-decoration:none;text-align:center;">EmailJS 대시보드 →</a>' +
       '</div>' +
       '</div>';
 
@@ -5431,7 +7105,7 @@
         '<div id="' + expandId + '" style="display:none;margin-top:14px;border-top:1px solid var(--gray-100);padding-top:14px;">' +
 
         '<div style="margin-bottom:10px;line-height:2;">' +
-        '<b style="font-size:12px;color:var(--gray-700);">사용 가능한 변수</b> <span style="font-size:11px;color:var(--gray-400);">— 클릭하면 클립보드에 복사됩니다</span><br>' +
+        '<b style="font-size:12px;color:var(--gray-700);">사용 가능한 변수</b> <span style="font-size:11px;color:var(--gray-400);">— 입력칸 안에 커서가 있으면 커서 위치에 삽입, 없으면 클립보드 복사</span><br>' +
         varChips +
         '</div>' +
 
@@ -5511,11 +7185,22 @@
   }
 
   window.copyEmailVar = function(v) {
-    navigator.clipboard.writeText(v).then(function() {
-      showToast(v + ' 복사됨', 'success');
-    }).catch(function() {
-      showToast('복사 실패 — 직접 선택 후 복사하세요', 'error');
-    });
+    var ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA') && !ae.readOnly && !ae.disabled) {
+      var start = ae.selectionStart;
+      var end = ae.selectionEnd;
+      var val = ae.value;
+      ae.value = val.slice(0, start) + v + val.slice(end);
+      ae.selectionStart = ae.selectionEnd = start + v.length;
+      ae.dispatchEvent(new Event('input', { bubbles: true }));
+      showToast(v + ' 삽입됨', 'success');
+    } else {
+      navigator.clipboard.writeText(v).then(function() {
+        showToast(v + ' 복사됨', 'success');
+      }).catch(function() {
+        showToast('복사 실패 — 직접 선택 후 복사하세요', 'error');
+      });
+    }
   };
 
   window.toggleTplEditor = function(expandId) {
@@ -5594,7 +7279,7 @@
     var settings = window._emailJsCurrentSettings || {};
     showModal(
       'EmailJS 연동 설정',
-      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">EmailJS에서 발급받은 키를 입력하세요. <a href="https://www.emailjs.com/" target="_blank" style="color:var(--blue);text-decoration:none;">EmailJS 콘솔 →</a></div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">EmailJS에서 발급받은 키를 입력하세요. <a href="https://www.emailjs.com/" target="_blank" rel="noopener noreferrer" style="color:var(--blue);text-decoration:none;">EmailJS 콘솔 →</a></div>' +
       '<div class="form-group" style="margin-bottom:16px;">' +
       '<label class="form-label">Public Key</label>' +
       '<input id="ejs-public-key" class="form-input" type="text" placeholder="예: O4qANYVjrmK5AdY4i" value="' + esc(settings.public_key || '') + '" />' +
@@ -5635,12 +7320,804 @@
   function formGroup(label, id, inputHTML, required) {
     return '<div class="form-group"><label class="form-label" for="' + id + '">' + label + (required ? '<span class="required">*</span>' : '') + '</label>' + inputHTML + '</div>';
   }
+  function ctVarChip(varStr, label, example) {
+    return '<span onclick="window._cpVar(\'' + varStr.replace(/'/g, "\\'") + '\')" title="클릭하면 복사" style="display:inline-flex;flex-direction:column;cursor:pointer;background:#ede9fe;border-radius:6px;padding:5px 10px;font-size:11px;line-height:1.5;border:1px solid #c4b5fd;gap:1px;">' +
+      '<span style="font-family:monospace;color:#5b21b6;font-weight:600;">' + esc(varStr) + '</span>' +
+      '<span style="color:#6b7280;">' + esc(label) + '</span>' +
+      '<span style="color:#9ca3af;font-size:10px;">' + esc(example) + '</span>' +
+      '</span>';
+  }
   function opt(value, label, selected) {
     return '<option value="' + value + '"' + (selected === value ? ' selected' : '') + '>' + label + '</option>';
   }
   function esc(str) {
-    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
+
+  // ═══════════════════════════════════════════════
+  //  브랜드 대량 등록
+  // ═══════════════════════════════════════════════
+  window.downloadBrandTemplate = async function() {
+    if (!window.ExcelJS) { showToast('라이브러리 로딩 중입니다. 잠시 후 다시 시도해주세요.', 'error'); return; }
+    var wb = new ExcelJS.Workbook();
+    var ws = wb.addWorksheet('브랜드목록');
+
+    var PURPLE = '8c52ff'; var WHITE = 'ffffff'; var GRAY_BG = 'f3f4f6'; var GRAY_TEXT = '6b7280';
+    var GUIDE_BG = 'fef9ec'; var GUIDE_TEXT = '92400e';
+    var cols = [
+      { header: '브랜드명*',   key: 'a', width: 18 },
+      { header: '브랜드코드*',          key: 'b', width: 20 },
+      { header: '거래유형*',             key: 'c', width: 12 },
+      { header: '브랜드소개',            key: 'd', width: 28 },
+      { header: '관련사이트1',           key: 'e', width: 30 },
+      { header: '관련사이트2',           key: 'f', width: 30 },
+      { header: '위탁판매대행수수료(%)', key: 'g', width: 20 },
+      { header: '사업자구분',            key: 'h', width: 16 },
+      { header: '사업자등록번호',        key: 'i', width: 18 },
+      { header: '과세유형',              key: 'j', width: 14 },
+      { header: '주민등록번호',          key: 'k', width: 18 },
+      { header: '은행명',                key: 'l', width: 14 },
+      { header: '예금주명',              key: 'm', width: 14 },
+      { header: '계좌번호',              key: 'n', width: 22 },
+    ];
+    ws.columns = cols;
+
+    // 1행: 제목 안내
+    ws.spliceRows(1, 0, ['GMBS 브랜드 대량 등록 양식 — 3행(작성안내)은 수정 금지. 4행부터 입력. 필수(*) 항목 누락 시 해당 행은 등록되지 않습니다. G열~N열은 위탁·매입 브랜드만 입력하세요.']);
+    ws.getRow(1).height = 24;
+    ws.getCell('A1').font = { bold: true, size: 11, color: { argb: 'ff' + GRAY_TEXT } };
+    ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + GRAY_BG } };
+    ws.mergeCells('A1:N1');
+
+    // 2행: 헤더 (보라색 배경, 흰 굵은 글씨)
+    var headerRow = ws.getRow(2);
+    headerRow.values = cols.map(function(c){ return c.header; });
+    headerRow.height = 24;
+    headerRow.eachCell(function(cell) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + PURPLE } };
+      cell.font = { bold: true, color: { argb: 'ff' + WHITE }, size: 11 };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+
+    // 3행: 작성 안내 (노란 배경, 줄바꿈 허용)
+    var guideRow = ws.getRow(3);
+    guideRow.values = [
+      '예) 온기', '예) ONG\n(영문대문자·숫자 2~10자, 중복불가)', 'PB / 위탁 / 매입 중 택1',
+      '브랜드 소개 한 줄', 'https://인스타그램주소 등', 'https://웹사이트 등',
+      '숫자만 입력 (예: 15)\n위탁 브랜드만 입력', '사업자 / 개인 (사업자없음)\n위탁·매입만 입력',
+      '000-00-00000\n사업자인 경우만 입력', '일반 / 간이\n사업자인 경우만', '000000-0000000\n개인인 경우만',
+      '예) 국민은행', '예금주 성명', '계좌번호 (하이픈 없이)'
+    ];
+    guideRow.height = 44;
+    guideRow.eachCell(function(cell) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + GUIDE_BG } };
+      cell.font = { italic: true, color: { argb: 'ff' + GUIDE_TEXT }, size: 10 };
+      cell.alignment = { vertical: 'top', wrapText: true };
+    });
+
+    // 4~5행: 예시 데이터
+    [
+      ['온기', 'ONG', '위탁', '핸드메이드 소품 브랜드', 'https://instagram.com/ongi_store', '', '15', '개인', '', '', '800101-2000000', '국민은행', '홍길동', '123456789012'],
+      ['두루미상점', 'DRM', '위탁', '수공예 작가', 'https://instagram.com/drm_craft', '', '15', '사업자', '123-45-67890', '일반', '', '신한은행', '김두루', '987654321098'],
+    ].forEach(function(rowData, i) {
+      var r = ws.getRow(4 + i);
+      r.values = rowData;
+      r.height = 20;
+      r.eachCell(function(cell) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffffff' } };
+        cell.font = { color: { argb: 'ff374151' }, size: 11 };
+        cell.alignment = { vertical: 'middle' };
+      });
+    });
+
+    // 모든 셀 테두리
+    for (var ri = 1; ri <= 5; ri++) {
+      ws.getRow(ri).eachCell({ includeEmpty: true }, function(cell) {
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'ffe5e7eb' } },
+          left: { style: 'thin', color: { argb: 'ffe5e7eb' } },
+          bottom: { style: 'thin', color: { argb: 'ffe5e7eb' } },
+          right: { style: 'thin', color: { argb: 'ffe5e7eb' } }
+        };
+      });
+    }
+
+    var buf = await wb.xlsx.writeBuffer();
+    var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = 'GMBS_브랜드_대량등록_양식.xlsx'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  window.openBulkBrandModal = function() {
+    window._bulkBrandValidated = null;
+    window._bulkBrandImageMap = {};
+    var guideHtml =
+      '<div id="bulk-brand-guide" style="display:none;background:#f8f7ff;border:1px solid #ddd6fe;border-radius:10px;padding:16px;margin-top:4px;margin-bottom:12px;font-size:13px;line-height:1.9;">' +
+      '<div style="font-weight:700;color:#5b21b6;margin-bottom:10px;font-size:14px;">📋 엑셀 단독 업로드</div>' +
+      '<div style="display:grid;gap:8px;margin-bottom:16px;">' +
+      '<div><span style="background:#6b7280;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">1</span><strong>양식 다운로드 후 작성</strong> — <span style="font-size:12px;color:#6b7280;">아래 "양식 파일 다운로드" 클릭</span></div>' +
+      '<div><span style="background:#6b7280;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">2</span><strong>엑셀(.xlsx) 파일 직접 선택 후 검사하기 클릭</strong> — <span style="font-size:12px;color:#6b7280;">이미지 없이 엑셀만 업로드 가능합니다.</span></div>' +
+      '</div>' +
+      '<hr style="border:none;border-top:1px solid #ddd6fe;margin:12px 0;" />' +
+      '<div style="font-weight:700;color:#5b21b6;margin-bottom:10px;font-size:14px;">📦 이미지 포함 ZIP 업로드</div>' +
+      '<div style="display:grid;gap:10px;">' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">1단계</span><strong>양식 다운로드 후 작성</strong><br>' +
+      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">아래 "양식 파일 다운로드" 버튼으로 엑셀을 받아 브랜드 정보를 입력하세요.</span></div>' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">2단계</span><strong>이미지 파일 준비</strong> <span style="color:#6b7280;font-size:12px;">(선택사항)</span><br>' +
+      '<span style="color:#374151;font-size:12px;margin-left:52px;">파일명을 <strong>브랜드코드</strong>와 똑같이 지정해주세요 (확장자 제외).</span><br>' +
+      '<span style="margin-left:52px;font-family:monospace;font-size:12px;background:#ede9fe;padding:2px 8px;border-radius:4px;">ONG.jpg &nbsp;&nbsp; DRM.png &nbsp;&nbsp; SSR.jpg</span><br>' +
+      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">지원 형식: JPG, PNG, WebP</span></div>' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">3단계</span><strong>ZIP 파일로 묶기</strong><br>' +
+      '<span style="color:#374151;font-size:12px;margin-left:52px;">엑셀 파일 + 이미지 파일들을 하나의 ZIP으로 묶으세요.</span><br>' +
+      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">Mac: 모두 선택 → 우클릭 → "압축" &nbsp;|&nbsp; Windows: 선택 → 우클릭 → "ZIP 파일로 압축"</span></div>' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">4단계</span><strong>ZIP 파일 선택 후 검사하기 클릭</strong></div>' +
+      '</div></div>';
+    showModal('브랜드 대량 등록', [
+      '<div style="margin-bottom:16px;">',
+      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">',
+      '<button class="btn btn-secondary" onclick="downloadBrandTemplate()" style="font-size:12px;">📥 양식 파일 다운로드</button>',
+      '<button type="button" id="btn-brand-guide-toggle" onclick="(function(){var g=document.getElementById(\'bulk-brand-guide\');var b=document.getElementById(\'btn-brand-guide-toggle\');var open=g.style.display===\'none\';g.style.display=open?\'block\':\'none\';b.textContent=open?\'📖 가이드 닫기\':\'📖 업로드 가이드 보기\';})()" style="font-size:12px;background:none;border:none;color:var(--primary);cursor:pointer;text-decoration:underline;padding:0;">📖 업로드 가이드 보기</button>',
+      '</div>',
+      guideHtml,
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">',
+      '<input type="file" id="bulk-brand-file" accept=".xlsx,.xls,.csv,.zip" style="flex:1;font-size:13px;border:1px solid var(--gray-200);border-radius:8px;padding:6px 10px;" />',
+      '<button class="btn btn-secondary" onclick="validateBulkBrands()" style="font-size:12px;white-space:nowrap;">🔍 검사하기</button>',
+      '</div>',
+      '</div>',
+      '<div id="bulk-brand-result" style="display:none;">',
+      '<div id="bulk-brand-summary" style="background:var(--gray-50);border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:10px;line-height:1.7;"></div>',
+      '<div style="max-height:320px;overflow-y:auto;border:1px solid var(--gray-200);border-radius:8px;">',
+      '<table class="bulk-result-table"><thead id="bulk-brand-thead"></thead><tbody id="bulk-brand-tbody"></tbody></table>',
+      '</div>',
+      '</div>'
+    ].join(''), [
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>',
+      '<button class="btn btn-primary" id="btn-do-bulk-brand" onclick="saveBulkBrands()" style="display:none;">📤 대량 업로드</button>'
+    ].join(''), 'lg');
+  };
+
+  window.validateBulkBrands = async function() {
+    var fileEl = document.getElementById('bulk-brand-file');
+    if (!fileEl || !fileEl.files[0]) { showToast('파일을 먼저 선택해주세요.', 'error'); return; }
+    if (!window.XLSX) { showToast('라이브러리 로딩 중입니다. 잠시 후 다시 시도해주세요.', 'error'); return; }
+    var summaryEl = document.getElementById('bulk-brand-summary');
+    var resultWrap = document.getElementById('bulk-brand-result');
+    var tbody = document.getElementById('bulk-brand-tbody');
+    var thead = document.getElementById('bulk-brand-thead');
+    resultWrap.style.display = 'block';
+    summaryEl.innerHTML = '<div class="spinner spinner-sm" style="display:inline-block;margin-right:8px;"></div>검사 중...';
+    tbody.innerHTML = ''; thead.innerHTML = '';
+    document.getElementById('btn-do-bulk-brand').style.display = 'none';
+    window._bulkBrandValidated = null;
+
+    try {
+      var file = fileEl.files[0];
+      var isZip = file.name.toLowerCase().endsWith('.zip');
+      var xlsxBuf;
+      var imageMap = {};
+
+      if (isZip) {
+        if (!window.JSZip) { summaryEl.innerHTML = 'JSZip 라이브러리가 로드되지 않았습니다.'; return; }
+        summaryEl.innerHTML = '<div class="spinner spinner-sm" style="display:inline-block;margin-right:8px;"></div>ZIP 분석 중...';
+        var zipBuf = await file.arrayBuffer();
+        var zip = await JSZip.loadAsync(zipBuf);
+        var xlsxEntry = null;
+        var imgPromises = [];
+        zip.forEach(function(path, entry) {
+          if (entry.dir || path.includes('__MACOSX') || path.startsWith('.')) return;
+          var lp = path.toLowerCase();
+          if (!xlsxEntry && /\.(xlsx|xls|csv)$/.test(lp)) { xlsxEntry = entry; }
+          else if (/\.(jpg|jpeg|png|webp)$/.test(lp)) {
+            var basename = path.split('/').pop().replace(/\.[^.]+$/, '').toUpperCase().trim();
+            var ext = lp.split('.').pop().replace('jpeg','jpg');
+            imgPromises.push(entry.async('arraybuffer').then(function(buf) { imageMap[basename] = { buf: buf, ext: ext }; }));
+          }
+        });
+        if (!xlsxEntry) { summaryEl.innerHTML = '❌ ZIP 안에 엑셀 파일(.xlsx)이 없습니다. 폴더 없이 파일을 바로 ZIP에 넣었는지 확인해주세요.'; return; }
+        xlsxBuf = await xlsxEntry.async('arraybuffer');
+        await Promise.all(imgPromises);
+        summaryEl.innerHTML = '<div class="spinner spinner-sm" style="display:inline-block;margin-right:8px;"></div>ZIP 분석 완료 (이미지 ' + Object.keys(imageMap).length + '개). 엑셀 검사 중...';
+      } else {
+        xlsxBuf = await file.arrayBuffer();
+      }
+      window._bulkBrandImageMap = imageMap;
+
+      var wb = XLSX.read(xlsxBuf, {type:'array'});
+      var sheetName = wb.SheetNames.includes('브랜드목록') ? '브랜드목록' : wb.SheetNames[wb.SheetNames.length - 1];
+      var ws = wb.Sheets[sheetName];
+      var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      if (!rows || rows.length < 2) { summaryEl.innerHTML = '데이터 행이 없습니다. 양식을 확인해주세요.'; return; }
+
+      var headerIdx = -1;
+      for (var i = 0; i < Math.min(rows.length, 8); i++) {
+        if (rows[i].some(function(c){ return String(c).includes('브랜드명'); })) { headerIdx = i; break; }
+      }
+      if (headerIdx < 0) { summaryEl.innerHTML = '헤더 행(브랜드명*)을 찾을 수 없습니다. 양식을 확인해주세요.'; return; }
+
+      var headers = rows[headerIdx].map(function(h){ return String(h).replace('*','').trim(); });
+      var dataRows = rows.slice(headerIdx + 1).filter(function(r){
+        if (!r.some(function(c){ return String(c).trim(); })) return false; // 빈 행
+        var first = String(r[0] || '').trim();
+        if (first.startsWith('예)') || first.startsWith('예시') || first.startsWith('(작성')) return false; // 안내 행
+        return true;
+      });
+
+      var colIdx = {};
+      ['브랜드명','브랜드코드','거래유형','사업자구분','대표자명','연락처','이메일','SNS','브랜드소개'].forEach(function(k){
+        colIdx[k] = headers.findIndex(function(h){ return h.includes(k); });
+      });
+
+      var existingSnap = await getDocs(collection(db, 'brands'));
+      var existingCodes = new Set(existingSnap.docs.map(function(d){ return (d.data().brand_code||'').toUpperCase(); }));
+
+      var results = [];
+      var codesInFile = new Set();
+      var okCount = 0; var errCount = 0;
+
+      dataRows.forEach(function(row, i) {
+        var get = function(key){ var ci = colIdx[key]; return ci >= 0 ? String(row[ci] || '').trim() : ''; };
+        var brandName = get('브랜드명');
+        var brandCode = get('브랜드코드').toUpperCase();
+        var brandType = get('거래유형');
+        var errors = [];
+
+        if (!brandName) errors.push('브랜드명 누락');
+        if (!brandCode) errors.push('브랜드코드 누락');
+        else if (!/^[A-Z0-9]{2,10}$/.test(brandCode)) errors.push('브랜드코드 형식 오류 (영문대문자·숫자 2~10자)');
+        else if (existingCodes.has(brandCode)) errors.push('이미 존재하는 브랜드코드: ' + brandCode);
+        else if (codesInFile.has(brandCode)) errors.push('파일 내 브랜드코드 중복: ' + brandCode);
+        if (!brandType) errors.push('거래유형 누락');
+        else if (!['PB','위탁','매입'].includes(brandType)) errors.push('거래유형 오류 (PB/위탁/매입 중 택1)');
+
+        if (errors.length === 0) { okCount++; codesInFile.add(brandCode); }
+        else errCount++;
+
+        results.push({ rowNum: i+1, brandName, brandCode, brandType,
+          bizDiv: get('사업자구분'), ceo: get('대표자명'),
+          phone: get('연락처'), email: get('이메일'), sns: get('SNS'), desc: get('브랜드소개'),
+          errors });
+      });
+
+      window._bulkBrandValidated = results.filter(function(r){ return r.errors.length === 0; });
+
+      thead.innerHTML = '<tr>' + ['행','브랜드명','브랜드코드','거래유형','사업자구분','연락처','이메일','결과'].map(function(h){
+        return '<th>' + h + '</th>';
+      }).join('') + '</tr>';
+
+      tbody.innerHTML = results.map(function(r) {
+        var cls = r.errors.length === 0 ? 'bulk-row-ok' : 'bulk-row-err';
+        var status = r.errors.length === 0 ? '<span style="color:#16a34a;font-weight:600;">정상</span>'
+          : '<span style="color:#dc2626;font-size:11px;">' + r.errors.join('<br>') + '</span>';
+        return '<tr class="' + cls + '">' +
+          ['<td style="color:var(--gray-400);">' + r.rowNum + '</td>',
+           '<td>' + (r.brandName || '-') + '</td>',
+           '<td><code>' + (r.brandCode || '-') + '</code></td>',
+           '<td>' + (r.brandType || '-') + '</td>',
+           '<td>' + (r.bizDiv || '-') + '</td>',
+           '<td>' + (r.phone || '-') + '</td>',
+           '<td>' + (r.email || '-') + '</td>',
+           '<td>' + status + '</td>'].join('') + '</tr>';
+      }).join('');
+
+      var imgKeys = Object.keys(window._bulkBrandImageMap || {});
+      var matchCount = imgKeys.length > 0
+        ? results.filter(function(r){ return r.errors.length === 0 && window._bulkBrandImageMap[r.brandCode]; }).length
+        : 0;
+
+      summaryEl.innerHTML =
+        '총 <strong>' + dataRows.length + '행</strong> 검사 완료 &nbsp;|&nbsp; ' +
+        '등록 가능: <strong style="color:#16a34a;">' + okCount + '개</strong> &nbsp;|&nbsp; ' +
+        '오류: <strong style="color:#dc2626;">' + errCount + '개</strong>' +
+        (imgKeys.length > 0 ? ' &nbsp;|&nbsp; 이미지 매칭: <strong style="color:#7c3aed;">' + matchCount + '/' + okCount + '개</strong>' : '') +
+        (errCount > 0 ? '<br><span style="font-size:12px;color:var(--gray-500);">오류 행은 업로드에서 제외됩니다.</span>' : '');
+
+      if (okCount > 0) document.getElementById('btn-do-bulk-brand').style.display = '';
+    } catch(e) {
+      summaryEl.innerHTML = '파일 읽기 오류: ' + esc(e.message);
+    }
+  };
+
+  window.saveBulkBrands = async function() {
+    var items = window._bulkBrandValidated;
+    if (!items || items.length === 0) { showToast('업로드할 데이터가 없습니다.', 'error'); return; }
+    var btn = document.getElementById('btn-do-bulk-brand');
+    btn.disabled = true; btn.innerHTML = '<div class="spinner spinner-sm"></div> 업로드 중...';
+    try {
+      var now = new Date().toISOString();
+      var existingSnap = await getDocs(collection(db, 'brands'));
+      var existingCodes = new Set(existingSnap.docs.map(function(d){ return (d.data().brand_code||'').toUpperCase(); }));
+      var added = 0; var skipped = 0; var imgUploaded = 0;
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        if (existingCodes.has(item.brandCode)) { skipped++; continue; }
+        var data = {
+          brand_name: item.brandName, brand_code: item.brandCode, brand_type: item.brandType,
+          brand_desc: item.desc || '',
+          contact_info: { phone: item.phone || '', email: item.email || '', sns: item.sns || '' },
+          logo_url: '', last_product_number: '000',
+          onboarding_status: '미계약', created_at: now, updated_at: now
+        };
+        if (item.bizDiv) data.biz_div = item.bizDiv;
+        if (item.ceo) data.ceo_name = item.ceo;
+        var docRef = await addDoc(collection(db, 'brands'), data);
+        existingCodes.add(item.brandCode);
+        added++;
+        // 이미지 업로드 (ZIP에 파일명=브랜드코드 일치하는 경우)
+        var imgData = (window._bulkBrandImageMap || {})[item.brandCode.toUpperCase()];
+        if (imgData) {
+          try {
+            var mime = imgData.ext === 'png' ? 'image/png' : imgData.ext === 'webp' ? 'image/webp' : 'image/jpeg';
+            var sRef = ref(storage, 'brands/' + docRef.id + '/logo.' + imgData.ext);
+            await uploadBytes(sRef, new Uint8Array(imgData.buf), { contentType: mime });
+            var logoUrl = await getDownloadURL(sRef);
+            await updateDoc(doc(db, 'brands', docRef.id), { logo_url: logoUrl });
+            imgUploaded++;
+          } catch(imgErr) { console.warn('이미지 업로드 실패(' + item.brandCode + '):', imgErr.message); }
+        }
+      }
+      showToast(added + '개 브랜드 등록 완료' + (imgUploaded > 0 ? ' (이미지 ' + imgUploaded + '개 포함)' : '') + (skipped > 0 ? ' · ' + skipped + '개 코드 충돌 제외' : ''), 'success');
+      closeModal();
+      const content = document.getElementById('page-content');
+      if (content) await renderBrandList(content);
+    } catch(e) {
+      showToast('업로드 오류: ' + e.message, 'error');
+      btn.disabled = false; btn.textContent = '📤 대량 업로드';
+    }
+  };
+
+  // ═══════════════════════════════════════════════
+  //  상품 대량 등록
+  // ═══════════════════════════════════════════════
+  window.downloadProductTemplate = async function() {
+    if (!window.ExcelJS) { showToast('라이브러리 로딩 중입니다. 잠시 후 다시 시도해주세요.', 'error'); return; }
+    var wb = new ExcelJS.Workbook();
+    var ws = wb.addWorksheet('상품목록');
+
+    var PURPLE = '8c52ff'; var WHITE = 'ffffff'; var GRAY_BG = 'f3f4f6'; var GRAY_TEXT = '6b7280';
+    var GUIDE_BG = 'fef9ec'; var GUIDE_TEXT = '92400e';
+    var cols = [
+      { header: '브랜드코드*', key: 'a', width: 16 },
+      { header: '상품명*',     key: 'b', width: 20 },
+      { header: '관리방식*',   key: 'c', width: 14 },
+      { header: '기본판매가*', key: 'd', width: 14 },
+      { header: '옵션1축이름', key: 'e', width: 14 },
+      { header: '옵션1값',     key: 'f', width: 12 },
+      { header: '옵션2축이름', key: 'g', width: 14 },
+      { header: '옵션2값',     key: 'h', width: 12 },
+      { header: '옵션3축이름', key: 'i', width: 14 },
+      { header: '옵션3값',     key: 'j', width: 12 },
+      { header: 'SKU판매가',   key: 'k', width: 14 },
+      { header: '개체수',      key: 'l', width: 10 },
+      { header: '메모',        key: 'm', width: 18 },
+    ];
+    ws.columns = cols;
+
+    // 1행: 제목 안내
+    ws.spliceRows(1, 0, ['GMBS 상품 대량 등록 양식 — 한 행 = SKU 1개. 같은 (브랜드코드+상품명)은 하나의 상품으로 묶입니다. 3행(안내)은 수정 금지. 4행부터 입력.']);
+    ws.getRow(1).height = 24;
+    ws.getCell('A1').font = { bold: true, size: 11, color: { argb: 'ff' + GRAY_TEXT } };
+    ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + GRAY_BG } };
+    ws.mergeCells('A1:M1');
+
+    // 2행: 헤더 (보라색)
+    var headerRow = ws.getRow(2);
+    headerRow.values = cols.map(function(c){ return c.header; });
+    headerRow.height = 24;
+    headerRow.eachCell(function(cell) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + PURPLE } };
+      cell.font = { bold: true, color: { argb: 'ff' + WHITE }, size: 11 };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+
+    // 3행: 작성 안내 (노란 배경)
+    var guideRow = ws.getRow(3);
+    guideRow.values = [
+      '예) ONG\n(등록된 코드만)', '예) 체크 파우치', '수량관리\n또는 개체관리', '숫자만(원)',
+      '예) 색상', '예) 빨강', '예) 크기', '예) 소형',
+      '옵션3 있을 때만', '옵션3 있을 때만',
+      '이 SKU만 별도 가격\n(비우면 기본가)', '개체관리일 때 생성할 개체수\n※ 개체별 이미지는 대량등록 불가\n→ 등록 후 개체관리 화면에서 개별 업로드', '참고 메모'
+    ];
+    guideRow.height = 60;
+    guideRow.eachCell(function(cell) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + GUIDE_BG } };
+      cell.font = { italic: true, color: { argb: 'ff' + GUIDE_TEXT }, size: 10 };
+      cell.alignment = { vertical: 'top', wrapText: true };
+    });
+
+    // 4~9행: 예시 데이터
+    [
+      ['ONG','체크 파우치','수량관리',15000,'색상','빨강','크기','소형','','','','',''],
+      ['ONG','체크 파우치','수량관리',15000,'색상','빨강','크기','대형','','',18000,'',''],
+      ['ONG','체크 파우치','수량관리',15000,'색상','파랑','크기','소형','','','','',''],
+      ['DRM','손뜨개 고양이 인형','개체관리',28000,'','','','','','','',3,'소형 버전'],
+      ['DRM','민트 파우치','개체관리',35000,'색상','민트','','','','','',2,''],
+      ['DRM','민트 파우치','개체관리',35000,'색상','라벤더','','','','','',1,''],
+    ].forEach(function(rowData, i) {
+      var r = ws.getRow(4 + i);
+      r.values = rowData;
+      r.height = 20;
+      r.eachCell(function(cell) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffffff' } };
+        cell.font = { color: { argb: 'ff374151' }, size: 11 };
+        cell.alignment = { vertical: 'middle' };
+      });
+    });
+
+    // 모든 셀 테두리
+    for (var ri = 1; ri <= 9; ri++) {
+      ws.getRow(ri).eachCell({ includeEmpty: true }, function(cell) {
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'ffe5e7eb' } },
+          left: { style: 'thin', color: { argb: 'ffe5e7eb' } },
+          bottom: { style: 'thin', color: { argb: 'ffe5e7eb' } },
+          right: { style: 'thin', color: { argb: 'ffe5e7eb' } }
+        };
+      });
+    }
+
+    var buf = await wb.xlsx.writeBuffer();
+    var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = 'GMBS_상품_대량등록_양식.xlsx'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  window.openBulkProductModal = function() {
+    window._bulkProductValidated = null;
+    window._bulkProductImageMap = {};
+    var guideHtml =
+      '<div id="bulk-product-guide" style="display:none;background:#f8f7ff;border:1px solid #ddd6fe;border-radius:10px;padding:16px;margin-top:4px;margin-bottom:12px;font-size:13px;line-height:1.9;">' +
+      '<div style="font-weight:700;color:#5b21b6;margin-bottom:10px;font-size:14px;">📋 엑셀 단독 업로드</div>' +
+      '<div style="display:grid;gap:8px;margin-bottom:16px;">' +
+      '<div><span style="background:#6b7280;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">1</span><strong>양식 다운로드 후 작성</strong> — <span style="font-size:12px;color:#6b7280;">한 행 = SKU 1개. 같은 브랜드코드+상품명이면 하나의 상품으로 묶입니다.</span></div>' +
+      '<div><span style="background:#6b7280;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">2</span><strong>엑셀(.xlsx) 파일 직접 선택 후 검사하기 클릭</strong> — <span style="font-size:12px;color:#6b7280;">이미지 없이 엑셀만 업로드 가능합니다.</span></div>' +
+      '</div>' +
+      '<hr style="border:none;border-top:1px solid #ddd6fe;margin:12px 0;" />' +
+      '<div style="font-weight:700;color:#5b21b6;margin-bottom:10px;font-size:14px;">📦 이미지 포함 ZIP 업로드</div>' +
+      '<div style="display:grid;gap:10px;">' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">1단계</span><strong>양식 다운로드 후 작성</strong><br>' +
+      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">한 행 = SKU 1개. 같은 브랜드코드+상품명이면 하나의 상품으로 묶입니다.</span></div>' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">2단계</span><strong>이미지 파일 준비</strong> <span style="color:#6b7280;font-size:12px;">(선택사항)</span><br>' +
+      '<div style="margin-left:52px;margin-top:4px;display:grid;gap:6px;">' +
+      '<div><span style="color:#374151;">📌 이미지 파일명 = <strong>엑셀 행 번호</strong></span><br>' +
+      '<span style="color:#6b7280;font-size:12px;">예) 엑셀 4행 SKU 이미지 → <code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;">4.jpg</code> &nbsp; 엑셀 5행 SKU 이미지 → <code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;">5.jpg</code></span><br>' +
+      '<span style="color:#6b7280;font-size:12px;">지원 형식: JPG, PNG, WebP</span></div>' +
+      '<div style="background:#fff3cd;border-radius:6px;padding:8px 10px;font-size:12px;color:#856404;">' +
+      '<strong>⚠️ 개체별 이미지는 대량 등록으로 불가합니다.</strong><br>' +
+      '→ 대량 등록 완료 후 <strong>개체 관리 화면</strong>에서 개별 업로드해주세요.</div>' +
+      '</div></div>' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">3단계</span><strong>ZIP으로 묶어 업로드</strong><br>' +
+      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">엑셀 + 이미지들을 ZIP으로 묶어 선택 후 "검사하기"를 클릭하세요.</span></div>' +
+      '</div></div>';
+    showModal('상품 대량 등록', [
+      '<div style="margin-bottom:16px;">',
+      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">',
+      '<button class="btn btn-secondary" onclick="downloadProductTemplate()" style="font-size:12px;">📥 양식 파일 다운로드</button>',
+      '<button type="button" id="btn-product-guide-toggle" onclick="(function(){var g=document.getElementById(\'bulk-product-guide\');var b=document.getElementById(\'btn-product-guide-toggle\');var open=g.style.display===\'none\';g.style.display=open?\'block\':\'none\';b.textContent=open?\'📖 가이드 닫기\':\'📖 업로드 가이드 보기\';})()" style="font-size:12px;background:none;border:none;color:var(--primary);cursor:pointer;text-decoration:underline;padding:0;">📖 업로드 가이드 보기</button>',
+      '</div>',
+      guideHtml,
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">',
+      '<input type="file" id="bulk-product-file" accept=".xlsx,.xls,.csv,.zip" style="flex:1;font-size:13px;border:1px solid var(--gray-200);border-radius:8px;padding:6px 10px;" />',
+      '<button class="btn btn-secondary" onclick="validateBulkProducts()" style="font-size:12px;white-space:nowrap;">🔍 검사하기</button>',
+      '</div>',
+      '</div>',
+      '<div id="bulk-product-result" style="display:none;">',
+      '<div id="bulk-product-summary" style="background:var(--gray-50);border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:10px;line-height:1.7;"></div>',
+      '<div style="max-height:360px;overflow-y:auto;border:1px solid var(--gray-200);border-radius:8px;">',
+      '<table class="bulk-result-table"><thead id="bulk-product-thead"></thead><tbody id="bulk-product-tbody"></tbody></table>',
+      '</div>',
+      '</div>'
+    ].join(''), [
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>',
+      '<button class="btn btn-primary" id="btn-do-bulk-product" onclick="saveBulkProducts()" style="display:none;">📤 대량 업로드</button>'
+    ].join(''), 'lg');
+  };
+
+  // 상품 이미지 키 정규화: "ONG_체크파우치_빨강_소형" 형태로
+  function _normProductImgKey(str) {
+    return String(str || '').trim().replace(/\s+/g, '_').replace(/[^\w가-힣]/g, '_').replace(/_+/g, '_').toLowerCase();
+  }
+
+  window.validateBulkProducts = async function() {
+    var fileEl = document.getElementById('bulk-product-file');
+    if (!fileEl || !fileEl.files[0]) { showToast('파일을 먼저 선택해주세요.', 'error'); return; }
+    if (!window.XLSX) { showToast('라이브러리 로딩 중입니다.', 'error'); return; }
+    var summaryEl = document.getElementById('bulk-product-summary');
+    var resultWrap = document.getElementById('bulk-product-result');
+    var tbody = document.getElementById('bulk-product-tbody');
+    var thead = document.getElementById('bulk-product-thead');
+    resultWrap.style.display = 'block';
+    summaryEl.innerHTML = '<div class="spinner spinner-sm" style="display:inline-block;margin-right:8px;"></div>검사 중...';
+    tbody.innerHTML = ''; thead.innerHTML = '';
+    document.getElementById('btn-do-bulk-product').style.display = 'none';
+    window._bulkProductValidated = null;
+
+    try {
+      var file = fileEl.files[0];
+      var isZip = file.name.toLowerCase().endsWith('.zip');
+      var xlsxBuf;
+      var imageMap = {}; // key: normalized string, value: {buf, ext}
+
+      if (isZip) {
+        if (!window.JSZip) { summaryEl.innerHTML = 'JSZip 라이브러리가 로드되지 않았습니다.'; return; }
+        summaryEl.innerHTML = '<div class="spinner spinner-sm" style="display:inline-block;margin-right:8px;"></div>ZIP 분석 중...';
+        var zipBuf = await file.arrayBuffer();
+        var zip = await JSZip.loadAsync(zipBuf);
+        var xlsxEntry = null;
+        var imgPromises = [];
+        zip.forEach(function(path, entry) {
+          if (entry.dir || path.includes('__MACOSX') || path.startsWith('.')) return;
+          var lp = path.toLowerCase();
+          if (!xlsxEntry && /\.(xlsx|xls|csv)$/.test(lp)) { xlsxEntry = entry; }
+          else if (/\.(jpg|jpeg|png|webp)$/.test(lp)) {
+            var basename = path.split('/').pop().replace(/\.[^.]+$/, '');
+            var ext = lp.split('.').pop().replace('jpeg','jpg');
+            imgPromises.push(entry.async('arraybuffer').then(function(buf) { imageMap[basename] = { buf: buf, ext: ext }; }));
+          }
+        });
+        if (!xlsxEntry) { summaryEl.innerHTML = '❌ ZIP 안에 엑셀 파일(.xlsx)이 없습니다.'; return; }
+        xlsxBuf = await xlsxEntry.async('arraybuffer');
+        await Promise.all(imgPromises);
+        summaryEl.innerHTML = '<div class="spinner spinner-sm" style="display:inline-block;margin-right:8px;"></div>ZIP 분석 완료 (이미지 ' + Object.keys(imageMap).length + '개). 엑셀 검사 중...';
+      } else {
+        xlsxBuf = await file.arrayBuffer();
+      }
+      window._bulkProductImageMap = imageMap;
+
+      var wb = XLSX.read(xlsxBuf, {type:'array'});
+      var sheetName = wb.SheetNames.includes('상품목록') ? '상품목록' : wb.SheetNames[wb.SheetNames.length - 1];
+      var ws = wb.Sheets[sheetName];
+      var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      if (!rows || rows.length < 2) { summaryEl.innerHTML = '데이터 행이 없습니다.'; return; }
+
+      var headerIdx = -1;
+      for (var i = 0; i < Math.min(rows.length, 8); i++) {
+        if (rows[i].some(function(c){ return String(c).includes('브랜드코드'); })) { headerIdx = i; break; }
+      }
+      if (headerIdx < 0) { summaryEl.innerHTML = '헤더 행(브랜드코드*)을 찾을 수 없습니다.'; return; }
+
+      var headers = rows[headerIdx].map(function(h){ return String(h).replace('*','').trim(); });
+      var COLS = ['브랜드코드','상품명','관리방식','기본판매가','옵션1축이름','옵션1값','옵션2축이름','옵션2값','옵션3축이름','옵션3값','SKU판매가','개체수','메모'];
+      var colIdx = {};
+      COLS.forEach(function(k){ colIdx[k] = headers.findIndex(function(h){ return h.includes(k); }); });
+
+      var brandSnap = await getDocs(collection(db, 'brands'));
+      var brandMap = {};
+      brandSnap.docs.forEach(function(d){ brandMap[(d.data().brand_code||'').toUpperCase()] = { id: d.id, brand_name: d.data().brand_name }; });
+
+      var results = [];
+      var okCount = 0; var errCount = 0;
+      var productKeys = new Set();
+
+      rows.slice(headerIdx + 1).forEach(function(row, rawIdx) {
+        if (!row.some(function(c){ return String(c).trim(); })) return; // 빈 행
+        var firstCell = String(row[0] || '').trim();
+        if (firstCell.startsWith('예)') || firstCell.startsWith('예시') || firstCell.startsWith('(작성')) return; // 안내 행
+        var excelRowNum = headerIdx + 2 + rawIdx; // 실제 엑셀 행 번호 (1부터)
+        var get = function(key){ var ci = colIdx[key]; return ci >= 0 ? String(row[ci] || '').trim() : ''; };
+        var brandCode = get('브랜드코드').toUpperCase();
+        var productName = get('상품명');
+        var trackingType = get('관리방식');
+        var basePriceRaw = get('기본판매가');
+        var skuPriceRaw = get('SKU판매가');
+        var unitCountRaw = get('개체수');
+        var errors = [];
+
+        if (!brandCode) errors.push('브랜드코드 누락');
+        else if (!brandMap[brandCode]) errors.push('미등록 브랜드: ' + brandCode);
+        if (!productName) errors.push('상품명 누락');
+        if (!trackingType) errors.push('관리방식 누락');
+        else if (!['수량관리','개체관리'].includes(trackingType)) errors.push('관리방식 오류 (수량관리/개체관리)');
+        var basePrice = parseInt(basePriceRaw, 10);
+        if (!basePriceRaw) errors.push('기본판매가 누락');
+        else if (isNaN(basePrice) || basePrice < 0) errors.push('기본판매가는 0 이상 숫자');
+
+        var skuPrice = skuPriceRaw ? parseInt(skuPriceRaw, 10) : null;
+        if (skuPriceRaw && (isNaN(skuPrice) || skuPrice < 0)) errors.push('SKU판매가 형식 오류');
+
+        var unitCount = unitCountRaw ? parseInt(unitCountRaw, 10) : null;
+        if (unitCountRaw) {
+          if (isNaN(unitCount) || unitCount < 1) errors.push('개체수는 1 이상 정수');
+          else if (trackingType === '수량관리') errors.push('수량관리 상품에 개체수 불필요');
+        }
+
+        var o1name = get('옵션1축이름'); var o1val = get('옵션1값');
+        var o2name = get('옵션2축이름'); var o2val = get('옵션2값');
+        var o3name = get('옵션3축이름'); var o3val = get('옵션3값');
+
+        if ((o1name && !o1val) || (!o1name && o1val)) errors.push('옵션1 축이름·값 쌍으로 입력');
+        if ((o2name || o2val) && !o1name) errors.push('옵션2는 옵션1 있어야 사용 가능');
+        if ((o3name || o3val) && !o2name) errors.push('옵션3은 옵션2 있어야 사용 가능');
+
+        var optSummary = [o1name && (o1name+':'+o1val), o2name && (o2name+':'+o2val), o3name && (o3name+':'+o3val)].filter(Boolean).join(' / ') || '(옵션없음)';
+        var productKey = brandCode + '|' + productName;
+        if (errors.length === 0) { okCount++; productKeys.add(productKey); }
+        else errCount++;
+
+        results.push({ rowNum: excelRowNum, excelRowNum, brandCode, productName, trackingType,
+          basePrice: isNaN(basePrice) ? basePriceRaw : basePrice,
+          skuPrice, unitCount, optSummary, memo: get('메모'),
+          o1name, o1val, o2name, o2val, o3name, o3val, errors });
+      });
+
+      var productTrackingMap = {};
+      results.forEach(function(r) {
+        if (r.errors.length > 0) return;
+        var key = r.brandCode + '|' + r.productName;
+        if (!productTrackingMap[key]) productTrackingMap[key] = r.trackingType;
+        else if (productTrackingMap[key] !== r.trackingType) {
+          r.errors.push('같은 상품 내 관리방식 불일치');
+          okCount--; errCount++;
+        }
+      });
+
+      window._bulkProductValidated = results.filter(function(r){ return r.errors.length === 0; });
+
+      thead.innerHTML = '<tr>' + ['행','브랜드','상품명','관리방식','판매가','옵션','개체수','결과'].map(function(h){
+        return '<th>' + h + '</th>';
+      }).join('') + '</tr>';
+
+      tbody.innerHTML = results.map(function(r) {
+        var cls = r.errors.length === 0 ? 'bulk-row-ok' : 'bulk-row-err';
+        var status = r.errors.length === 0
+          ? '<span style="color:#16a34a;font-weight:600;">정상</span>'
+          : '<span style="color:#dc2626;font-size:11px;">' + r.errors.join('<br>') + '</span>';
+        var priceStr = r.skuPrice != null
+          ? (r.skuPrice.toLocaleString() + '원(SKU)')
+          : (isNaN(r.basePrice) ? r.basePrice : r.basePrice.toLocaleString() + '원');
+        return '<tr class="' + cls + '">' +
+          ['<td style="color:var(--gray-400);">' + r.rowNum + '</td>',
+           '<td><code>' + (r.brandCode||'-') + '</code></td>',
+           '<td>' + (r.productName||'-') + '</td>',
+           '<td>' + (r.trackingType||'-') + '</td>',
+           '<td style="white-space:nowrap;">' + priceStr + '</td>',
+           '<td style="font-size:11px;">' + r.optSummary + '</td>',
+           '<td style="text-align:center;">' + (r.unitCount||'-') + '</td>',
+           '<td>' + status + '</td>'].join('') + '</tr>';
+      }).join('');
+
+      summaryEl.innerHTML =
+        '총 <strong>' + dataRows.length + '행</strong> 검사 완료 &nbsp;|&nbsp; ' +
+        '상품: <strong style="color:#16a34a;">' + productKeys.size + '개</strong> &nbsp; SKU: <strong style="color:#16a34a;">' + okCount + '개</strong> &nbsp;|&nbsp; ' +
+        '오류: <strong style="color:#dc2626;">' + errCount + '개</strong>' +
+        (errCount > 0 ? '<br><span style="font-size:12px;color:var(--gray-500);">오류 행은 업로드에서 제외됩니다.</span>' : '');
+
+      if (okCount > 0) document.getElementById('btn-do-bulk-product').style.display = '';
+    } catch(e) {
+      summaryEl.innerHTML = '파일 읽기 오류: ' + esc(e.message);
+    }
+  };
+
+  window.saveBulkProducts = async function() {
+    var items = window._bulkProductValidated;
+    if (!items || items.length === 0) { showToast('업로드할 데이터가 없습니다.', 'error'); return; }
+    var btn = document.getElementById('btn-do-bulk-product');
+    btn.disabled = true; btn.innerHTML = '<div class="spinner spinner-sm"></div> 업로드 중...';
+
+    try {
+      var settingsSnap = await getDoc(doc(db, 'settings', 'config'));
+      var cfg = settingsSnap.exists() ? settingsSnap.data() : {};
+      var prodDigits = cfg.product_number_digits || 3;
+      var optDigits = cfg.option_number_digits || 2;
+      var unitDigits = cfg.unit_number_digits || 3;
+      var pad = function(n, d){ return String(n).padStart(d, '0'); };
+
+      var brandSnap = await getDocs(collection(db, 'brands'));
+      var brandMap = {};
+      brandSnap.docs.forEach(function(d){ brandMap[(d.data().brand_code||'').toUpperCase()] = Object.assign({id:d.id}, d.data()); });
+
+      var productGroupOrder = [];
+      var productGroups = {};
+      items.forEach(function(item) {
+        var key = item.brandCode + '|' + item.productName;
+        if (!productGroups[key]) { productGroups[key] = []; productGroupOrder.push(key); }
+        productGroups[key].push(item);
+      });
+
+      var now = new Date().toISOString();
+      var totalProducts = 0; var totalSkus = 0; var totalUnits = 0;
+
+      for (var ki = 0; ki < productGroupOrder.length; ki++) {
+        var key = productGroupOrder[ki];
+        var group = productGroups[key];
+        var first = group[0];
+        var brand = brandMap[first.brandCode];
+        if (!brand) continue;
+
+        var newProductNumber;
+        await runTransaction(db, async function(tx) {
+          var brandRef = doc(db, 'brands', brand.id);
+          var brandDoc = await tx.get(brandRef);
+          var lastNum = parseInt(brandDoc.data().last_product_number || '0', 10);
+          newProductNumber = pad(lastNum + 1, prodDigits);
+          tx.update(brandRef, { last_product_number: newProductNumber, updated_at: now });
+        });
+
+        var productId = first.brandCode + '-' + newProductNumber;
+        var trackingType = first.trackingType;
+        var productRef = doc(db, 'products', productId);
+
+        // 상품 대표 이미지: 첫 번째 SKU 행 번호로 조회
+        var productImgData = (window._bulkProductImageMap || {})[String(first.excelRowNum)];
+        var productImgUrl = '';
+        if (productImgData) {
+          try {
+            var mime = productImgData.ext === 'png' ? 'image/png' : productImgData.ext === 'webp' ? 'image/webp' : 'image/jpeg';
+            var pRef = ref(storage, 'products/' + productId + '/main.' + productImgData.ext);
+            await uploadBytes(pRef, new Uint8Array(productImgData.buf), { contentType: mime });
+            productImgUrl = await getDownloadURL(pRef);
+          } catch(e) { console.warn('상품 이미지 업로드 실패:', e.message); }
+        }
+
+        await setDoc(productRef, {
+          brand_id: brand.id, brand_code: first.brandCode, brand_name: brand.brand_name,
+          product_number: newProductNumber, product_name: first.productName,
+          base_price: first.basePrice, tracking_type: trackingType,
+          status: '판매중', approval_status: '승인',
+          memo: first.memo || '', last_option_number: pad(0, optDigits),
+          image_url: productImgUrl,
+          created_at: now, updated_at: now
+        });
+
+        var optNum = 0;
+        for (var si = 0; si < group.length; si++) {
+          var skuItem = group[si];
+          var isNoOption = !skuItem.o1name;
+          var optCode = isNoOption ? pad(0, optDigits) : pad(++optNum, optDigits);
+          var skuId = productId + '-' + optCode;
+          var barcodeValue = skuId;
+
+          // SKU 이미지 키: 엑셀 행 번호
+          var skuImgData = (window._bulkProductImageMap || {})[String(skuItem.excelRowNum)];
+          var skuImgUrl = '';
+          if (skuImgData) {
+            try {
+              var skuMime = skuImgData.ext === 'png' ? 'image/png' : skuImgData.ext === 'webp' ? 'image/webp' : 'image/jpeg';
+              var sRef = ref(storage, 'products/' + productId + '/skus/' + skuId + '/main.' + skuImgData.ext);
+              await uploadBytes(sRef, new Uint8Array(skuImgData.buf), { contentType: skuMime });
+              skuImgUrl = await getDownloadURL(sRef);
+            } catch(e) { console.warn('SKU 이미지 업로드 실패:', e.message); }
+          }
+
+          await setDoc(doc(db, 'products', productId, 'skus', skuId), {
+            option_number: optCode, option_sort_order: optNum,
+            option_1_name: skuItem.o1name || '', option_1_value: skuItem.o1val || '',
+            option_2_name: skuItem.o2name || '', option_2_value: skuItem.o2val || '',
+            option_3_name: skuItem.o3name || '', option_3_value: skuItem.o3val || '',
+            price: skuItem.skuPrice != null ? skuItem.skuPrice : skuItem.basePrice,
+            barcode_value: barcodeValue, sku_status: '판매중',
+            image_url: skuImgUrl,
+            last_unit_number: pad(0, unitDigits), created_at: now, updated_at: now
+          });
+          totalSkus++;
+
+          if (trackingType === '개체관리' && skuItem.unitCount) {
+            for (var u = 1; u <= skuItem.unitCount; u++) {
+              var unitCode = pad(u, unitDigits);
+              await setDoc(doc(db, 'products', productId, 'skus', skuId, 'units', skuId + '-' + unitCode), {
+                unit_number: unitCode, barcode_value: barcodeValue + '-' + unitCode,
+                unit_price: null, unit_status: '판매중', memo: '', created_at: now, updated_at: now
+              });
+              totalUnits++;
+            }
+            await updateDoc(doc(db, 'products', productId, 'skus', skuId), { last_unit_number: pad(skuItem.unitCount, unitDigits) });
+          }
+        }
+
+        await updateDoc(productRef, { last_option_number: pad(Math.max(optNum, 0), optDigits) });
+        totalProducts++;
+      }
+
+      showToast('상품 ' + totalProducts + '개 (SKU ' + totalSkus + '개' + (totalUnits > 0 ? ', 개체 ' + totalUnits + '개' : '') + ') 등록 완료!', 'success');
+      closeModal();
+      const content = document.getElementById('page-content');
+      if (content) await renderProductList(content);
+    } catch(e) {
+      showToast('업로드 오류: ' + e.message, 'error');
+      btn.disabled = false; btn.textContent = '📤 대량 업로드';
+    }
+  };
 </script>
 
 <script>
@@ -5686,6 +8163,24 @@
       navigator.serviceWorker.register('/service-worker.js').catch(() => {});
     });
   }
+
+  // ═══════════════════════════════════════════════
+  //  등록 드롭다운 메뉴 공통
+  // ═══════════════════════════════════════════════
+  window.toggleRegisterMenu = function(menuId, btn) {
+    document.querySelectorAll('.register-dropdown').forEach(function(el) {
+      if (el.id !== menuId) el.style.display = 'none';
+    });
+    var menu = document.getElementById(menuId);
+    if (!menu) return;
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+  };
+  window.closeRegisterMenus = function() {
+    document.querySelectorAll('.register-dropdown').forEach(function(el) { el.style.display = 'none'; });
+  };
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('[data-register-wrap]')) closeRegisterMenus();
+  });
 
   /* ── PWA 설치 프롬프트 ── */
   window._pwaInstallPrompt = null;
