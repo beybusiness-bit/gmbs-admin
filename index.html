@@ -1572,7 +1572,7 @@
         '<option value="">전체 입점상태</option><option value="미계약">미계약</option><option value="계약완료">계약완료</option><option value="심사중">심사중</option><option value="승인">승인</option><option value="거절">거절</option><option value="종료">종료</option>' +
         '</select>' +
         '<select id="bl-active-filter" onchange="window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
-        '<option value="active">활성 브랜드</option><option value="inactive">비활성 브랜드</option><option value="all">전체</option>' +
+        '<option value="active">활성 브랜드</option><option value="inactive">비활성 브랜드</option><option value="expiring">⚠️ 만료 임박 (30일)</option><option value="all">전체</option>' +
         '</select>' +
         '<select id="bl-page-size" onchange="window._brandPageSize=parseInt(this.value);window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
@@ -1650,6 +1650,9 @@
     const typeFilter = ((document.getElementById('bl-type-filter') || {}).value || '');
     const onboardingFilter = ((document.getElementById('bl-onboarding-filter') || {}).value || '');
     const activeFilter = ((document.getElementById('bl-active-filter') || {}).value || 'active');
+    const today30 = new Date(); today30.setDate(today30.getDate() + 30);
+    const today30Str = today30.getFullYear() + '-' + String(today30.getMonth()+1).padStart(2,'0') + '-' + String(today30.getDate()).padStart(2,'0');
+    const todayStr = (function(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
     const filtered = (window._allBrands || []).filter(function(b) {
       const matchTerm = !term ||
         (b.brand_name || '').toLowerCase().includes(term) ||
@@ -1657,7 +1660,12 @@
       const matchType = !typeFilter || b.brand_type === typeFilter;
       const matchOnboarding = !onboardingFilter || b.onboarding_status === onboardingFilter;
       const isActive = b.active !== false;
-      const matchActive = activeFilter === 'all' || (activeFilter === 'active' ? isActive : !isActive);
+      const exp = b.contract_expires_at || '';
+      const isExpiring = exp && exp >= todayStr && exp <= today30Str;
+      const matchActive = activeFilter === 'all'
+        || (activeFilter === 'active' ? isActive : false)
+        || (activeFilter === 'inactive' ? !isActive : false)
+        || (activeFilter === 'expiring' ? isExpiring : false);
       return matchTerm && matchType && matchOnboarding && matchActive;
     });
     window._brandFiltered = filtered;
@@ -1693,11 +1701,17 @@
           : '<div style="width:72px;height:72px;border-radius:8px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:20px;">🏬</div>';
         const checked = (window._brandSelected || new Set()).has(b.id) ? ' checked' : '';
         const rowStyle = b.active === false ? 'cursor:pointer;opacity:0.45;background:var(--gray-50);' : 'cursor:pointer;';
+        const exp = b.contract_expires_at || '';
+        const isExpiring = exp && exp >= todayStr && exp <= today30Str;
+        const isExpired = exp && exp < todayStr;
+        const expiryBadge = isExpired
+          ? '<span class="badge badge-red" style="font-size:10px;margin-left:4px;">계약만료</span>'
+          : (isExpiring ? '<span class="badge badge-yellow" style="font-size:10px;margin-left:4px;">⚠️만료임박</span>' : '');
         return '<tr style="' + rowStyle + '" onclick="openBrandDetail(\'' + b.id + '\')">' +
           '<td style="padding-left:16px;" onclick="event.stopPropagation()"><input type="checkbox" id="bl-chk-' + b.id + '"' + checked + ' onchange="toggleBrandSelect(\'' + b.id + '\',this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></td>' +
           '<td style="padding:8px;">' + logoCell + '</td>' +
           '<td class="td-code">' + esc(b.brand_code) + '</td>' +
-          '<td style="font-weight:600;">' + esc(b.brand_name) + '</td>' +
+          '<td style="font-weight:600;">' + esc(b.brand_name) + expiryBadge + '</td>' +
           '<td>' + (typeLabel[b.brand_type] || b.brand_type || '-') + '</td>' +
           '<td>' + onboardingBadge(b.onboarding_status) + '</td>' +
           '<td style="color:var(--gray-400);font-size:12px;">' + (b.last_product_number || '000') + '</td>' +
@@ -2852,6 +2866,29 @@
 
         '<div id="sc-fields-section"></div>' +
 
+        '<div style="background:var(--gray-50);border-radius:10px;padding:14px 16px;margin-bottom:14px;">' +
+        '<div style="font-size:12px;font-weight:600;color:var(--gray-600);margin-bottom:10px;">③ 계약 기간 설정</div>' +
+        '<div class="form-group"><label class="form-label">기간 입력 방식</label>' +
+        '<div style="display:flex;gap:16px;">' +
+        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">' +
+        '<input type="radio" name="sc-period-type" value="months" onchange="onSendContractPeriodTypeChange()" checked /> 서명일로부터 N개월</label>' +
+        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">' +
+        '<input type="radio" name="sc-period-type" value="date" onchange="onSendContractPeriodTypeChange()" /> 종료일 직접 지정</label>' +
+        '</div></div>' +
+        '<div id="sc-period-months-wrap" class="form-group">' +
+        '<label class="form-label">계약 기간</label>' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<input class="form-input" id="sc-period-months" type="number" min="1" max="120" value="12" style="width:100px;" />' +
+        '<span style="font-size:13px;color:var(--gray-600);">개월 (서명 완료일 기준으로 functions가 종료일 자동 계산)</span>' +
+        '</div></div>' +
+        '<div id="sc-period-date-wrap" class="form-group" style="display:none;">' +
+        '<label class="form-label">계약 종료일</label>' +
+        '<input class="form-input" id="sc-period-date" type="date" style="max-width:200px;" /></div>' +
+        '<div class="form-group" style="margin-bottom:0;display:flex;align-items:center;gap:8px;">' +
+        '<input type="checkbox" id="sc-auto-renew" style="accent-color:var(--blue);" />' +
+        '<label for="sc-auto-renew" style="font-size:13px;color:var(--gray-700);cursor:pointer;">자동 갱신 (만료 전 functions가 자동 연장)</label>' +
+        '</div></div>' +
+
         '<div class="form-group" style="margin-top:8px;">' +
         '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--gray-600);">' +
         '<input type="checkbox" id="sc-testmode" /> 테스트 모드 (포인트 차감 없음 · 워터마크 표시)</label></div>';
@@ -2874,6 +2911,14 @@
       showToast('로드 실패: ' + e.message, 'error');
       closeModal();
     }
+  };
+
+  window.onSendContractPeriodTypeChange = function() {
+    const type = (document.querySelector('input[name="sc-period-type"]:checked') || {}).value || 'months';
+    const mw = document.getElementById('sc-period-months-wrap');
+    const dw = document.getElementById('sc-period-date-wrap');
+    if (mw) mw.style.display = type === 'months' ? '' : 'none';
+    if (dw) dw.style.display = type === 'date' ? '' : 'none';
   };
 
   window.onSendContractPersonChange = function() {
@@ -2959,12 +3004,18 @@
       });
     } catch(e) { fields = {}; }
 
+    // 계약 기간 필드 수집
+    const periodType = (document.querySelector('input[name="sc-period-type"]:checked') || {}).value || 'months';
+    const periodMonths = periodType === 'months' ? (parseInt(((document.getElementById('sc-period-months') || {}).value || '12')) || 12) : null;
+    const periodEndAt = periodType === 'date' ? (((document.getElementById('sc-period-date') || {}).value || '') || null) : null;
+    const autoRenew = (document.getElementById('sc-auto-renew') || {}).checked || false;
+
     // Firestore에 contract 문서 먼저 생성 (version 자동 증가)
     let contractId;
     try {
       const existingSnap = await getDocs(collection(db, 'brands', brandId, 'contracts'));
       const version = existingSnap.size + 1;
-      const contractRef = await addDoc(collection(db, 'brands', brandId, 'contracts'), {
+      const contractDocData = {
         version,
         template_doc_id: templateDocId,
         template_name: templateName,
@@ -2974,9 +3025,13 @@
         fields,
         status: '발송대기',
         test_mode: testMode,
+        auto_renew: autoRenew,
         created_at: today(),
         updated_at: today(),
-      });
+      };
+      if (periodMonths !== null) contractDocData.period_months = periodMonths;
+      if (periodEndAt !== null) contractDocData.end_at = periodEndAt;
+      const contractRef = await addDoc(collection(db, 'brands', brandId, 'contracts'), contractDocData);
       contractId = contractRef.id;
     } catch(e) {
       showToast('계약 문서 생성 실패: ' + e.message, 'error'); return;
@@ -3113,14 +3168,25 @@
       const data = { version, signed_at, end_at, auto_renew, file_url, status: contractId ? undefined : '진행중', updated_at: today() };
       if (!contractId) { data.status = '진행중'; data.created_at = today(); }
 
+      let savedContractId = contractId;
       if (contractId) {
         const updateData = { version, signed_at, end_at, auto_renew, file_url, updated_at: today() };
         await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), updateData);
       } else {
-        await addDoc(collection(db, 'brands', brandId, 'contracts'), { version, signed_at, end_at, auto_renew, file_url, status: '진행중', created_at: today(), updated_at: today() });
+        const newRef = await addDoc(collection(db, 'brands', brandId, 'contracts'), { version, signed_at, end_at, auto_renew, file_url, status: '진행중', created_at: today(), updated_at: today() });
+        savedContractId = newRef.id;
       }
 
-      await writeActivityLog(brandId, 'contract', contractId || 'new', contractId ? 'updated' : 'created', null, { version, signed_at, end_at });
+      await writeActivityLog(brandId, 'contract', savedContractId || 'new', contractId ? 'updated' : 'created', null, { version, signed_at, end_at });
+
+      // brands doc에 contract_expires_at / active_contract_id / contract_auto_renew 동기화
+      if (end_at || savedContractId) {
+        const brandSyncData = { updated_at: today() };
+        if (end_at) brandSyncData.contract_expires_at = end_at;
+        if (savedContractId) brandSyncData.active_contract_id = savedContractId;
+        brandSyncData.contract_auto_renew = auto_renew;
+        try { await updateDoc(doc(db, 'brands', brandId), brandSyncData); } catch(e2) {}
+      }
 
       // 새 계약 추가 시 브랜드가 '미계약' 상태이면 '계약완료'로 자동 전환
       if (!contractId) {
