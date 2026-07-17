@@ -302,6 +302,9 @@
       <div class="nav-item" data-page="application-review" onclick="navigate('application-review')">
         <span class="icon">✅</span><span class="nav-label"> 승인</span>
       </div>
+      <div class="nav-item" data-page="persons-list" onclick="navigate('persons-list')">
+        <span class="icon">👤</span><span class="nav-label"> 담당자</span>
+      </div>
 
       <div class="nav-section-label">판매 및 정산</div>
       <div class="nav-item" data-page="settlement-list" onclick="navigate('settlement-list')">
@@ -619,6 +622,7 @@
       }
       navigate('dashboard');
       refreshSidebarBadges();
+      migratePersonsToTopLevel().catch(() => {});
     } else {
       window._currentUser = null;
       loading.style.display = 'none';
@@ -712,7 +716,8 @@
     'inquiry-list': '브랜드 문의',
     'customer-cs': '고객 CS',
     settings: '설정',
-    'email-settings': '이메일 알림'
+    'email-settings': '이메일 알림',
+    'persons-list': '담당자 목록'
   };
 
   window.navigate = async (page, params) => {
@@ -736,6 +741,7 @@
     else if (page === 'barcode') renderBarcodePage(content);
     else if (page === 'settings') await renderSettings(content);
     else if (page === 'email-settings') await renderEmailSettings(content);
+    else if (page === 'persons-list') await renderPersonsList(content);
     else renderComingSoon(content, PAGE_TITLES[page] || page);
     refreshSidebarBadges();
   };
@@ -2282,6 +2288,103 @@
     }
   }
 
+  /* ── persons 서브컬렉션 → 최상위 컬렉션 1회 마이그레이션 ── */
+  async function migratePersonsToTopLevel() {
+    const migKey = 'persons_migrated_v1';
+    if (localStorage.getItem(migKey)) return;
+    const brandsSnap = await getDocs(collection(db, 'brands'));
+    const writes = [];
+    for (const bd of brandsSnap.docs) {
+      const subSnap = await getDocs(collection(db, 'brands', bd.id, 'persons'));
+      for (const pd of subSnap.docs) {
+        const existing = await getDoc(doc(db, 'persons', pd.id));
+        if (!existing.exists()) {
+          writes.push(setDoc(doc(db, 'persons', pd.id), { brand_id: bd.id, ...pd.data() }));
+        }
+      }
+    }
+    await Promise.all(writes);
+    localStorage.setItem(migKey, '1');
+    if (writes.length > 0) console.log('[migration] persons 마이그레이션 완료:', writes.length, '건');
+  }
+
+  /* ════════════════════════════════
+     담당자 목록 페이지 (전체)
+  ════════════════════════════════ */
+  async function renderPersonsList(container) {
+    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+    try {
+      const [personsSnap, brandsSnap] = await Promise.all([
+        getDocs(collection(db, 'persons')),
+        getDocs(collection(db, 'brands'))
+      ]);
+      const brandMap = {};
+      brandsSnap.docs.forEach(d => { brandMap[d.id] = d.data().brand_name || d.id; });
+
+      const persons = personsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      persons.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+      let html = '<div style="padding:16px 0;">';
+      html += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">';
+      html += '<input id="pl-search" type="text" class="form-input" placeholder="이름·이메일·역할 검색" style="max-width:260px;" oninput="filterPersonsList()" />';
+      html += '<select id="pl-filter-active" class="form-input" style="max-width:140px;" onchange="filterPersonsList()">';
+      html += '<option value="all">전체</option><option value="active">활성</option><option value="inactive">비활성</option>';
+      html += '</select>';
+      html += '</div>';
+
+      html += '<div id="pl-table-wrap">';
+      html += buildPersonsTable(persons, brandMap);
+      html += '</div>';
+      html += '</div>';
+
+      container.innerHTML = html;
+      window._allPersonsData = persons;
+      window._allPersonsBrandMap = brandMap;
+    } catch(e) {
+      container.innerHTML = '<div style="padding:40px;text-align:center;color:var(--red);">담당자 목록을 불러오지 못했습니다: ' + esc(e.message) + '</div>';
+    }
+  }
+
+  function buildPersonsTable(persons, brandMap) {
+    if (!persons.length) return '<div style="padding:40px;text-align:center;color:var(--gray-400);">담당자가 없습니다.</div>';
+    let t = '<div style="overflow-x:auto;">';
+    t += '<table style="width:100%;border-collapse:collapse;font-size:14px;">';
+    t += '<thead><tr style="background:var(--gray-50);border-bottom:2px solid var(--gray-200);">';
+    ['이름','역할','연락처 이메일','구글 로그인 이메일','소속 브랜드','상태','등록일'].forEach(h => {
+      t += '<th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--gray-600);white-space:nowrap;">' + h + '</th>';
+    });
+    t += '</tr></thead><tbody>';
+    persons.forEach(p => {
+      const brandName = p.brand_id ? (brandMap[p.brand_id] || p.brand_id) : '<span style="color:var(--gray-400);">없음</span>';
+      const statusBadge = p.active !== false
+        ? '<span class="badge badge-green">활성</span>'
+        : '<span class="badge badge-gray">비활성</span>';
+      t += '<tr style="border-bottom:1px solid var(--gray-100);">';
+      t += '<td style="padding:10px 12px;font-weight:500;">' + esc(p.name || '-') + '</td>';
+      t += '<td style="padding:10px 12px;color:var(--gray-600);">' + esc(p.role || '-') + '</td>';
+      t += '<td style="padding:10px 12px;">' + esc(p.contact_email || '-') + '</td>';
+      t += '<td style="padding:10px 12px;">' + esc(p.login_google_email || '-') + '</td>';
+      t += '<td style="padding:10px 12px;">' + brandName + '</td>';
+      t += '<td style="padding:10px 12px;">' + statusBadge + '</td>';
+      t += '<td style="padding:10px 12px;color:var(--gray-500);">' + esc(p.created_at || '-') + '</td>';
+      t += '</tr>';
+    });
+    t += '</tbody></table></div>';
+    return t;
+  }
+
+  window.filterPersonsList = function() {
+    const q = (document.getElementById('pl-search') || {}).value || '';
+    const activeFilter = (document.getElementById('pl-filter-active') || {}).value || 'all';
+    const persons = (window._allPersonsData || []).filter(p => {
+      const matchQ = !q || [p.name, p.contact_email, p.login_google_email, p.role].some(v => v && v.toLowerCase().includes(q.toLowerCase()));
+      const matchActive = activeFilter === 'all' || (activeFilter === 'active' ? p.active !== false : p.active === false);
+      return matchQ && matchActive;
+    });
+    const wrap = document.getElementById('pl-table-wrap');
+    if (wrap) wrap.innerHTML = buildPersonsTable(persons, window._allPersonsBrandMap || {});
+  };
+
   /* ════════════════════════════════
      담당자(Person) 관리
   ════════════════════════════════ */
@@ -2290,10 +2393,11 @@
     if (!sec) return;
     try {
       const snap = await getDocs(query(
-        collection(db, 'brands', brandId, 'persons'),
-        orderBy('created_at', 'asc')
+        collection(db, 'persons'),
+        where('brand_id', '==', brandId)
       ));
-      const persons = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const persons = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
       renderPersonsSection(brandId, persons, sec);
     } catch(e) {
       if (sec) sec.innerHTML = '<div style="font-size:12px;color:var(--gray-400);">담당자 로드 실패: ' + esc(e.message) + '</div>';
@@ -2376,7 +2480,7 @@
 
   window.setPersonActive = async function(brandId, personId, active) {
     try {
-      await updateDoc(doc(db, 'brands', brandId, 'persons', personId), { active, updated_at: today() });
+      await updateDoc(doc(db, 'persons', personId), { active, updated_at: today() });
       const sec = document.getElementById('brand-persons-section');
       if (sec) loadBrandPersons(brandId);
     } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
@@ -2411,7 +2515,7 @@
     let existing = null;
     if (personId) {
       try {
-        const snap = await getDoc(doc(db, 'brands', brandId, 'persons', personId));
+        const snap = await getDoc(doc(db, 'persons', personId));
         if (snap.exists()) existing = { id: snap.id, ...snap.data() };
       } catch(e) {}
     }
@@ -2449,10 +2553,11 @@
     try {
       let savedPersonId = personId;
       if (isEdit && personId) {
-        await updateDoc(doc(db, 'brands', brandId, 'persons', personId), data);
+        await updateDoc(doc(db, 'persons', personId), data);
       } else {
         data.created_at = today();
-        const ref = await addDoc(collection(db, 'brands', brandId, 'persons'), data);
+        data.brand_id = brandId;
+        const ref = await addDoc(collection(db, 'persons'), data);
         savedPersonId = ref.id;
         await setDoc(doc(db, 'vendor_accounts', loginEmail), {
           uid: null, brand_id: brandId, person_id: savedPersonId,
@@ -2644,15 +2749,24 @@
     }
     if (!confirm('마지막 확인: [' + brandName + '] 브랜드를 영구 삭제합니다.\n이 작업은 되돌릴 수 없습니다.')) return;
     try {
-      // 서브컬렉션(persons, contracts)은 클라이언트에서 직접 삭제
-      const [personsSnap, contractsSnap] = await Promise.all([
-        getDocs(collection(db, 'brands', brandId, 'persons')),
-        getDocs(collection(db, 'brands', brandId, 'contracts')),
-      ]);
-      const delPromises = [];
-      personsSnap.forEach(d => delPromises.push(deleteDoc(d.ref)));
-      contractsSnap.forEach(d => delPromises.push(deleteDoc(d.ref)));
-      await Promise.all(delPromises);
+      // 담당자: 삭제하지 않고 brand_id를 null로 처리 (계정은 유지)
+      const personsSnap = await getDocs(query(collection(db, 'persons'), where('brand_id', '==', brandId)));
+      const personPromises = [];
+      for (const pd of personsSnap.docs) {
+        const loginEmail = pd.data().login_google_email;
+        personPromises.push(updateDoc(doc(db, 'persons', pd.id), { brand_id: null, updated_at: today() }));
+        if (loginEmail) {
+          personPromises.push(updateDoc(doc(db, 'vendor_accounts', loginEmail), { brand_id: null, updated_at: today() }).catch(() => {}));
+        }
+        const uid = pd.data().uid;
+        if (uid) {
+          personPromises.push(updateDoc(doc(db, 'users', uid), { brand_id: null, updated_at: today() }).catch(() => {}));
+        }
+      }
+      await Promise.all(personPromises);
+      // contracts는 브랜드 서브컬렉션 — 브랜드 삭제 시 함께 삭제
+      const contractsSnap = await getDocs(collection(db, 'brands', brandId, 'contracts'));
+      await Promise.all(contractsSnap.docs.map(d => deleteDoc(d.ref)));
       await deleteDoc(doc(db, 'brands', brandId));
       showToast('브랜드가 삭제되었습니다.', 'success');
       closeModal();
@@ -2804,7 +2918,7 @@
     try {
       const [brandSnap, personsSnap, templatesSnap] = await Promise.all([
         getDoc(doc(db, 'brands', brandId)),
-        getDocs(collection(db, 'brands', brandId, 'persons')),
+        getDocs(query(collection(db, 'persons'), where('brand_id', '==', brandId))),
         getDocs(collection(db, 'contract_templates')),
       ]);
       if (!brandSnap.exists()) { showToast('브랜드 정보를 찾을 수 없습니다.', 'error'); closeModal(); return; }
@@ -3473,8 +3587,14 @@
     let doneCount = 0, failCount = 0;
     for (const brandId of ids) {
       try {
-        const personsSnap = await getDocs(collection(db, 'brands', brandId, 'persons'));
-        for (const d of personsSnap.docs) await deleteDoc(doc(db, 'brands', brandId, 'persons', d.id));
+        const personsSnap = await getDocs(query(collection(db, 'persons'), where('brand_id', '==', brandId)));
+        for (const pd of personsSnap.docs) {
+          await updateDoc(doc(db, 'persons', pd.id), { brand_id: null, updated_at: today() });
+          const loginEmail = pd.data().login_google_email;
+          if (loginEmail) await updateDoc(doc(db, 'vendor_accounts', loginEmail), { brand_id: null, updated_at: today() }).catch(() => {});
+          const uid = pd.data().uid;
+          if (uid) await updateDoc(doc(db, 'users', uid), { brand_id: null, updated_at: today() }).catch(() => {});
+        }
         const contractsSnap = await getDocs(collection(db, 'brands', brandId, 'contracts'));
         for (const d of contractsSnap.docs) await deleteDoc(doc(db, 'brands', brandId, 'contracts', d.id));
         await deleteDoc(doc(db, 'brands', brandId));
@@ -5684,7 +5804,7 @@
       const brandsSnap = await getDocs(collection(db, 'brands'));
       for (const bd of brandsSnap.docs) {
         const bdata = bd.data();
-        const personsSnap = await getDocs(query(collection(db, 'brands', bd.id, 'persons'), where('active', '==', true)));
+        const personsSnap = await getDocs(query(collection(db, 'persons'), where('brand_id', '==', bd.id), where('active', '==', true)));
         for (const pd of personsSnap.docs) {
           const p = pd.data();
           if (p.contact_email || p.login_google_email) {
@@ -6175,7 +6295,7 @@
         const key = i.brand_id + '/' + i.person_id;
         if (personCache[key] !== undefined) return;
         try {
-          const ps = await getDoc(doc(db, 'brands', i.brand_id, 'persons', i.person_id));
+          const ps = i.person_id ? await getDoc(doc(db, 'persons', i.person_id)) : null;
           personCache[key] = ps.exists() ? (ps.data().name || '') : '';
         } catch(e) { personCache[key] = ''; }
       }));
@@ -6230,7 +6350,7 @@
     let personName = '';
     if (i.brand_id && i.person_id) {
       try {
-        const ps = await getDoc(doc(db, 'brands', i.brand_id, 'persons', i.person_id));
+        const ps = await getDoc(doc(db, 'persons', i.person_id));
         if (ps.exists()) personName = ps.data().name || '';
       } catch(e) {}
     }
@@ -6279,7 +6399,7 @@
           const bs = await getDoc(doc(db, 'brands', inqData.brand_id));
           if (bs.exists()) brandName = bs.data().brand_name || '';
           if (inqData.person_id) {
-            const ps = await getDoc(doc(db, 'brands', inqData.brand_id, 'persons', inqData.person_id));
+            const ps = inqData.person_id ? await getDoc(doc(db, 'persons', inqData.person_id)) : null;
             if (ps.exists()) { toEmail = ps.data().email || ''; toName = ps.data().name || ''; }
           }
           if (toEmail) {
@@ -7231,7 +7351,8 @@
       if (isJoin) {
         // 합류 신청 승인
         const brandId = item.target_brand_id;
-        const personRef = await addDoc(collection(db, 'brands', brandId, 'persons'), {
+        const personRef = await addDoc(collection(db, 'persons'), {
+          brand_id: brandId,
           name: item.applicant_name || '',
           phone: item.applicant_phone || '',
           role: item.applicant_role || '',
@@ -7292,7 +7413,8 @@
         });
         const brandId = brandRef.id;
 
-        const personRef = await addDoc(collection(db, 'brands', brandId, 'persons'), {
+        const personRef = await addDoc(collection(db, 'persons'), {
+          brand_id: brandId,
           name: item.applicant_name || '',
           phone: item.applicant_phone || '',
           role: item.applicant_role || '',
