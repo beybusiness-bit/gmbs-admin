@@ -5543,23 +5543,26 @@
     }
     const t = existing || { is_active: true };
     const formHtml =
-      '<div class="form-group"><label class="form-label">템플릿 이름 <span style="color:var(--red);">*</span></label>' +
-      '<input class="form-input" id="ct-name" value="' + esc(t.name || '') + '" placeholder="예: 사업자 계약서, 비사업자 계약서" /></div>' +
+      '<div class="form-group"><label class="form-label">계약서 이름 <span style="color:var(--red);">*</span></label>' +
+      '<input class="form-input" id="ct-name" value="' + esc(t.name || '') + '" placeholder="예: (사업자) 오프라인 위탁판매 입점계약서" /></div>' +
 
       '<div class="form-group"><label class="form-label">유캔사인 템플릿 ID <span style="color:var(--red);">*</span></label>' +
-      '<input class="form-input" id="ct-ucansign-id" value="' + esc(t.ucansign_template_id || '') + '" placeholder="유캔사인 관리자 페이지에서 복사" />' +
+      '<input class="form-input" id="ct-ucansign-id" value="' + esc(t.ucansign_template_id || '') + '" placeholder="유캔사인 → 템플릿 메뉴 → 해당 템플릿 클릭 → URL의 숫자 ID" />' +
       '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">유캔사인 로그인 → 템플릿 메뉴 → 해당 템플릿 클릭 → URL 또는 상세 화면의 ID 복사</div></div>' +
 
-      '<div class="form-group"><label class="form-label">유형 (분류용)</label>' +
-      '<input class="form-input" id="ct-type" value="' + esc(t.type || '') + '" placeholder="예: 사업자, 비사업자" /></div>' +
+      '<div class="form-group"><label class="form-label">계약 종류 태그 <span style="font-size:12px;font-weight:400;color:var(--gray-400);">(선택 · 목록 구분용 메모)</span></label>' +
+      '<input class="form-input" id="ct-type" value="' + esc(t.type || '') + '" placeholder="예: 사업자 / 예: 비사업자 / 예: PB계약" />' +
+      '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">목록에서 한눈에 구분할 수 있도록 짧게 적어두는 메모예요. 계약 기능에는 영향 없습니다.</div></div>' +
 
-      '<div class="form-group"><label class="form-label">동적 필드 기본값 (JSON 형식)</label>' +
-      '<textarea class="form-input" id="ct-fields" rows="4" style="font-family:monospace;font-size:12px;" placeholder=\'{"commission_rate": "15%", "contract_period": "1년"}\'>' +
-      esc(t.default_fields ? JSON.stringify(t.default_fields, null, 2) : '') + '</textarea>' +
-      '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">계약서 발송 시 편집 가능한 항목입니다. 비워두면 동적 필드 없음.</div></div>' +
+      '<div class="form-group"><label class="form-label">계약서 변수 기본값 <span style="font-size:12px;font-weight:400;color:var(--gray-400);">(선택)</span></label>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:8px;">유캔사인 계약서 안에 <strong>자동으로 채울 항목</strong>이 있으면 입력하세요. 계약 발송 시 수정도 가능합니다. 없으면 비워두세요.</div>' +
+      '<div id="ct-fields-rows" style="display:flex;flex-direction:column;gap:6px;"></div>' +
+      '<button type="button" onclick="window._addCtFieldRow()" style="margin-top:8px;font-size:12px;padding:5px 12px;border:1px dashed var(--gray-300);border-radius:8px;background:none;cursor:pointer;color:var(--gray-500);">+ 항목 추가</button>' +
+      '<div style="font-size:11px;color:var(--gray-400);margin-top:6px;">예시 — 항목명: <code>수수료율</code>  기본값: <code>15%</code></div>' +
+      '</div>' +
 
       '<div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;">' +
-      '<input type="checkbox" id="ct-active"' + (t.is_active !== false ? ' checked' : '') + ' /> 활성 (비활성이면 발송 화면에서 선택 불가)</label></div>';
+      '<input type="checkbox" id="ct-active"' + (t.is_active !== false ? ' checked' : '') + ' /> <span>활성 <span style="font-size:12px;font-weight:400;color:var(--gray-400);">(체크 해제 시 발송 화면에서 선택 불가)</span></span></label></div>';
 
     const footer =
       (existing ? '<button class="btn btn-secondary" style="color:var(--red);" onclick="deleteContractTemplate(\'' + existing.id + '\')">삭제</button>' : '') +
@@ -5567,23 +5570,42 @@
       '<button class="btn btn-primary" onclick="saveContractTemplate(\'' + (existing ? existing.id : '') + '\')">저장</button>';
 
     showModal((existing ? '계약서 템플릿 수정' : '계약서 템플릿 추가'), formHtml, footer);
+
+    // 변수 행 추가 헬퍼
+    window._addCtFieldRow = function(k, v) {
+      var row = document.createElement('div');
+      row.className = 'ct-field-row';
+      row.style.cssText = 'display:flex;gap:6px;align-items:center;';
+      row.innerHTML =
+        '<input class="form-input ct-field-key" placeholder="항목명 (영문 또는 한글)" value="' + esc(k || '') + '" style="flex:1;font-size:13px;" />' +
+        '<span style="color:var(--gray-400);flex-shrink:0;">→ 기본값</span>' +
+        '<input class="form-input ct-field-val" placeholder="기본값" value="' + esc(v || '') + '" style="flex:1;font-size:13px;" />' +
+        '<button type="button" onclick="this.closest(\'.ct-field-row\').remove()" style="flex-shrink:0;border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:16px;padding:0 4px;">✕</button>';
+      document.getElementById('ct-fields-rows').appendChild(row);
+    };
+
+    // 기존 데이터 복원
+    if (t.default_fields && typeof t.default_fields === 'object') {
+      Object.entries(t.default_fields).forEach(([k, v]) => window._addCtFieldRow(k, String(v)));
+    }
   };
 
   window.saveContractTemplate = async function(templateId) {
     const name = (document.getElementById('ct-name') || {}).value?.trim();
     const ucansignId = (document.getElementById('ct-ucansign-id') || {}).value?.trim();
     const type = (document.getElementById('ct-type') || {}).value?.trim();
-    const fieldsRaw = (document.getElementById('ct-fields') || {}).value?.trim();
     const isActive = (document.getElementById('ct-active') || {}).checked;
 
-    if (!name) { showToast('템플릿 이름을 입력해주세요.', 'error'); return; }
+    if (!name) { showToast('계약서 이름을 입력해주세요.', 'error'); return; }
     if (!ucansignId) { showToast('유캔사인 템플릿 ID를 입력해주세요.', 'error'); return; }
 
-    let defaultFields = {};
-    if (fieldsRaw) {
-      try { defaultFields = JSON.parse(fieldsRaw); }
-      catch(e) { showToast('동적 필드 형식이 올바르지 않습니다. JSON 형식으로 입력해주세요.\n예: {"수수료율": "15%"}', 'error'); return; }
-    }
+    // 키-값 행에서 defaultFields 수집
+    const defaultFields = {};
+    document.querySelectorAll('.ct-field-row').forEach(function(row) {
+      const k = (row.querySelector('.ct-field-key') || {}).value?.trim();
+      const v = (row.querySelector('.ct-field-val') || {}).value?.trim();
+      if (k) defaultFields[k] = v || '';
+    });
 
     const data = { name, ucansign_template_id: ucansignId, type: type || '', default_fields: defaultFields, is_active: isActive, updated_at: today() };
     try {
