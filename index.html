@@ -5484,6 +5484,17 @@
       '</div>' +
       '</div>' +
 
+      /* ── 유캔사인 API 키 ── */
+      '<div class="card" style="margin-bottom:20px;">' +
+      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">유캔사인 API 키</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">템플릿 필드 자동 가져오기 및 전자계약 발송에 사용됩니다. 유캔사인 관리자 → 계정 설정 → API에서 발급할 수 있습니다.</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;">' +
+      '<input class="form-input" id="ucansign-api-key-input" type="password" placeholder="유캔사인 Bearer 토큰을 붙여넣으세요" style="flex:1;font-family:monospace;font-size:13px;" />' +
+      '<button class="btn btn-primary" style="white-space:nowrap;" onclick="saveUcansignApiKey()">저장</button>' +
+      '</div>' +
+      '<div id="ucansign-key-status" style="font-size:12px;margin-top:8px;color:var(--gray-400);">로딩 중...</div>' +
+      '</div>' +
+
       /* ── 계약서 템플릿 관리 ── */
       '<div class="card" style="margin-bottom:20px;">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
@@ -5504,7 +5515,42 @@
 
     checkFirebaseStatus();
     loadContractTemplatesList();
+    loadUcansignApiKeyStatus();
   }
+
+  /* ── 유캔사인 API 키 로드·저장 ── */
+  async function loadUcansignApiKeyStatus() {
+    const statusEl = document.getElementById('ucansign-key-status');
+    const inputEl = document.getElementById('ucansign-api-key-input');
+    if (!statusEl) return;
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'config'));
+      const key = snap.data()?.ucansign_api_key || '';
+      if (key) {
+        statusEl.innerHTML = '<span style="color:var(--green);">✅ API 키가 저장되어 있습니다.</span> 변경하려면 새 값을 입력 후 저장하세요.';
+        if (inputEl) inputEl.placeholder = '••••••••••••••••••••••• (저장됨)';
+      } else {
+        statusEl.textContent = '아직 저장된 API 키가 없습니다.';
+      }
+    } catch(e) {
+      statusEl.textContent = '로드 오류: ' + e.message;
+    }
+  }
+
+  window.saveUcansignApiKey = async function() {
+    const inputEl = document.getElementById('ucansign-api-key-input');
+    const statusEl = document.getElementById('ucansign-key-status');
+    const key = (inputEl?.value || '').trim();
+    if (!key) { showToast('API 키를 입력해주세요.', 'error'); return; }
+    try {
+      await setDoc(doc(db, 'settings', 'config'), { ucansign_api_key: key }, { merge: true });
+      if (inputEl) { inputEl.value = ''; inputEl.placeholder = '••••••••••••••••••••••• (저장됨)'; }
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--green);">✅ API 키가 저장되어 있습니다.</span> 변경하려면 새 값을 입력 후 저장하세요.';
+      showToast('유캔사인 API 키가 저장되었습니다.', 'success');
+    } catch(e) {
+      showToast('저장 오류: ' + e.message, 'error');
+    }
+  };
 
   /* ── 계약서 템플릿 목록 로드 ── */
   async function loadContractTemplatesList() {
@@ -5547,7 +5593,10 @@
       '<input class="form-input" id="ct-name" value="' + esc(t.name || '') + '" placeholder="예: (사업자) 오프라인 위탁판매 입점계약서" /></div>' +
 
       '<div class="form-group"><label class="form-label">유캔사인 템플릿 ID <span style="color:var(--red);">*</span></label>' +
-      '<input class="form-input" id="ct-ucansign-id" value="' + esc(t.ucansign_template_id || '') + '" placeholder="유캔사인 → 템플릿 메뉴 → 해당 템플릿 클릭 → URL의 숫자 ID" />' +
+      '<div style="display:flex;gap:8px;align-items:center;">' +
+      '<input class="form-input" id="ct-ucansign-id" value="' + esc(t.ucansign_template_id || '') + '" placeholder="유캔사인 → 템플릿 메뉴 → 해당 템플릿 클릭 → URL의 숫자 ID" style="flex:1;" />' +
+      '<button type="button" class="btn btn-secondary" id="btn-fetch-fields" onclick="window._fetchUcansignFields()" style="white-space:nowrap;font-size:12px;">🔍 필드 가져오기</button>' +
+      '</div>' +
       '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">유캔사인 로그인 → 템플릿 메뉴 → 해당 템플릿 클릭 → URL 또는 상세 화면의 ID 복사</div></div>' +
 
       '<div class="form-group"><label class="form-label">계약 종류 태그 <span style="font-size:12px;font-weight:400;color:var(--gray-400);">(선택 · 목록 구분용 메모)</span></label>' +
@@ -5570,6 +5619,57 @@
       '<button class="btn btn-primary" onclick="saveContractTemplate(\'' + (existing ? existing.id : '') + '\')">저장</button>';
 
     showModal((existing ? '계약서 템플릿 수정' : '계약서 템플릿 추가'), formHtml, footer);
+
+    // 유캔사인 템플릿 필드 자동 가져오기
+    window._fetchUcansignFields = async function() {
+      const templateId = (document.getElementById('ct-ucansign-id') || {}).value?.trim();
+      if (!templateId) { showToast('템플릿 ID를 먼저 입력해주세요.', 'error'); return; }
+      const btn = document.getElementById('btn-fetch-fields');
+      if (btn) { btn.disabled = true; btn.textContent = '가져오는 중...'; }
+      try {
+        const cfgSnap = await getDoc(doc(db, 'settings', 'config'));
+        const apiKey = cfgSnap.data()?.ucansign_api_key;
+        if (!apiKey) {
+          showToast('설정 페이지에서 유캔사인 API 키를 먼저 저장해주세요.', 'error');
+          if (btn) { btn.disabled = false; btn.textContent = '🔍 필드 가져오기'; }
+          return;
+        }
+        // GET 방식으로 템플릿 상세조회 시도
+        const res = await fetch('https://app.ucansign.com/openapi/templates/' + templateId, {
+          method: 'GET',
+          headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' }
+        });
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({}));
+          throw new Error((errJson.msg || res.statusText || '') + ' (HTTP ' + res.status + ')');
+        }
+        const json = await res.json();
+        // 응답에서 필드 목록 추출 (ucansign 응답 구조에 맞게 파싱)
+        const result = json.result || json;
+        const rawFields = result.fields || result.templateFields || [];
+        // 서명/도장 필드는 제외, fieldName 있는 것만
+        const textFields = rawFields.filter(function(f) {
+          const t = (f.fieldType || f.type || '').toUpperCase();
+          return f.fieldName && t !== 'SIGN' && t !== 'STAMP' && t !== 'INITIAL';
+        });
+        if (textFields.length === 0) {
+          showToast('가져올 수 있는 입력 필드가 없습니다. 템플릿에 "추가내용 입력하기" 텍스트 필드가 있는지 확인해주세요.', 'info');
+        } else {
+          document.getElementById('ct-fields-rows').innerHTML = '';
+          textFields.forEach(function(f) { window._addCtFieldRow(f.fieldName, ''); });
+          showToast(textFields.length + '개 필드를 불러왔습니다. 기본값을 입력하세요.', 'success');
+        }
+      } catch(e) {
+        if (e instanceof TypeError || e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
+          // CORS 차단 또는 네트워크 오류
+          showToast('유캔사인 API가 브라우저 직접 호출을 허용하지 않습니다. 필드를 직접 추가해주세요.', 'error');
+        } else {
+          showToast('필드 조회 실패: ' + e.message, 'error');
+        }
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔍 필드 가져오기'; }
+      }
+    };
 
     // 변수 행 추가 헬퍼
     window._addCtFieldRow = function(k, v) {
