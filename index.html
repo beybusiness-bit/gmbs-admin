@@ -438,6 +438,171 @@
     return value && typeof value === 'string' && value.startsWith(_ENC_PREFIX);
   }
 
+  /* ── 번호 형식 검증 ── */
+  function validateBizRegNumber(raw) {
+    const digits = raw.replace(/-/g, '').replace(/\s/g, '');
+    if (!/^\d{10}$/.test(digits)) return false;
+    const w = [1, 3, 7, 1, 3, 7, 1, 3, 5];
+    let sum = 0;
+    for (let i = 0; i < 9; i++) sum += w[i] * parseInt(digits[i]);
+    sum += Math.floor((5 * parseInt(digits[8])) / 10);
+    return parseInt(digits[9]) === (10 - (sum % 10)) % 10;
+  }
+
+  function formatBizRegNumber(raw) {
+    const d = raw.replace(/\D/g, '').slice(0, 10);
+    if (d.length <= 3) return d;
+    if (d.length <= 5) return d.slice(0, 3) + '-' + d.slice(3);
+    return d.slice(0, 3) + '-' + d.slice(3, 5) + '-' + d.slice(5);
+  }
+
+  function validateResidentNumber(raw) {
+    const digits = raw.replace(/-/g, '');
+    if (!/^\d{13}$/.test(digits)) return { ok: false, msg: '13자리 숫자를 입력하세요.' };
+    const gender = parseInt(digits[6]);
+    if (![1,2,3,4,5,6,7,8,9,0].includes(gender)) return { ok: false, msg: '7번째 자리(성별코드)가 올바르지 않습니다.' };
+    // 생년월일 기본 유효성
+    const yy = parseInt(digits.slice(0, 2));
+    const mm = parseInt(digits.slice(2, 4));
+    const dd = parseInt(digits.slice(4, 6));
+    if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return { ok: false, msg: '생년월일이 올바르지 않습니다.' };
+    // 체크섬
+    const w = [2,3,4,5,6,7,8,9,2,3,4,5];
+    let sum = 0;
+    for (let i = 0; i < 12; i++) sum += w[i] * parseInt(digits[i]);
+    const check = (11 - (sum % 11)) % 10;
+    if (parseInt(digits[12]) !== check) return { ok: false, msg: '주민등록번호 형식이 올바르지 않습니다. (체크digit 불일치)' };
+    return { ok: true };
+  }
+
+  const BANK_ACCOUNT_LENGTHS = {
+    '국민은행': [14], 'KB국민': [14],
+    '신한은행': [12], '신한': [12],
+    '우리은행': [13], '우리': [13],
+    '하나은행': [14], '하나': [14],
+    '기업은행': [11], 'IBK': [11],
+    '농협은행': [12, 13], '농협': [12, 13],
+    '카카오뱅크': [13], '카카오': [13],
+    '토스뱅크': [11], '토스': [11],
+    '씨티은행': [11], '씨티': [11],
+    '수협은행': [11], '수협': [11],
+    '케이뱅크': [11], '케이': [11],
+  };
+
+  function getAccountLengthHint(bankName) {
+    if (!bankName) return null;
+    for (const [key, lengths] of Object.entries(BANK_ACCOUNT_LENGTHS)) {
+      if (bankName.includes(key)) return lengths;
+    }
+    return null;
+  }
+
+  window.onBizRegNumInput = function(el) {
+    const raw = el.value.replace(/[^\d-]/g, '');
+    el.value = formatBizRegNumber(raw.replace(/-/g, ''));
+    const hint = document.getElementById('biz-reg-num-hint');
+    if (!hint) return;
+    const digits = el.value.replace(/-/g, '');
+    if (digits.length === 10) {
+      if (validateBizRegNumber(digits)) {
+        hint.innerHTML = '<span style="color:var(--green);">✓ 올바른 형식입니다. "사업자 확인" 버튼으로 실제 조회하세요.</span>';
+      } else {
+        hint.innerHTML = '<span style="color:var(--red);">✗ 사업자등록번호 형식이 올바르지 않습니다.</span>';
+      }
+    } else {
+      hint.textContent = '';
+    }
+  };
+
+  window.onResidentNumInput = function(el) {
+    let raw = el.value.replace(/[^\d-]/g, '');
+    const digits = raw.replace(/-/g, '');
+    if (digits.length > 6 && !raw.includes('-')) {
+      raw = digits.slice(0, 6) + '-' + digits.slice(6, 13);
+    }
+    el.value = raw.slice(0, 14);
+    const hint = document.getElementById('resident-num-hint');
+    if (!hint) return;
+    const d = el.value.replace(/-/g, '');
+    if (d.length === 13) {
+      const r = validateResidentNumber(d);
+      hint.innerHTML = r.ok
+        ? '<span style="color:var(--green);">✓ 형식이 올바릅니다.</span>'
+        : '<span style="color:var(--red);">✗ ' + r.msg + '</span>';
+    } else {
+      hint.textContent = '';
+    }
+  };
+
+  window.onAccountNumInput = function(el) {
+    el.value = el.value.replace(/\D/g, '');
+    const hint = document.getElementById('account-num-hint');
+    if (!hint) return;
+    const len = el.value.length;
+    if (len === 0) { hint.textContent = ''; return; }
+    const bankName = (document.getElementById('f-bank-name') || {}).value || '';
+    const bankLengths = getAccountLengthHint(bankName);
+    if (len < 10) {
+      hint.innerHTML = '<span style="color:var(--red);">✗ 계좌번호는 최소 10자리입니다.</span>';
+    } else if (len > 14) {
+      hint.innerHTML = '<span style="color:var(--red);">✗ 계좌번호는 최대 14자리입니다.</span>';
+    } else if (bankLengths && !bankLengths.includes(len)) {
+      const expected = bankLengths.join(' 또는 ') + '자리';
+      hint.innerHTML = '<span style="color:#b45309;">⚠ ' + bankName + '은(는) 보통 ' + expected + '입니다. (현재 ' + len + '자리)</span>';
+    } else {
+      hint.innerHTML = '<span style="color:var(--green);">✓ 형식이 올바릅니다.</span>';
+    }
+  };
+
+  window.verifyBusinessNumber = async function() {
+    const el = document.getElementById('f-biz-reg-num');
+    const btn = document.getElementById('btn-verify-biz-num');
+    const hint = document.getElementById('biz-reg-num-hint');
+    if (!el || !hint) return;
+    const digits = (el.value || '').replace(/-/g, '').trim();
+    if (digits.length !== 10) { showToast('사업자등록번호 10자리를 입력하세요.', 'error'); return; }
+    if (!validateBizRegNumber(digits)) { showToast('사업자등록번호 형식이 올바르지 않습니다.', 'error'); return; }
+
+    let apiKey = '';
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'config'));
+      apiKey = snap.data()?.nts_api_key || '';
+    } catch(e) {}
+
+    if (!apiKey) {
+      hint.innerHTML = '<span style="color:#b45309;">⚠ 설정 페이지에서 국세청 API 키를 먼저 등록하세요.</span>';
+      showToast('설정 > 국세청 API 키를 먼저 등록해주세요.', 'error');
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = '조회 중...'; }
+    hint.innerHTML = '<span style="color:var(--gray-400);">조회 중...</span>';
+    try {
+      const url = 'https://api.odcloud.kr/api/nts-businessman/v1/status?serviceKey=' + encodeURIComponent(apiKey);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ b_no: [digits] })
+      });
+      const data = await res.json();
+      const item = data?.data?.[0];
+      if (!item) throw new Error('응답 없음');
+      if (item.b_stt_cd === '01') {
+        hint.innerHTML = '<span style="color:var(--green);">✅ 계속사업자 (과세유형: ' + (item.tax_type || '알 수 없음') + ')</span>';
+      } else if (item.b_stt_cd === '02') {
+        hint.innerHTML = '<span style="color:#b45309;">⚠ 휴업자</span>';
+      } else if (item.b_stt_cd === '03') {
+        hint.innerHTML = '<span style="color:var(--red);">✗ 폐업자</span>';
+      } else {
+        hint.innerHTML = '<span style="color:var(--gray-500);">국세청 응답: ' + (item.b_stt || '조회 결과 없음') + '</span>';
+      }
+    } catch(e) {
+      hint.innerHTML = '<span style="color:var(--red);">조회 오류: ' + e.message + '. API 키 또는 네트워크를 확인하세요.</span>';
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '사업자 확인'; }
+    }
+  };
+
   /* ── 로그인 ── */
   document.getElementById('btn-google-login').addEventListener('click', async () => {
     try {
@@ -1748,7 +1913,8 @@
       '<div id="section-resident" style="' + (bizType === 'individual' ? '' : 'display:none;') + '">',
       '<div class="form-row" style="margin-bottom:16px;">',
       formGroup('주민등록번호', 'f-resident',
-        '<input class="form-input" id="f-resident" type="password" autocomplete="off" ' + (isEncrypted(si.resident_number) ? 'placeholder="암호화 보관 중 · 변경 시 재입력" data-has-enc="1"' : 'value="' + esc(si.resident_number || '') + '" placeholder="000000-0000000"') + ' />' +
+        '<input class="form-input" id="f-resident" type="password" autocomplete="off" oninput="onResidentNumInput(this)" ' + (isEncrypted(si.resident_number) ? 'placeholder="암호화 보관 중 · 변경 시 재입력" data-has-enc="1"' : 'value="' + esc(si.resident_number || '') + '" placeholder="000000-0000000"') + ' />' +
+        '<div id="resident-num-hint" style="font-size:11px;margin-top:4px;"></div>' +
         '<div class="form-hint">⚠️ 원천징수 세금신고 목적으로만 사용 · 암호화 보관 · 5년 후 파기</div>'),
       '</div>',
       '<div class="form-hint" style="margin-bottom:14px;line-height:1.8;">🔒 주민등록번호는 소득세법에 따른 원천징수 의무 이행을 위해서만 수집됩니다. 암호화되어 저장되며, 세무법정 보관 기간(5년) 이후 파기됩니다.</div>',
@@ -1758,7 +1924,13 @@
       '<div id="section-business-fields" style="' + (bizType === 'individual' ? 'display:none;' : '') + '">',
       '<div class="form-row" style="margin-bottom:4px;">',
       formGroup('사업자등록번호', 'f-biz-reg-num',
-        '<input class="form-input" id="f-biz-reg-num" type="text" placeholder="000-00-00000" value="' + esc(si.business_reg_number || '') + '" />'),
+        '<div style="display:flex;gap:6px;align-items:flex-start;">' +
+        '<div style="flex:1;">' +
+        '<input class="form-input" id="f-biz-reg-num" type="text" placeholder="000-00-00000" value="' + esc(si.business_reg_number || '') + '" oninput="onBizRegNumInput(this)" />' +
+        '<div id="biz-reg-num-hint" style="font-size:11px;margin-top:4px;"></div>' +
+        '</div>' +
+        '<button type="button" id="btn-verify-biz-num" onclick="verifyBusinessNumber()" style="white-space:nowrap;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:var(--gray-700);flex-shrink:0;margin-top:0;">사업자 확인</button>' +
+        '</div>'),
       formGroup('과세 유형', 'f-taxation-type',
         '<select class="form-select" id="f-taxation-type" onchange="onTaxationTypeChange()">' +
         '<option value=""' + (!taxType ? ' selected' : '') + '>선택 안 함</option>' +
@@ -1785,7 +1957,8 @@
       '</div>',
       '<div class="form-group">',
       '<label class="form-label" for="f-account-number">계좌번호</label>',
-      '<input class="form-input" id="f-account-number" type="text" ' + (isEncrypted(si.account_number) ? 'placeholder="암호화 보관 중 · 변경 시 재입력" data-has-enc="1"' : 'value="' + esc(si.account_number || '') + '" placeholder="- 없이 숫자만 입력"') + ' />',
+      '<input class="form-input" id="f-account-number" type="text" oninput="onAccountNumInput(this)" ' + (isEncrypted(si.account_number) ? 'placeholder="암호화 보관 중 · 변경 시 재입력" data-has-enc="1"' : 'value="' + esc(si.account_number || '') + '" placeholder="- 없이 숫자만 입력"') + ' />',
+      '<div id="account-num-hint" style="font-size:11px;margin-top:4px;"></div>',
       '</div>',
 
       /* 서류 이미지 */
@@ -5676,6 +5849,18 @@
       '</div>' +
       '</div>' +
 
+      /* ── 국세청 사업자 조회 API 키 ── */
+      '<div class="card" style="padding:24px;margin-bottom:20px;">' +
+      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">국세청 사업자 조회 API 키</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">브랜드 정산 정보 입력 시 사업자등록번호 실시간 조회에 사용됩니다.</div>' +
+      '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;"><a href="https://www.data.go.kr/data/15081808/openapi.do" target="_blank" style="color:var(--blue);">공공데이터포털(data.go.kr)</a>에서 "국세청_사업자등록정보 진위확인 및 상태조회 서비스" 신청 → 일반 인증키(Encoding)를 붙여넣으세요.</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;">' +
+      '<input class="form-input" id="nts-api-key-input" type="password" placeholder="국세청 오픈API 서비스키" style="flex:1;font-family:monospace;font-size:13px;" />' +
+      '<button class="btn btn-primary" style="white-space:nowrap;" onclick="saveNtsApiKey()">저장</button>' +
+      '</div>' +
+      '<div id="nts-key-status" style="font-size:12px;margin-top:8px;color:var(--gray-400);">로딩 중...</div>' +
+      '</div>' +
+
       /* ── 유캔사인 API 키 ── */
       '<div class="card" style="padding:24px;margin-bottom:20px;">' +
       '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">유캔사인 API 키</div>' +
@@ -5709,7 +5894,42 @@
     checkFirebaseStatus();
     loadContractTemplatesList();
     loadUcansignApiKeyStatus();
+    loadNtsApiKeyStatus();
   }
+
+  /* ── 국세청 API 키 로드·저장 ── */
+  async function loadNtsApiKeyStatus() {
+    const statusEl = document.getElementById('nts-key-status');
+    const inputEl = document.getElementById('nts-api-key-input');
+    if (!statusEl) return;
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'config'));
+      const key = snap.data()?.nts_api_key || '';
+      if (key) {
+        statusEl.innerHTML = '<span style="color:var(--green);">✅ API 키가 저장되어 있습니다.</span> 변경하려면 새 값을 입력 후 저장하세요.';
+        if (inputEl) inputEl.placeholder = '••••••••••••••••••••••• (저장됨)';
+      } else {
+        statusEl.textContent = '아직 저장된 API 키가 없습니다. 브랜드 정산 정보에서 사업자 조회 버튼을 사용하려면 키가 필요합니다.';
+      }
+    } catch(e) {
+      statusEl.textContent = '로드 오류: ' + e.message;
+    }
+  }
+
+  window.saveNtsApiKey = async function() {
+    const inputEl = document.getElementById('nts-api-key-input');
+    const statusEl = document.getElementById('nts-key-status');
+    const key = (inputEl?.value || '').trim();
+    if (!key) { showToast('API 키를 입력해주세요.', 'error'); return; }
+    try {
+      await setDoc(doc(db, 'settings', 'config'), { nts_api_key: key }, { merge: true });
+      if (inputEl) { inputEl.value = ''; inputEl.placeholder = '••••••••••••••••••••••• (저장됨)'; }
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--green);">✅ API 키가 저장되어 있습니다.</span> 변경하려면 새 값을 입력 후 저장하세요.';
+      showToast('국세청 API 키가 저장되었습니다.', 'success');
+    } catch(e) {
+      showToast('저장 오류: ' + e.message, 'error');
+    }
+  };
 
   /* ── 유캔사인 API 키 로드·저장 ── */
   async function loadUcansignApiKeyStatus() {
