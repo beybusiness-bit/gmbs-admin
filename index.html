@@ -6681,14 +6681,32 @@
 
   window.openBulkBrandModal = function() {
     window._bulkBrandValidated = null;
+    window._bulkBrandImageMap = {};
+    var guideHtml =
+      '<div id="bulk-brand-guide" style="display:none;background:#f8f7ff;border:1px solid #ddd6fe;border-radius:10px;padding:16px;margin-top:4px;margin-bottom:12px;font-size:13px;line-height:1.9;">' +
+      '<div style="font-weight:700;color:#5b21b6;margin-bottom:12px;font-size:14px;">📦 이미지 포함 대량 등록 방법</div>' +
+      '<div style="display:grid;gap:10px;">' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">1단계</span><strong>양식 다운로드 후 작성</strong><br>' +
+      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">아래 "양식 파일 다운로드" 버튼으로 엑셀을 받아 브랜드 정보를 입력하세요.</span></div>' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">2단계</span><strong>이미지 파일 준비</strong> <span style="color:#6b7280;font-size:12px;">(선택사항)</span><br>' +
+      '<span style="color:#374151;font-size:12px;margin-left:52px;">파일명을 <strong>브랜드코드</strong>와 똑같이 지정해주세요 (확장자 제외).</span><br>' +
+      '<span style="margin-left:52px;font-family:monospace;font-size:12px;background:#ede9fe;padding:2px 8px;border-radius:4px;">ONG.jpg &nbsp;&nbsp; DRM.png &nbsp;&nbsp; SSR.jpg</span><br>' +
+      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">지원 형식: JPG, PNG, WebP · 이미지 없이 엑셀만 있어도 됩니다.</span></div>' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">3단계</span><strong>ZIP 파일로 묶기</strong><br>' +
+      '<span style="color:#374151;font-size:12px;margin-left:52px;">엑셀 파일 + 이미지 파일들을 하나의 ZIP으로 묶으세요.</span><br>' +
+      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">Mac: 모두 선택 → 우클릭 → "압축" &nbsp;|&nbsp; Windows: 선택 → 우클릭 → "ZIP 파일로 압축"</span></div>' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">4단계</span><strong>업로드</strong><br>' +
+      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">ZIP 또는 엑셀(.xlsx) 파일을 선택하고 "검사하기"를 클릭하세요.</span></div>' +
+      '</div></div>';
     showModal('브랜드 대량 등록', [
       '<div style="margin-bottom:16px;">',
-      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">',
+      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">',
       '<button class="btn btn-secondary" onclick="downloadBrandTemplate()" style="font-size:12px;">📥 양식 파일 다운로드</button>',
-      '<span style="font-size:12px;color:var(--gray-500);">작성 후 엑셀(.xlsx) 또는 CSV(.csv) 파일로 업로드해주세요</span>',
+      '<button type="button" id="btn-brand-guide-toggle" onclick="(function(){var g=document.getElementById(\'bulk-brand-guide\');var b=document.getElementById(\'btn-brand-guide-toggle\');var open=g.style.display===\'none\';g.style.display=open?\'block\':\'none\';b.textContent=open?\'📖 가이드 닫기\':\'📖 업로드 가이드 보기\';})()" style="font-size:12px;background:none;border:none;color:var(--primary);cursor:pointer;text-decoration:underline;padding:0;">📖 업로드 가이드 보기</button>',
       '</div>',
+      guideHtml,
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">',
-      '<input type="file" id="bulk-brand-file" accept=".xlsx,.xls,.csv" style="flex:1;font-size:13px;border:1px solid var(--gray-200);border-radius:8px;padding:6px 10px;" />',
+      '<input type="file" id="bulk-brand-file" accept=".xlsx,.xls,.csv,.zip" style="flex:1;font-size:13px;border:1px solid var(--gray-200);border-radius:8px;padding:6px 10px;" />',
       '<button class="btn btn-secondary" onclick="validateBulkBrands()" style="font-size:12px;white-space:nowrap;">🔍 검사하기</button>',
       '</div>',
       '</div>',
@@ -6720,8 +6738,37 @@
 
     try {
       var file = fileEl.files[0];
-      var buf = await file.arrayBuffer();
-      var wb = XLSX.read(buf, {type:'array'});
+      var isZip = file.name.toLowerCase().endsWith('.zip');
+      var xlsxBuf;
+      var imageMap = {};
+
+      if (isZip) {
+        if (!window.JSZip) { summaryEl.innerHTML = 'JSZip 라이브러리가 로드되지 않았습니다.'; return; }
+        summaryEl.innerHTML = '<div class="spinner spinner-sm" style="display:inline-block;margin-right:8px;"></div>ZIP 분석 중...';
+        var zipBuf = await file.arrayBuffer();
+        var zip = await JSZip.loadAsync(zipBuf);
+        var xlsxEntry = null;
+        var imgPromises = [];
+        zip.forEach(function(path, entry) {
+          if (entry.dir || path.includes('__MACOSX') || path.startsWith('.')) return;
+          var lp = path.toLowerCase();
+          if (!xlsxEntry && /\.(xlsx|xls|csv)$/.test(lp)) { xlsxEntry = entry; }
+          else if (/\.(jpg|jpeg|png|webp)$/.test(lp)) {
+            var basename = path.split('/').pop().replace(/\.[^.]+$/, '').toUpperCase().trim();
+            var ext = lp.split('.').pop().replace('jpeg','jpg');
+            imgPromises.push(entry.async('arraybuffer').then(function(buf) { imageMap[basename] = { buf: buf, ext: ext }; }));
+          }
+        });
+        if (!xlsxEntry) { summaryEl.innerHTML = '❌ ZIP 안에 엑셀 파일(.xlsx)이 없습니다. 폴더 없이 파일을 바로 ZIP에 넣었는지 확인해주세요.'; return; }
+        xlsxBuf = await xlsxEntry.async('arraybuffer');
+        await Promise.all(imgPromises);
+        summaryEl.innerHTML = '<div class="spinner spinner-sm" style="display:inline-block;margin-right:8px;"></div>ZIP 분석 완료 (이미지 ' + Object.keys(imageMap).length + '개). 엑셀 검사 중...';
+      } else {
+        xlsxBuf = await file.arrayBuffer();
+      }
+      window._bulkBrandImageMap = imageMap;
+
+      var wb = XLSX.read(xlsxBuf, {type:'array'});
       var sheetName = wb.SheetNames.includes('브랜드목록') ? '브랜드목록' : wb.SheetNames[wb.SheetNames.length - 1];
       var ws = wb.Sheets[sheetName];
       var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
@@ -6798,11 +6845,17 @@
            '<td>' + status + '</td>'].join('') + '</tr>';
       }).join('');
 
+      var imgKeys = Object.keys(window._bulkBrandImageMap || {});
+      var matchCount = imgKeys.length > 0
+        ? results.filter(function(r){ return r.errors.length === 0 && window._bulkBrandImageMap[r.brandCode]; }).length
+        : 0;
+
       summaryEl.innerHTML =
         '총 <strong>' + dataRows.length + '행</strong> 검사 완료 &nbsp;|&nbsp; ' +
         '등록 가능: <strong style="color:#16a34a;">' + okCount + '개</strong> &nbsp;|&nbsp; ' +
         '오류: <strong style="color:#dc2626;">' + errCount + '개</strong>' +
-        (errCount > 0 ? '<br><span style="font-size:12px;color:var(--gray-500);">오류 행은 업로드에서 제외됩니다. 정상 항목만 업로드할 수 있습니다.</span>' : '');
+        (imgKeys.length > 0 ? ' &nbsp;|&nbsp; 이미지 매칭: <strong style="color:#7c3aed;">' + matchCount + '/' + okCount + '개</strong>' : '') +
+        (errCount > 0 ? '<br><span style="font-size:12px;color:var(--gray-500);">오류 행은 업로드에서 제외됩니다.</span>' : '');
 
       if (okCount > 0) document.getElementById('btn-do-bulk-brand').style.display = '';
     } catch(e) {
@@ -6819,7 +6872,7 @@
       var now = new Date().toISOString();
       var existingSnap = await getDocs(collection(db, 'brands'));
       var existingCodes = new Set(existingSnap.docs.map(function(d){ return (d.data().brand_code||'').toUpperCase(); }));
-      var added = 0; var skipped = 0;
+      var added = 0; var skipped = 0; var imgUploaded = 0;
       for (var i = 0; i < items.length; i++) {
         var item = items[i];
         if (existingCodes.has(item.brandCode)) { skipped++; continue; }
@@ -6832,11 +6885,23 @@
         };
         if (item.bizDiv) data.biz_div = item.bizDiv;
         if (item.ceo) data.ceo_name = item.ceo;
-        await addDoc(collection(db, 'brands'), data);
+        var docRef = await addDoc(collection(db, 'brands'), data);
         existingCodes.add(item.brandCode);
         added++;
+        // 이미지 업로드 (ZIP에 파일명=브랜드코드 일치하는 경우)
+        var imgData = (window._bulkBrandImageMap || {})[item.brandCode.toUpperCase()];
+        if (imgData) {
+          try {
+            var mime = imgData.ext === 'png' ? 'image/png' : imgData.ext === 'webp' ? 'image/webp' : 'image/jpeg';
+            var sRef = ref(storage, 'brands/' + docRef.id + '/logo.' + imgData.ext);
+            await uploadBytes(sRef, new Uint8Array(imgData.buf), { contentType: mime });
+            var logoUrl = await getDownloadURL(sRef);
+            await updateDoc(doc(db, 'brands', docRef.id), { logo_url: logoUrl });
+            imgUploaded++;
+          } catch(imgErr) { console.warn('이미지 업로드 실패(' + item.brandCode + '):', imgErr.message); }
+        }
       }
-      showToast(added + '개 브랜드가 등록되었습니다.' + (skipped > 0 ? ' (' + skipped + '개 코드 충돌로 제외)' : ''), 'success');
+      showToast(added + '개 브랜드 등록 완료' + (imgUploaded > 0 ? ' (이미지 ' + imgUploaded + '개 포함)' : '') + (skipped > 0 ? ' · ' + skipped + '개 코드 충돌 제외' : ''), 'success');
       closeModal();
       const content = document.getElementById('page-content');
       if (content) await renderBrandList(content);
@@ -6896,9 +6961,9 @@
       '예) ONG\n(등록된 코드만)', '예) 체크 파우치', '수량관리\n또는 개체관리', '숫자만(원)',
       '예) 색상', '예) 빨강', '예) 크기', '예) 소형',
       '옵션3 있을 때만', '옵션3 있을 때만',
-      '이 SKU만 별도 가격\n(비우면 기본가)', '개체관리일 때\n생성할 개체수', '참고 메모'
+      '이 SKU만 별도 가격\n(비우면 기본가)', '개체관리일 때 생성할 개체수\n※ 개체별 이미지는 대량등록 불가\n→ 등록 후 개체관리 화면에서 개별 업로드', '참고 메모'
     ];
-    guideRow.height = 48;
+    guideRow.height = 60;
     guideRow.eachCell(function(cell) {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + GUIDE_BG } };
       cell.font = { italic: true, color: { argb: 'ff' + GUIDE_TEXT }, size: 10 };
@@ -6945,14 +7010,37 @@
 
   window.openBulkProductModal = function() {
     window._bulkProductValidated = null;
+    window._bulkProductImageMap = {};
+    var guideHtml =
+      '<div id="bulk-product-guide" style="display:none;background:#f8f7ff;border:1px solid #ddd6fe;border-radius:10px;padding:16px;margin-top:4px;margin-bottom:12px;font-size:13px;line-height:1.9;">' +
+      '<div style="font-weight:700;color:#5b21b6;margin-bottom:12px;font-size:14px;">📦 이미지 포함 대량 등록 방법</div>' +
+      '<div style="display:grid;gap:10px;">' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">1단계</span><strong>양식 다운로드 후 작성</strong><br>' +
+      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">한 행 = SKU 1개. 같은 브랜드코드+상품명이면 하나의 상품으로 묶입니다.</span></div>' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">2단계</span><strong>이미지 파일명 규칙</strong> <span style="color:#6b7280;font-size:12px;">(선택사항)</span><br>' +
+      '<div style="margin-left:52px;margin-top:4px;display:grid;gap:6px;">' +
+      '<div><span style="color:#374151;">📌 상품 대표 이미지</span> — 파일명: <span style="font-family:monospace;font-size:12px;background:#ede9fe;padding:1px 6px;border-radius:4px;">브랜드코드_상품명.jpg</span><br>' +
+      '<span style="color:#6b7280;font-size:12px;">예) <code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;">ONG_체크파우치.jpg</code></span></div>' +
+      '<div><span style="color:#374151;">📌 SKU별 이미지</span> — 파일명: <span style="font-family:monospace;font-size:12px;background:#ede9fe;padding:1px 6px;border-radius:4px;">브랜드코드_상품명_옵션1값_옵션2값.jpg</span><br>' +
+      '<span style="color:#6b7280;font-size:12px;">예) <code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;">ONG_체크파우치_빨강_소형.jpg</code></span><br>' +
+      '<span style="color:#6b7280;font-size:12px;">옵션이 3개면 옵션3값도 추가: <code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;">ONG_제품_빨강_소형_A타입.jpg</code></span></div>' +
+      '<div style="background:#fff3cd;border-radius:6px;padding:8px 10px;font-size:12px;color:#856404;">' +
+      '<strong>⚠️ 개체별 이미지는 대량 등록으로 불가합니다.</strong><br>' +
+      '엑셀에서 개체는 "개체수" 칸에 숫자만 입력하므로, 개체 하나하나에 다른 이미지를 지정할 수 없습니다.<br>' +
+      '→ 개체 이미지는 대량 등록 완료 후 <strong>개체 관리 화면</strong>에서 개별 업로드해주세요.</div>' +
+      '</div></div>' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">3단계</span><strong>ZIP으로 묶어 업로드</strong><br>' +
+      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">엑셀 + 이미지들을 ZIP으로 묶거나, 이미지 없이 엑셀만 단독 업로드도 가능합니다.</span></div>' +
+      '</div></div>';
     showModal('상품 대량 등록', [
       '<div style="margin-bottom:16px;">',
-      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">',
+      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">',
       '<button class="btn btn-secondary" onclick="downloadProductTemplate()" style="font-size:12px;">📥 양식 파일 다운로드</button>',
-      '<span style="font-size:12px;color:var(--gray-500);">한 행 = SKU 1개. 양식 3행의 작성안내를 참고하세요.</span>',
+      '<button type="button" id="btn-product-guide-toggle" onclick="(function(){var g=document.getElementById(\'bulk-product-guide\');var b=document.getElementById(\'btn-product-guide-toggle\');var open=g.style.display===\'none\';g.style.display=open?\'block\':\'none\';b.textContent=open?\'📖 가이드 닫기\':\'📖 업로드 가이드 보기\';})()" style="font-size:12px;background:none;border:none;color:var(--primary);cursor:pointer;text-decoration:underline;padding:0;">📖 업로드 가이드 보기</button>',
       '</div>',
+      guideHtml,
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">',
-      '<input type="file" id="bulk-product-file" accept=".xlsx,.xls,.csv" style="flex:1;font-size:13px;border:1px solid var(--gray-200);border-radius:8px;padding:6px 10px;" />',
+      '<input type="file" id="bulk-product-file" accept=".xlsx,.xls,.csv,.zip" style="flex:1;font-size:13px;border:1px solid var(--gray-200);border-radius:8px;padding:6px 10px;" />',
       '<button class="btn btn-secondary" onclick="validateBulkProducts()" style="font-size:12px;white-space:nowrap;">🔍 검사하기</button>',
       '</div>',
       '</div>',
@@ -6967,6 +7055,11 @@
       '<button class="btn btn-primary" id="btn-do-bulk-product" onclick="saveBulkProducts()" style="display:none;">📤 대량 업로드</button>'
     ].join(''), 'lg');
   };
+
+  // 상품 이미지 키 정규화: "ONG_체크파우치_빨강_소형" 형태로
+  function _normProductImgKey(str) {
+    return String(str || '').trim().replace(/\s+/g, '_').replace(/[^\w가-힣]/g, '_').replace(/_+/g, '_').toLowerCase();
+  }
 
   window.validateBulkProducts = async function() {
     var fileEl = document.getElementById('bulk-product-file');
@@ -6984,8 +7077,38 @@
 
     try {
       var file = fileEl.files[0];
-      var buf = await file.arrayBuffer();
-      var wb = XLSX.read(buf, {type:'array'});
+      var isZip = file.name.toLowerCase().endsWith('.zip');
+      var xlsxBuf;
+      var imageMap = {}; // key: normalized string, value: {buf, ext}
+
+      if (isZip) {
+        if (!window.JSZip) { summaryEl.innerHTML = 'JSZip 라이브러리가 로드되지 않았습니다.'; return; }
+        summaryEl.innerHTML = '<div class="spinner spinner-sm" style="display:inline-block;margin-right:8px;"></div>ZIP 분석 중...';
+        var zipBuf = await file.arrayBuffer();
+        var zip = await JSZip.loadAsync(zipBuf);
+        var xlsxEntry = null;
+        var imgPromises = [];
+        zip.forEach(function(path, entry) {
+          if (entry.dir || path.includes('__MACOSX') || path.startsWith('.')) return;
+          var lp = path.toLowerCase();
+          if (!xlsxEntry && /\.(xlsx|xls|csv)$/.test(lp)) { xlsxEntry = entry; }
+          else if (/\.(jpg|jpeg|png|webp)$/.test(lp)) {
+            var basename = path.split('/').pop().replace(/\.[^.]+$/, '');
+            var ext = lp.split('.').pop().replace('jpeg','jpg');
+            var normKey = _normProductImgKey(basename);
+            imgPromises.push(entry.async('arraybuffer').then(function(buf) { imageMap[normKey] = { buf: buf, ext: ext }; }));
+          }
+        });
+        if (!xlsxEntry) { summaryEl.innerHTML = '❌ ZIP 안에 엑셀 파일(.xlsx)이 없습니다.'; return; }
+        xlsxBuf = await xlsxEntry.async('arraybuffer');
+        await Promise.all(imgPromises);
+        summaryEl.innerHTML = '<div class="spinner spinner-sm" style="display:inline-block;margin-right:8px;"></div>ZIP 분석 완료 (이미지 ' + Object.keys(imageMap).length + '개). 엑셀 검사 중...';
+      } else {
+        xlsxBuf = await file.arrayBuffer();
+      }
+      window._bulkProductImageMap = imageMap;
+
+      var wb = XLSX.read(xlsxBuf, {type:'array'});
       var sheetName = wb.SheetNames.includes('상품목록') ? '상품목록' : wb.SheetNames[wb.SheetNames.length - 1];
       var ws = wb.Sheets[sheetName];
       var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
@@ -7161,12 +7284,26 @@
         var trackingType = first.trackingType;
         var productRef = doc(db, 'products', productId);
 
+        // 상품 대표 이미지 키: 브랜드코드_상품명
+        var productImgKey = _normProductImgKey(first.brandCode + '_' + first.productName);
+        var productImgData = (window._bulkProductImageMap || {})[productImgKey];
+        var productImgUrl = '';
+        if (productImgData) {
+          try {
+            var mime = productImgData.ext === 'png' ? 'image/png' : productImgData.ext === 'webp' ? 'image/webp' : 'image/jpeg';
+            var pRef = ref(storage, 'products/' + productId + '/main.' + productImgData.ext);
+            await uploadBytes(pRef, new Uint8Array(productImgData.buf), { contentType: mime });
+            productImgUrl = await getDownloadURL(pRef);
+          } catch(e) { console.warn('상품 이미지 업로드 실패:', e.message); }
+        }
+
         await setDoc(productRef, {
           brand_id: brand.id, brand_code: first.brandCode, brand_name: brand.brand_name,
           product_number: newProductNumber, product_name: first.productName,
           base_price: first.basePrice, tracking_type: trackingType,
           status: '판매중', approval_status: '승인',
           memo: first.memo || '', last_option_number: pad(0, optDigits),
+          image_url: productImgUrl,
           created_at: now, updated_at: now
         });
 
@@ -7178,6 +7315,24 @@
           var skuId = productId + '-' + optCode;
           var barcodeValue = skuId;
 
+          // SKU 이미지 키: 브랜드코드_상품명_옵션1값_옵션2값_옵션3값
+          var skuImgKeyParts = [skuItem.brandCode, skuItem.productName];
+          if (skuItem.o1val) skuImgKeyParts.push(skuItem.o1val);
+          if (skuItem.o2val) skuImgKeyParts.push(skuItem.o2val);
+          if (skuItem.o3val) skuImgKeyParts.push(skuItem.o3val);
+          var skuImgKey = _normProductImgKey(skuImgKeyParts.join('_'));
+          // SKU 이미지 없으면 상품 대표 이미지 재사용
+          var skuImgData = (window._bulkProductImageMap || {})[skuImgKey] || (skuImgKeyParts.length > 2 ? null : productImgData);
+          var skuImgUrl = (skuImgKey === productImgKey) ? productImgUrl : '';
+          if (skuImgData && skuImgKey !== productImgKey) {
+            try {
+              var skuMime = skuImgData.ext === 'png' ? 'image/png' : skuImgData.ext === 'webp' ? 'image/webp' : 'image/jpeg';
+              var sRef = ref(storage, 'products/' + productId + '/skus/' + skuId + '/main.' + skuImgData.ext);
+              await uploadBytes(sRef, new Uint8Array(skuImgData.buf), { contentType: skuMime });
+              skuImgUrl = await getDownloadURL(sRef);
+            } catch(e) { console.warn('SKU 이미지 업로드 실패:', e.message); }
+          }
+
           await setDoc(doc(db, 'products', productId, 'skus', skuId), {
             option_number: optCode, option_sort_order: optNum,
             option_1_name: skuItem.o1name || '', option_1_value: skuItem.o1val || '',
@@ -7185,6 +7340,7 @@
             option_3_name: skuItem.o3name || '', option_3_value: skuItem.o3val || '',
             price: skuItem.skuPrice != null ? skuItem.skuPrice : skuItem.basePrice,
             barcode_value: barcodeValue, sku_status: '판매중',
+            image_url: skuImgUrl,
             last_unit_number: pad(0, unitDigits), created_at: now, updated_at: now
           });
           totalSkus++;
