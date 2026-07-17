@@ -1805,6 +1805,18 @@
     setupFileUpload('upload-id-card', 'preview-id-card', 'input-id-card');
     setupFileUpload('upload-bank-book', 'preview-bank-book', 'input-bank-book');
     document.getElementById('btn-save-brand').addEventListener('click', () => saveBrand(brandId, existing));
+
+    // 암호화된 사업자등록번호 복호화 후 인풋에 채우기
+    const bizRegEl = document.getElementById('f-biz-reg-num');
+    if (bizRegEl && si.business_reg_number && isEncrypted(si.business_reg_number)) {
+      bizRegEl.value = '';
+      bizRegEl.placeholder = '복호화 중...';
+      bizRegEl.dataset.hasEnc = '1';
+      decryptField(si.business_reg_number).then(v => {
+        bizRegEl.value = v || '';
+        bizRegEl.placeholder = '000-00-00000';
+      }).catch(() => { bizRegEl.placeholder = '복호화 실패'; });
+    }
   };
 
   function buildBrandFormHTML(existing, si, fi) {
@@ -2075,10 +2087,15 @@
         const encResident = keepResident ? (si.resident_number || '') : (rawResident ? await encryptField(rawResident) : '');
         const encAccount = keepAccount ? (si.account_number || '') : (rawAccount ? await encryptField(rawAccount) : '');
 
+        const rawBizReg = bizType === 'business' ? ((document.getElementById('f-biz-reg-num') || {}).value || '').trim() : '';
+        const bizRegEl = document.getElementById('f-biz-reg-num');
+        const keepBizReg = bizType === 'business' && !rawBizReg && (bizRegEl || {}).dataset?.hasEnc === '1';
+        const encBizReg = keepBizReg ? (si.business_reg_number || '') : (rawBizReg ? await encryptField(rawBizReg) : '');
+
         data.settlement_info = {
           business_type: bizType,
           resident_number: encResident,
-          business_reg_number: bizType === 'business' ? ((document.getElementById('f-biz-reg-num') || {}).value || '').trim() : '',
+          business_reg_number: encBizReg,
           taxation_type: bizType === 'business' ? ((document.getElementById('f-taxation-type') || {}).value || '') : '',
           bank_name: ((document.getElementById('f-bank-name') || {}).value || '').trim(),
           account_holder: ((document.getElementById('f-account-holder') || {}).value || '').trim(),
@@ -2168,7 +2185,9 @@
         (bizTypeText
           ? sectionLabel('정산 정보 (벤더 제출)') +
             row('사업자 유형', bizTypeText) +
-            row('사업자등록번호', esc(si.business_reg_number || '')) +
+            row('사업자등록번호', isEncrypted(si.business_reg_number)
+              ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealBrandBizReg(\'' + brandId + '\')">🔓 보기</button><span id="bd-biz-reg" style="margin-left:8px;font-family:monospace;"></span>'
+              : esc(si.business_reg_number || '')) +
             row('과세 유형', esc(si.taxation_type || '')) +
             row('예금주', esc(si.account_holder || '')) +
             row('은행', esc(si.bank_name || '')) +
@@ -2451,6 +2470,24 @@
       if (sec) sec.innerHTML = '<div style="font-size:12px;color:var(--gray-400);">계약 로드 실패: ' + esc(e.message) + '</div>';
     }
   }
+
+  window.revealBrandBizReg = async function(brandId) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '복호화 중...';
+    try {
+      const snap = await getDoc(doc(db, 'brands', brandId));
+      const encVal = snap.data()?.settlement_info?.business_reg_number || '';
+      const plain = isEncrypted(encVal) ? await decryptField(encVal) : encVal;
+      const el = document.getElementById('bd-biz-reg');
+      if (el) el.textContent = plain || '(없음)';
+      btn.remove();
+    } catch(e) {
+      btn.disabled = false;
+      btn.textContent = '🔓 보기';
+      showToast('복호화 실패: ' + e.message, 'error');
+    }
+  };
 
   window.revealBrandAccountNumber = async function(brandId) {
     const btn = event.target;
@@ -6709,7 +6746,13 @@
           '<div class="form-label" style="margin-bottom:8px;font-size:12px;font-weight:700;">정산 정보 (벤더 제출)</div>' +
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">' +
             '<div><span style="color:var(--gray-500);font-size:11px;">사업자 구분</span><br>' + esc(si.business_type === 'individual' ? '개인(사업자없음)' : si.business_type === 'business' ? '사업자' : '-') + '</div>' +
-            (si.business_type === 'business' ? '<div><span style="color:var(--gray-500);font-size:11px;">사업자등록번호</span><br>' + esc(si.business_reg_number || '-') + '</div>' : '') +
+            (si.business_type === 'business' ? '<div><span style="color:var(--gray-500);font-size:11px;">사업자등록번호</span><br>' +
+              (si.business_reg_number
+                ? (isEncrypted(si.business_reg_number)
+                    ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealAppField(\'' + docId + '\',\'business_reg_number\',\'app-si-biz-reg\')">🔓 보기</button><span id="app-si-biz-reg" style="margin-left:8px;font-family:monospace;"></span>'
+                    : esc(si.business_reg_number))
+                : '-') +
+              '</div>' : '') +
             (si.business_type === 'business' ? '<div><span style="color:var(--gray-500);font-size:11px;">과세 유형</span><br>' + esc(si.taxation_type || '-') + '</div>' : '') +
             (si.business_type === 'individual' ? '<div><span style="color:var(--gray-500);font-size:11px;">주민등록번호</span><br><span id="app-si-resident">' + siResidentDisplay + '</span></div>' : '') +
             '<div><span style="color:var(--gray-500);font-size:11px;">은행</span><br>' + esc(si.bank_name || '-') + '</div>' +
