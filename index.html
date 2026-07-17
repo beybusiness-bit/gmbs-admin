@@ -1365,13 +1365,6 @@
       '<button class="btn btn-secondary" id="btn-export-brands" onclick="exportSelectedBrands()" style="display:none;">📥 선택 내보내기</button>';
 
     container.innerHTML =
-      '<div style="display:flex;justify-content:flex-end;margin-bottom:14px;">' +
-      '<div data-register-wrap="1" style="position:relative;display:inline-block;">' +
-      '<button class="btn btn-primary" onclick="toggleRegisterMenu(\'new-brand-menu\',this)">➕ 새 브랜드 등록 ▾</button>' +
-      '<div id="new-brand-menu" class="register-dropdown" style="display:none;">' +
-      '<div class="reg-menu-item" onclick="closeRegisterMenus();openBrandModal(null)">📝 일반 등록</div>' +
-      '<div class="reg-menu-item" onclick="closeRegisterMenus();openBulkBrandModal()">📤 대량 등록</div>' +
-      '</div></div></div>' +
       '<div id="brand-list-content"><div class="spinner" style="margin:60px auto;"></div></div>';
 
     try {
@@ -1386,7 +1379,7 @@
 
       _blContent.innerHTML =
         '<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">' +
-        '<input class="form-input" id="bl-search" placeholder="브랜드명, 브랜드코드 검색..." style="flex:1;min-width:220px;" oninput="window._brandPage=1;filterBrandList()" />' +
+        '<input class="form-input" id="bl-search" placeholder="브랜드명, 브랜드코드 검색..." style="flex:1;min-width:160px;max-width:260px;" oninput="window._brandPage=1;filterBrandList()" />' +
         '<select id="bl-type-filter" onchange="window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="">전체 유형</option><option value="PB">PB</option><option value="위탁">위탁</option><option value="매입">매입</option>' +
         '</select>' +
@@ -1396,6 +1389,12 @@
         '<select id="bl-page-size" onchange="window._brandPageSize=parseInt(this.value);window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
         '</select>' +
+        '<div data-register-wrap="1" style="position:relative;display:inline-block;margin-left:auto;">' +
+        '<button class="btn btn-primary" onclick="toggleRegisterMenu(\'new-brand-menu\',this)">➕ 새 브랜드 등록 ▾</button>' +
+        '<div id="new-brand-menu" class="register-dropdown" style="display:none;">' +
+        '<div class="reg-menu-item" onclick="closeRegisterMenus();openBrandModal(null)">📝 일반 등록</div>' +
+        '<div class="reg-menu-item" onclick="closeRegisterMenus();openBulkBrandModal()">📤 대량 등록</div>' +
+        '</div></div>' +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
         '<div id="bl-count" style="font-size:13px;color:var(--gray-500);"></div>' +
@@ -2911,13 +2910,6 @@
       '<button class="btn btn-secondary" id="btn-export-products" onclick="exportSelectedProducts()" style="display:none;">📥 선택 내보내기 (토스포스)</button>';
 
     container.innerHTML =
-      '<div style="display:flex;justify-content:flex-end;margin-bottom:14px;">' +
-      '<div data-register-wrap="1" style="position:relative;display:inline-block;">' +
-      '<button class="btn btn-primary" onclick="toggleRegisterMenu(\'new-product-menu\',this)">➕ 새 상품 등록 ▾</button>' +
-      '<div id="new-product-menu" class="register-dropdown" style="display:none;">' +
-      '<div class="reg-menu-item" onclick="closeRegisterMenus();openProductModal()">📝 일반 등록</div>' +
-      '<div class="reg-menu-item" onclick="closeRegisterMenus();openBulkProductModal()">📤 대량 등록</div>' +
-      '</div></div></div>' +
       '<div id="product-list-content"><div class="spinner" style="margin:60px auto;"></div></div>';
 
     try {
@@ -2928,13 +2920,19 @@
 
       _plContent.innerHTML =
         '<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">' +
-        '<input class="form-input" id="pl-search" placeholder="상품명, 상품ID, 브랜드코드 검색..." style="flex:1;min-width:220px;" oninput="window._productPage=1;filterProductList()" />' +
+        '<input class="form-input" id="pl-search" placeholder="상품명, 상품ID, 브랜드코드 검색..." style="flex:1;min-width:160px;max-width:280px;" oninput="window._productPage=1;filterProductList()" />' +
         '<select id="pl-approval-filter" onchange="window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="">전체 상태</option><option value="승인대기">승인대기</option><option value="승인">승인</option><option value="거절">거절</option><option value="판매중지">판매중지</option>' +
         '</select>' +
         '<select id="pl-page-size" onchange="window._productPageSize=parseInt(this.value);window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
         '</select>' +
+        '<div data-register-wrap="1" style="position:relative;display:inline-block;margin-left:auto;">' +
+        '<button class="btn btn-primary" onclick="toggleRegisterMenu(\'new-product-menu\',this)">➕ 새 상품 등록 ▾</button>' +
+        '<div id="new-product-menu" class="register-dropdown" style="display:none;">' +
+        '<div class="reg-menu-item" onclick="closeRegisterMenus();openProductModal()">📝 일반 등록</div>' +
+        '<div class="reg-menu-item" onclick="closeRegisterMenus();openBulkProductModal()">📤 대량 등록</div>' +
+        '</div></div>' +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
         '<div id="pl-count" style="font-size:13px;color:var(--gray-500);"></div>' +
@@ -4891,14 +4889,15 @@
     document.getElementById('page-header-actions').innerHTML = '';
 
     container.innerHTML =
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">' +
-      '<div style="display:flex;gap:8px;">' +
-      '<button class="btn btn-primary" id="cs-tab-store" style="font-size:13px;">🏪 매장 문의</button>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid var(--gray-200);margin-bottom:20px;">' +
+      '<div style="display:flex;gap:0;">' +
+      '<button id="cs-tab-store" onclick="window._csSwitchTab(\'store\')" style="padding:10px 20px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:var(--blue);border-bottom:3px solid var(--blue);margin-bottom:-2px;transition:all .15s;">🏪 매장 문의</button>' +
       '</div>' +
-      '<button class="btn btn-primary" style="font-size:13px;" onclick="openCustomerInquiryModal(null)">+ 문의 등록</button>' +
+      '<button class="btn btn-primary" style="font-size:13px;margin-bottom:8px;" onclick="openCustomerInquiryModal(null)">+ 문의 등록</button>' +
       '</div>' +
       '<div id="cs-content"><div class="spinner" style="margin:60px auto;"></div></div>';
 
+    window._csSwitchTab = function(tab) {};
     await loadStoreInquiries();
   }
 
@@ -6213,7 +6212,7 @@
         '<div id="' + expandId + '" style="display:none;margin-top:14px;border-top:1px solid var(--gray-100);padding-top:14px;">' +
 
         '<div style="margin-bottom:10px;line-height:2;">' +
-        '<b style="font-size:12px;color:var(--gray-700);">사용 가능한 변수</b> <span style="font-size:11px;color:var(--gray-400);">— 클릭하면 클립보드에 복사됩니다</span><br>' +
+        '<b style="font-size:12px;color:var(--gray-700);">사용 가능한 변수</b> <span style="font-size:11px;color:var(--gray-400);">— 입력칸 안에 커서가 있으면 커서 위치에 삽입, 없으면 클립보드 복사</span><br>' +
         varChips +
         '</div>' +
 
@@ -6293,11 +6292,22 @@
   }
 
   window.copyEmailVar = function(v) {
-    navigator.clipboard.writeText(v).then(function() {
-      showToast(v + ' 복사됨', 'success');
-    }).catch(function() {
-      showToast('복사 실패 — 직접 선택 후 복사하세요', 'error');
-    });
+    var ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA') && !ae.readOnly && !ae.disabled) {
+      var start = ae.selectionStart;
+      var end = ae.selectionEnd;
+      var val = ae.value;
+      ae.value = val.slice(0, start) + v + val.slice(end);
+      ae.selectionStart = ae.selectionEnd = start + v.length;
+      ae.dispatchEvent(new Event('input', { bubbles: true }));
+      showToast(v + ' 삽입됨', 'success');
+    } else {
+      navigator.clipboard.writeText(v).then(function() {
+        showToast(v + ' 복사됨', 'success');
+      }).catch(function() {
+        showToast('복사 실패 — 직접 선택 후 복사하세요', 'error');
+      });
+    }
   };
 
   window.toggleTplEditor = function(expandId) {
@@ -6423,69 +6433,6 @@
   function esc(str) {
     return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
-</script>
-
-<script>
-  function toggleSidebar() {
-    document.getElementById('sidebar').classList.toggle('open');
-    document.getElementById('sidebar-backdrop').classList.toggle('open');
-  }
-  function closeSidebar() {
-    document.getElementById('sidebar').classList.remove('open');
-    document.getElementById('sidebar-backdrop').classList.remove('open');
-  }
-  function toggleSidebarCollapse() {
-    const sidebar = document.getElementById('sidebar');
-    const main = document.getElementById('main');
-    const collapsed = sidebar.classList.toggle('collapsed');
-    main.classList.toggle('sidebar-collapsed', collapsed);
-    // 햄버거 아이콘은 접힘 여부와 무관하게 동일
-    try { localStorage.setItem('sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {}
-  }
-  // 저장된 상태 복원
-  (function() {
-    try {
-      if (localStorage.getItem('sidebar_collapsed') === '1') {
-        const sidebar = document.getElementById('sidebar');
-        const main = document.getElementById('main');
-        if (sidebar) { sidebar.classList.add('collapsed'); }
-        if (main) { main.classList.add('sidebar-collapsed'); }
-        // 햄버거 아이콘 유지
-      }
-    } catch(e) {}
-  })();
-  function showToast(msg, type) {
-    type = type || 'info';
-    const el = document.createElement('div');
-    el.className = 'toast ' + type;
-    el.textContent = msg;
-    document.getElementById('toast-container').appendChild(el);
-    setTimeout(() => el.remove(), 3500);
-  }
-  window.showToast = showToast;
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/service-worker.js').catch(() => {});
-    });
-  }
-
-  // ═══════════════════════════════════════════════
-  //  등록 드롭다운 메뉴 공통
-  // ═══════════════════════════════════════════════
-  window.toggleRegisterMenu = function(menuId, btn) {
-    document.querySelectorAll('.register-dropdown').forEach(function(el) {
-      if (el.id !== menuId) el.style.display = 'none';
-    });
-    var menu = document.getElementById(menuId);
-    if (!menu) return;
-    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
-  };
-  window.closeRegisterMenus = function() {
-    document.querySelectorAll('.register-dropdown').forEach(function(el) { el.style.display = 'none'; });
-  };
-  document.addEventListener('click', function(e) {
-    if (!e.target.closest('[data-register-wrap]')) closeRegisterMenus();
-  });
 
   // ═══════════════════════════════════════════════
   //  브랜드 대량 등록
@@ -6680,7 +6627,7 @@
       }
       showToast(added + '개 브랜드가 등록되었습니다.' + (skipped > 0 ? ' (' + skipped + '개 코드 충돌로 제외)' : ''), 'success');
       closeModal();
-      var content = document.getElementById('page-content');
+      const content = document.getElementById('page-content');
       if (content) await renderBrandList(content);
     } catch(e) {
       showToast('업로드 오류: ' + e.message, 'error');
@@ -6863,7 +6810,6 @@
           o1name, o1val, o2name, o2val, o3name, o3val, errors });
       });
 
-      // 같은 상품 내 관리방식 충돌 검사
       var productTrackingMap = {};
       results.forEach(function(r) {
         if (r.errors.length > 0) return;
@@ -6930,7 +6876,6 @@
       var brandMap = {};
       brandSnap.docs.forEach(function(d){ brandMap[(d.data().brand_code||'').toUpperCase()] = Object.assign({id:d.id}, d.data()); });
 
-      // 행을 (브랜드코드+상품명) 단위로 그룹핑 (순서 유지)
       var productGroupOrder = [];
       var productGroups = {};
       items.forEach(function(item) {
@@ -7009,13 +6954,76 @@
 
       showToast('상품 ' + totalProducts + '개 (SKU ' + totalSkus + '개' + (totalUnits > 0 ? ', 개체 ' + totalUnits + '개' : '') + ') 등록 완료!', 'success');
       closeModal();
-      var content = document.getElementById('page-content');
+      const content = document.getElementById('page-content');
       if (content) await renderProductList(content);
     } catch(e) {
       showToast('업로드 오류: ' + e.message, 'error');
       btn.disabled = false; btn.textContent = '📤 대량 업로드';
     }
   };
+</script>
+
+<script>
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebar-backdrop').classList.toggle('open');
+  }
+  function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-backdrop').classList.remove('open');
+  }
+  function toggleSidebarCollapse() {
+    const sidebar = document.getElementById('sidebar');
+    const main = document.getElementById('main');
+    const collapsed = sidebar.classList.toggle('collapsed');
+    main.classList.toggle('sidebar-collapsed', collapsed);
+    // 햄버거 아이콘은 접힘 여부와 무관하게 동일
+    try { localStorage.setItem('sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {}
+  }
+  // 저장된 상태 복원
+  (function() {
+    try {
+      if (localStorage.getItem('sidebar_collapsed') === '1') {
+        const sidebar = document.getElementById('sidebar');
+        const main = document.getElementById('main');
+        if (sidebar) { sidebar.classList.add('collapsed'); }
+        if (main) { main.classList.add('sidebar-collapsed'); }
+        // 햄버거 아이콘 유지
+      }
+    } catch(e) {}
+  })();
+  function showToast(msg, type) {
+    type = type || 'info';
+    const el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.textContent = msg;
+    document.getElementById('toast-container').appendChild(el);
+    setTimeout(() => el.remove(), 3500);
+  }
+  window.showToast = showToast;
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+    });
+  }
+
+  // ═══════════════════════════════════════════════
+  //  등록 드롭다운 메뉴 공통
+  // ═══════════════════════════════════════════════
+  window.toggleRegisterMenu = function(menuId, btn) {
+    document.querySelectorAll('.register-dropdown').forEach(function(el) {
+      if (el.id !== menuId) el.style.display = 'none';
+    });
+    var menu = document.getElementById(menuId);
+    if (!menu) return;
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+  };
+  window.closeRegisterMenus = function() {
+    document.querySelectorAll('.register-dropdown').forEach(function(el) { el.style.display = 'none'; });
+  };
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('[data-register-wrap]')) closeRegisterMenus();
+  });
 
   /* ── PWA 설치 프롬프트 ── */
   window._pwaInstallPrompt = null;
