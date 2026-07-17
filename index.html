@@ -387,48 +387,54 @@
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
-  /* ── 민감정보 암호화 (AES-GCM) ── */
-  // 주민등록번호, 계좌번호 등 법적 암호화 의무 대상 필드에 적용
+  /* ── 민감정보 암호화 (AES-GCM, 공유 키 방식) ── */
+  // app_configs/encryption.aes_key_b64 에 저장된 키를 admin·vendor가 공유
   // 암호화된 값은 "ENC:" 접두사로 구분됨
   const _ENC_PREFIX = 'ENC:';
-  const _ENC_PASSPHRASE = 'GMBS-SECURE-2024-' + (window.location.hostname || 'localhost');
+  let _sharedCryptoKey = null;
+  let _sharedKeyB64Cached = null;
 
-  async function _deriveKey(passphrase) {
-    const enc = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(passphrase), { name: 'PBKDF2' }, false, ['deriveKey']);
-    return crypto.subtle.deriveKey(
-      { name: 'PBKDF2', salt: enc.encode('gmbs-salt-v1'), iterations: 100000, hash: 'SHA-256' },
-      keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
-    );
+  async function _getSharedKey() {
+    try {
+      const snap = await getDoc(doc(db, 'app_configs', 'encryption'));
+      const keyB64 = snap.exists() ? (snap.data().aes_key_b64 || '') : '';
+      if (!keyB64) throw new Error('암호화 키가 설정되지 않았습니다. 설정 페이지에서 키를 생성해주세요.');
+      if (keyB64 === _sharedKeyB64Cached && _sharedCryptoKey) return _sharedCryptoKey;
+      const rawKey = Uint8Array.from(atob(keyB64), c => c.charCodeAt(0));
+      _sharedCryptoKey = await crypto.subtle.importKey('raw', rawKey, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+      _sharedKeyB64Cached = keyB64;
+      return _sharedCryptoKey;
+    } catch(e) {
+      throw new Error('암호화 키 로드 실패: ' + e.message);
+    }
   }
 
   async function encryptField(plaintext) {
     if (!plaintext) return '';
     try {
-      const key = await _deriveKey(_ENC_PASSPHRASE);
+      const key = await _getSharedKey();
       const iv = crypto.getRandomValues(new Uint8Array(12));
-      const enc = new TextEncoder();
-      const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(String(plaintext)));
+      const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(String(plaintext)));
       const combined = new Uint8Array(12 + ciphertext.byteLength);
       combined.set(iv, 0);
       combined.set(new Uint8Array(ciphertext), 12);
       return _ENC_PREFIX + btoa(String.fromCharCode(...combined));
-    } catch (e) {
+    } catch(e) {
       console.error('암호화 실패:', e);
-      return plaintext;
+      throw e;
     }
   }
 
   async function decryptField(encryptedValue) {
     if (!encryptedValue || !encryptedValue.startsWith(_ENC_PREFIX)) return encryptedValue || '';
     try {
-      const key = await _deriveKey(_ENC_PASSPHRASE);
+      const key = await _getSharedKey();
       const combined = Uint8Array.from(atob(encryptedValue.slice(_ENC_PREFIX.length)), c => c.charCodeAt(0));
       const iv = combined.slice(0, 12);
       const ciphertext = combined.slice(12);
       const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
       return new TextDecoder().decode(decrypted);
-    } catch (e) {
+    } catch(e) {
       console.error('복호화 실패:', e);
       return '';
     }
@@ -5810,6 +5816,15 @@
       '</div>' +
       '</div>' +
 
+      /* ── 암호화 키 관리 ── */
+      '<div class="card" style="padding:24px;margin-bottom:20px;">' +
+      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">암호화 키 관리</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">주민등록번호·계좌번호 암호화에 사용되는 AES-256 키입니다. Admin과 Vendor가 동일한 키를 공유해야 서로 복호화가 가능합니다.</div>' +
+      '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">⚠️ 키를 새로 생성하면 기존에 암호화된 데이터를 읽을 수 없게 됩니다. 기존 암호화 데이터가 없을 때만 생성하세요.</div>' +
+      '<div id="enc-key-status" style="font-size:13px;margin-bottom:12px;color:var(--gray-400);">확인 중...</div>' +
+      '<button class="btn btn-secondary" onclick="generateEncryptionKey()">🔑 새 암호화 키 생성 및 저장</button>' +
+      '</div>' +
+
       /* ── 국세청 사업자 조회 API 키 ── */
       '<div class="card" style="padding:24px;margin-bottom:20px;">' +
       '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">국세청 사업자 조회 API 키</div>' +
@@ -5856,7 +5871,43 @@
     loadContractTemplatesList();
     loadUcansignApiKeyStatus();
     loadNtsApiKeyStatus();
+    loadEncKeyStatus();
   }
+
+  /* ── 암호화 키 로드·생성 ── */
+  async function loadEncKeyStatus() {
+    const el = document.getElementById('enc-key-status');
+    if (!el) return;
+    try {
+      const snap = await getDoc(doc(db, 'app_configs', 'encryption'));
+      if (snap.exists() && snap.data().aes_key_b64) {
+        el.innerHTML = '<span style="color:var(--green);">✅ 암호화 키가 설정되어 있습니다.</span> Admin·Vendor 양쪽에서 동일 키로 암호화/복호화됩니다.';
+      } else {
+        el.innerHTML = '<span style="color:var(--red);">⚠ 암호화 키가 없습니다.</span> 아래 버튼으로 키를 생성하세요. 키가 없으면 주민등록번호·계좌번호 저장이 불가합니다.';
+      }
+    } catch(e) {
+      el.textContent = '확인 오류: ' + e.message;
+    }
+  }
+
+  window.generateEncryptionKey = async function() {
+    const el = document.getElementById('enc-key-status');
+    const confirmed = confirm('새 암호화 키를 생성합니다.\n\n⚠️ 기존에 암호화된 데이터(주민등록번호·계좌번호)가 있다면 읽을 수 없게 됩니다.\n\n계속하시겠습니까?');
+    if (!confirmed) return;
+    try {
+      const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+      const rawKey = await crypto.subtle.exportKey('raw', key);
+      const keyB64 = btoa(String.fromCharCode(...new Uint8Array(rawKey)));
+      await setDoc(doc(db, 'app_configs', 'encryption'), { aes_key_b64: keyB64, created_at: today() });
+      // 캐시 초기화
+      _sharedCryptoKey = null;
+      _sharedKeyB64Cached = null;
+      if (el) el.innerHTML = '<span style="color:var(--green);">✅ 새 암호화 키가 생성·저장되었습니다.</span> Vendor 앱에서 자동으로 동일 키를 사용합니다.';
+      showToast('암호화 키가 생성되었습니다.', 'success');
+    } catch(e) {
+      showToast('키 생성 오류: ' + e.message, 'error');
+    }
+  };
 
   /* ── 국세청 API 키 로드·저장 ── */
   async function loadNtsApiKeyStatus() {
@@ -6539,6 +6590,51 @@
     const isPending = item.status === '제출됨';
     const statusBadge = { '제출됨': '<span class="badge badge-blue">제출됨</span>', '승인': '<span class="badge badge-green">승인</span>', '거절': '<span class="badge badge-red">거절</span>' }[item.status] || '';
 
+    // 정산 정보 복호화 (암호화 필드)
+    const si = item.settlement_info || {};
+    let siResidentDisplay = '-';
+    let siAccountDisplay = '-';
+    if (si.resident_number && isEncrypted(si.resident_number)) {
+      decryptField(si.resident_number).then(v => {
+        const el = document.getElementById('app-si-resident');
+        if (el) el.textContent = v || '(복호화 실패)';
+      }).catch(() => {});
+      siResidentDisplay = '복호화 중...';
+    } else if (si.resident_number) {
+      siResidentDisplay = si.resident_number;
+    }
+    if (si.account_number && isEncrypted(si.account_number)) {
+      decryptField(si.account_number).then(v => {
+        const el = document.getElementById('app-si-account');
+        if (el) el.textContent = v || '(복호화 실패)';
+      }).catch(() => {});
+      siAccountDisplay = '복호화 중...';
+    } else if (si.account_number) {
+      siAccountDisplay = si.account_number;
+    }
+
+    const settlementSection = (item.settlement_info && !isJoin)
+      ? '<div style="border-top:1px solid var(--gray-200);padding-top:14px;margin-top:4px;margin-bottom:14px;">' +
+          '<div class="form-label" style="margin-bottom:8px;font-size:12px;font-weight:700;">정산 정보 (벤더 제출)</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">' +
+            '<div><span style="color:var(--gray-500);font-size:11px;">사업자 구분</span><br>' + esc(si.business_type === 'individual' ? '개인(사업자없음)' : si.business_type === 'business' ? '사업자' : '-') + '</div>' +
+            (si.business_type === 'business' ? '<div><span style="color:var(--gray-500);font-size:11px;">사업자등록번호</span><br>' + esc(si.business_reg_number || '-') + '</div>' : '') +
+            (si.business_type === 'business' ? '<div><span style="color:var(--gray-500);font-size:11px;">과세 유형</span><br>' + esc(si.taxation_type || '-') + '</div>' : '') +
+            (si.business_type === 'individual' ? '<div><span style="color:var(--gray-500);font-size:11px;">주민등록번호</span><br><span id="app-si-resident">' + esc(siResidentDisplay) + '</span></div>' : '') +
+            '<div><span style="color:var(--gray-500);font-size:11px;">은행</span><br>' + esc(si.bank_name || '-') + '</div>' +
+            '<div><span style="color:var(--gray-500);font-size:11px;">예금주</span><br>' + esc(si.account_holder || '-') + '</div>' +
+            '<div style="grid-column:1/-1;"><span style="color:var(--gray-500);font-size:11px;">계좌번호</span><br><span id="app-si-account">' + esc(siAccountDisplay) + '</span></div>' +
+          '</div>' +
+        '</div>'
+      : '';
+
+    const websiteSection = (item.website_urls && item.website_urls.length && !isJoin)
+      ? '<div style="margin-bottom:10px;"><span style="color:var(--gray-500);font-size:11px;">관련 사이트</span><br>' +
+          item.website_urls.map(u => '<a href="' + esc(u) + '" target="_blank" style="font-size:13px;color:var(--blue);display:block;">' + esc(u) + '</a>').join('') + '</div>'
+      : '';
+
+    const typeLabel = { PB: '🏷 PB', '위탁': '🤝 위탁', '매입': '📦 매입' };
+
     const bodyHTML =
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">' +
         '<div><div class="form-label" style="margin-bottom:2px;">상태</div><div>' + statusBadge + '</div></div>' +
@@ -6549,7 +6645,12 @@
         '<div><div class="form-label" style="margin-bottom:2px;">전화번호</div><div style="font-size:13px;">' + esc(item.applicant_phone || '-') + '</div></div>' +
         '<div><div class="form-label" style="margin-bottom:2px;">연락 이메일</div><div style="font-size:13px;">' + esc(item.applicant_contact_email || '-') + '</div></div>' +
         '<div><div class="form-label" style="margin-bottom:2px;">' + (isJoin ? '합류 대상 브랜드' : '브랜드명') + '</div><div style="font-size:13px;">' + esc(brandNameDisplay) + '</div></div>' +
+        (!isJoin && item.brand_type ? '<div><div class="form-label" style="margin-bottom:2px;">거래유형 (신청)</div><div style="font-size:13px;">' + esc(typeLabel[item.brand_type] || item.brand_type) + '</div></div>' : '') +
+        (!isJoin && item.requested_commission_rate ? '<div><div class="form-label" style="margin-bottom:2px;">요청 수수료율</div><div style="font-size:13px;">' + esc(String(item.requested_commission_rate)) + '%</div></div>' : '') +
       '</div>' +
+      (item.brand_description ? '<div style="margin-bottom:10px;"><span style="color:var(--gray-500);font-size:11px;">브랜드 소개</span><p style="font-size:13px;margin-top:2px;">' + esc(item.brand_description) + '</p></div>' : '') +
+      websiteSection +
+      settlementSection +
       (item.rejection_reason ? '<div style="padding:10px;background:#fee2e2;border-radius:6px;font-size:12px;color:#991b1b;margin-bottom:12px;">거절 사유: ' + esc(item.rejection_reason) + '</div>' : '') +
       (isPending
         ? '<div style="border-top:1px solid var(--gray-200);padding-top:16px;margin-top:4px;">' +
@@ -6625,11 +6726,18 @@
         });
 
       } else {
-        // 신규 브랜드 등록 신청 승인
+        // 신규 브랜드 등록 신청 승인 — brand_applications 데이터를 brands로 복사
         const brandRef = await addDoc(collection(db, 'brands'), {
           brand_name: item.brand_name || item.applicant_name + '의 브랜드',
           brand_code: '',
-          onboarding_status: '미계약',
+          brand_type: item.brand_type || '',
+          brand_desc: item.brand_description || '',
+          website_urls: item.website_urls || [],
+          settlement_info: item.settlement_info || {},
+          fee_info: item.brand_type === '위탁' && item.requested_commission_rate
+            ? { commission_rate: item.requested_commission_rate }
+            : {},
+          onboarding_status: '심사중',
           created_at: today(), updated_at: today()
         });
         const brandId = brandRef.id;
