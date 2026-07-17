@@ -5608,8 +5608,23 @@
       '<div class="form-group"><label class="form-label">계약서 변수 기본값 <span style="font-size:12px;font-weight:400;color:var(--gray-400);">(선택)</span></label>' +
       '<div style="font-size:12px;color:var(--gray-500);margin-bottom:8px;">유캔사인 계약서 안에 <strong>자동으로 채울 항목</strong>이 있으면 입력하세요. 계약 발송 시 수정도 가능합니다. 없으면 비워두세요.</div>' +
       '<div id="ct-fields-rows" style="display:flex;flex-direction:column;gap:6px;"></div>' +
-      '<button type="button" onclick="window._addCtFieldRow()" style="margin-top:8px;font-size:12px;padding:5px 12px;border:1px dashed var(--gray-300);border-radius:8px;background:none;cursor:pointer;color:var(--gray-500);">+ 항목 추가</button>' +
-      '<div style="font-size:11px;color:var(--gray-400);margin-top:6px;">예시 — 항목명: <code>수수료율</code>  기본값: <code>15%</code></div>' +
+      '<div style="display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap;">' +
+      '<button type="button" onclick="window._addCtFieldRow()" style="font-size:12px;padding:5px 12px;border:1px dashed var(--gray-300);border-radius:8px;background:none;cursor:pointer;color:var(--gray-500);">+ 항목 추가</button>' +
+      '<button type="button" id="btn-vars-toggle" onclick="(function(){var g=document.getElementById(\'ct-vars-panel\');var b=document.getElementById(\'btn-vars-toggle\');var open=g.style.display===\'none\';g.style.display=open?\'block\':\'none\';b.textContent=open?\'▲ 변수 목록 닫기\':\'▼ 사용 가능한 변수 보기\';})()" style="font-size:11px;background:none;border:none;color:var(--primary);cursor:pointer;text-decoration:underline;padding:0;">▼ 사용 가능한 변수 보기</button>' +
+      '</div>' +
+      '<div id="ct-vars-panel" style="display:none;background:#f8f7ff;border:1px solid #ddd6fe;border-radius:8px;padding:12px;margin-top:8px;font-size:12px;">' +
+      '<div style="color:#5b21b6;font-weight:700;margin-bottom:8px;">기본값 입력 시 아래 변수를 사용할 수 있습니다. 계약 발송 시 실제 값으로 자동 교체됩니다.</div>' +
+      '<table style="border-collapse:collapse;width:100%;line-height:2;">' +
+      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{brand_name}}</td><td style="padding:2px 12px;color:#374151;">브랜드명 (예: 온기)</td></tr>' +
+      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{brand_code}}</td><td style="padding:2px 12px;color:#374151;">브랜드코드 (예: ONG)</td></tr>' +
+      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{ceo_name}}</td><td style="padding:2px 12px;color:#374151;">대표자명</td></tr>' +
+      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{phone}}</td><td style="padding:2px 12px;color:#374151;">연락처</td></tr>' +
+      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{email}}</td><td style="padding:2px 12px;color:#374151;">이메일</td></tr>' +
+      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{commission_rate}}</td><td style="padding:2px 12px;color:#374151;">수수료율 (예: 20%)</td></tr>' +
+      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{yyyymmdd}}</td><td style="padding:2px 12px;color:#374151;">오늘 날짜 (예: 20260717)</td></tr>' +
+      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{yyyy-mm-dd}}</td><td style="padding:2px 12px;color:#374151;">오늘 날짜 (예: 2026-07-17)</td></tr>' +
+      '<tr><td style="padding:2px 8px;font-family:monospace;background:#ede9fe;border-radius:4px;white-space:nowrap;">{{yyyy년mm월dd일}}</td><td style="padding:2px 12px;color:#374151;">오늘 날짜 (예: 2026년 07월 17일)</td></tr>' +
+      '</table></div>' +
       '</div>' +
 
       '<div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;">' +
@@ -5711,21 +5726,24 @@
     };
 
     // 변수 행 추가 헬퍼
-    window._addCtFieldRow = function(k, v) {
+    window._addCtFieldRow = function(k, v, desc) {
       var row = document.createElement('div');
       row.className = 'ct-field-row';
-      row.style.cssText = 'display:flex;gap:6px;align-items:center;';
+      row.style.cssText = 'display:flex;flex-direction:column;gap:3px;padding:8px;background:var(--gray-50);border-radius:8px;border:1px solid var(--gray-200);';
       row.innerHTML =
-        '<input class="form-input ct-field-key" placeholder="항목명 (영문 또는 한글)" value="' + esc(k || '') + '" style="flex:1;font-size:13px;" />' +
-        '<span style="color:var(--gray-400);flex-shrink:0;">→ 기본값</span>' +
-        '<input class="form-input ct-field-val" placeholder="기본값" value="' + esc(v || '') + '" style="flex:1;font-size:13px;" />' +
-        '<button type="button" onclick="this.closest(\'.ct-field-row\').remove()" style="flex-shrink:0;border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:16px;padding:0 4px;">✕</button>';
+        '<div style="display:flex;gap:6px;align-items:center;">' +
+        '<input class="form-input ct-field-key" placeholder="항목명 (유캔사인 필드명)" value="' + esc(k || '') + '" style="flex:1;font-size:13px;" />' +
+        '<span style="color:var(--gray-400);flex-shrink:0;font-size:12px;">→</span>' +
+        '<input class="form-input ct-field-val" placeholder="기본값 (변수 예: {{brand_name}})" value="' + esc(v || '') + '" style="flex:1.5;font-size:13px;" />' +
+        '<button type="button" onclick="this.closest(\'.ct-field-row\').remove()" style="flex-shrink:0;border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:16px;padding:0 4px;">✕</button>' +
+        '</div>' +
+        '<input class="form-input ct-field-desc" placeholder="이 항목 설명 메모 (선택) — 예: 계약서 제목, 수수료율" value="' + esc(desc || '') + '" style="font-size:11px;color:#6b7280;border-color:var(--gray-200);padding:4px 8px;" />';
       document.getElementById('ct-fields-rows').appendChild(row);
     };
 
     // 기존 데이터 복원
     if (t.default_fields && typeof t.default_fields === 'object') {
-      Object.entries(t.default_fields).forEach(([k, v]) => window._addCtFieldRow(k, String(v)));
+      Object.entries(t.default_fields).forEach(([k, v]) => window._addCtFieldRow(k, String(v), (t.field_descs || {})[k] || ''));
     }
   };
 
@@ -5740,13 +5758,15 @@
 
     // 키-값 행에서 defaultFields 수집
     const defaultFields = {};
+    const fieldDescs = {};
     document.querySelectorAll('.ct-field-row').forEach(function(row) {
       const k = (row.querySelector('.ct-field-key') || {}).value?.trim();
       const v = (row.querySelector('.ct-field-val') || {}).value?.trim();
-      if (k) defaultFields[k] = v || '';
+      const d = (row.querySelector('.ct-field-desc') || {}).value?.trim();
+      if (k) { defaultFields[k] = v || ''; if (d) fieldDescs[k] = d; }
     });
 
-    const data = { name, ucansign_template_id: ucansignId, type: type || '', default_fields: defaultFields, is_active: isActive, updated_at: today() };
+    const data = { name, ucansign_template_id: ucansignId, type: type || '', default_fields: defaultFields, field_descs: fieldDescs, is_active: isActive, updated_at: today() };
     try {
       if (templateId) {
         await updateDoc(doc(db, 'contract_templates', templateId), data);
@@ -6684,19 +6704,24 @@
     window._bulkBrandImageMap = {};
     var guideHtml =
       '<div id="bulk-brand-guide" style="display:none;background:#f8f7ff;border:1px solid #ddd6fe;border-radius:10px;padding:16px;margin-top:4px;margin-bottom:12px;font-size:13px;line-height:1.9;">' +
-      '<div style="font-weight:700;color:#5b21b6;margin-bottom:12px;font-size:14px;">📦 이미지 포함 대량 등록 방법</div>' +
+      '<div style="font-weight:700;color:#5b21b6;margin-bottom:10px;font-size:14px;">📋 엑셀 단독 업로드</div>' +
+      '<div style="display:grid;gap:8px;margin-bottom:16px;">' +
+      '<div><span style="background:#6b7280;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">1</span><strong>양식 다운로드 후 작성</strong> — <span style="font-size:12px;color:#6b7280;">아래 "양식 파일 다운로드" 클릭</span></div>' +
+      '<div><span style="background:#6b7280;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">2</span><strong>엑셀(.xlsx) 파일 직접 선택 후 검사하기 클릭</strong> — <span style="font-size:12px;color:#6b7280;">이미지 없이 엑셀만 업로드 가능합니다.</span></div>' +
+      '</div>' +
+      '<hr style="border:none;border-top:1px solid #ddd6fe;margin:12px 0;" />' +
+      '<div style="font-weight:700;color:#5b21b6;margin-bottom:10px;font-size:14px;">📦 이미지 포함 ZIP 업로드</div>' +
       '<div style="display:grid;gap:10px;">' +
       '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">1단계</span><strong>양식 다운로드 후 작성</strong><br>' +
       '<span style="color:#6b7280;font-size:12px;margin-left:52px;">아래 "양식 파일 다운로드" 버튼으로 엑셀을 받아 브랜드 정보를 입력하세요.</span></div>' +
       '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">2단계</span><strong>이미지 파일 준비</strong> <span style="color:#6b7280;font-size:12px;">(선택사항)</span><br>' +
       '<span style="color:#374151;font-size:12px;margin-left:52px;">파일명을 <strong>브랜드코드</strong>와 똑같이 지정해주세요 (확장자 제외).</span><br>' +
       '<span style="margin-left:52px;font-family:monospace;font-size:12px;background:#ede9fe;padding:2px 8px;border-radius:4px;">ONG.jpg &nbsp;&nbsp; DRM.png &nbsp;&nbsp; SSR.jpg</span><br>' +
-      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">지원 형식: JPG, PNG, WebP · 이미지 없이 엑셀만 있어도 됩니다.</span></div>' +
+      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">지원 형식: JPG, PNG, WebP</span></div>' +
       '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">3단계</span><strong>ZIP 파일로 묶기</strong><br>' +
       '<span style="color:#374151;font-size:12px;margin-left:52px;">엑셀 파일 + 이미지 파일들을 하나의 ZIP으로 묶으세요.</span><br>' +
       '<span style="color:#6b7280;font-size:12px;margin-left:52px;">Mac: 모두 선택 → 우클릭 → "압축" &nbsp;|&nbsp; Windows: 선택 → 우클릭 → "ZIP 파일로 압축"</span></div>' +
-      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">4단계</span><strong>업로드</strong><br>' +
-      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">ZIP 또는 엑셀(.xlsx) 파일을 선택하고 "검사하기"를 클릭하세요.</span></div>' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">4단계</span><strong>ZIP 파일 선택 후 검사하기 클릭</strong></div>' +
       '</div></div>';
     showModal('브랜드 대량 등록', [
       '<div style="margin-bottom:16px;">',
@@ -7013,24 +7038,27 @@
     window._bulkProductImageMap = {};
     var guideHtml =
       '<div id="bulk-product-guide" style="display:none;background:#f8f7ff;border:1px solid #ddd6fe;border-radius:10px;padding:16px;margin-top:4px;margin-bottom:12px;font-size:13px;line-height:1.9;">' +
-      '<div style="font-weight:700;color:#5b21b6;margin-bottom:12px;font-size:14px;">📦 이미지 포함 대량 등록 방법</div>' +
+      '<div style="font-weight:700;color:#5b21b6;margin-bottom:10px;font-size:14px;">📋 엑셀 단독 업로드</div>' +
+      '<div style="display:grid;gap:8px;margin-bottom:16px;">' +
+      '<div><span style="background:#6b7280;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">1</span><strong>양식 다운로드 후 작성</strong> — <span style="font-size:12px;color:#6b7280;">한 행 = SKU 1개. 같은 브랜드코드+상품명이면 하나의 상품으로 묶입니다.</span></div>' +
+      '<div><span style="background:#6b7280;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">2</span><strong>엑셀(.xlsx) 파일 직접 선택 후 검사하기 클릭</strong> — <span style="font-size:12px;color:#6b7280;">이미지 없이 엑셀만 업로드 가능합니다.</span></div>' +
+      '</div>' +
+      '<hr style="border:none;border-top:1px solid #ddd6fe;margin:12px 0;" />' +
+      '<div style="font-weight:700;color:#5b21b6;margin-bottom:10px;font-size:14px;">📦 이미지 포함 ZIP 업로드</div>' +
       '<div style="display:grid;gap:10px;">' +
       '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">1단계</span><strong>양식 다운로드 후 작성</strong><br>' +
       '<span style="color:#6b7280;font-size:12px;margin-left:52px;">한 행 = SKU 1개. 같은 브랜드코드+상품명이면 하나의 상품으로 묶입니다.</span></div>' +
-      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">2단계</span><strong>이미지 파일명 규칙</strong> <span style="color:#6b7280;font-size:12px;">(선택사항)</span><br>' +
+      '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">2단계</span><strong>이미지 파일 준비</strong> <span style="color:#6b7280;font-size:12px;">(선택사항)</span><br>' +
       '<div style="margin-left:52px;margin-top:4px;display:grid;gap:6px;">' +
-      '<div><span style="color:#374151;">📌 상품 대표 이미지</span> — 파일명: <span style="font-family:monospace;font-size:12px;background:#ede9fe;padding:1px 6px;border-radius:4px;">브랜드코드_상품명.jpg</span><br>' +
-      '<span style="color:#6b7280;font-size:12px;">예) <code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;">ONG_체크파우치.jpg</code></span></div>' +
-      '<div><span style="color:#374151;">📌 SKU별 이미지</span> — 파일명: <span style="font-family:monospace;font-size:12px;background:#ede9fe;padding:1px 6px;border-radius:4px;">브랜드코드_상품명_옵션1값_옵션2값.jpg</span><br>' +
-      '<span style="color:#6b7280;font-size:12px;">예) <code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;">ONG_체크파우치_빨강_소형.jpg</code></span><br>' +
-      '<span style="color:#6b7280;font-size:12px;">옵션이 3개면 옵션3값도 추가: <code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;">ONG_제품_빨강_소형_A타입.jpg</code></span></div>' +
+      '<div><span style="color:#374151;">📌 이미지 파일명 = <strong>엑셀 행 번호</strong></span><br>' +
+      '<span style="color:#6b7280;font-size:12px;">예) 엑셀 4행 SKU 이미지 → <code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;">4.jpg</code> &nbsp; 엑셀 5행 SKU 이미지 → <code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;">5.jpg</code></span><br>' +
+      '<span style="color:#6b7280;font-size:12px;">지원 형식: JPG, PNG, WebP</span></div>' +
       '<div style="background:#fff3cd;border-radius:6px;padding:8px 10px;font-size:12px;color:#856404;">' +
       '<strong>⚠️ 개체별 이미지는 대량 등록으로 불가합니다.</strong><br>' +
-      '엑셀에서 개체는 "개체수" 칸에 숫자만 입력하므로, 개체 하나하나에 다른 이미지를 지정할 수 없습니다.<br>' +
-      '→ 개체 이미지는 대량 등록 완료 후 <strong>개체 관리 화면</strong>에서 개별 업로드해주세요.</div>' +
+      '→ 대량 등록 완료 후 <strong>개체 관리 화면</strong>에서 개별 업로드해주세요.</div>' +
       '</div></div>' +
       '<div><span style="background:#8c52ff;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-right:6px;">3단계</span><strong>ZIP으로 묶어 업로드</strong><br>' +
-      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">엑셀 + 이미지들을 ZIP으로 묶거나, 이미지 없이 엑셀만 단독 업로드도 가능합니다.</span></div>' +
+      '<span style="color:#6b7280;font-size:12px;margin-left:52px;">엑셀 + 이미지들을 ZIP으로 묶어 선택 후 "검사하기"를 클릭하세요.</span></div>' +
       '</div></div>';
     showModal('상품 대량 등록', [
       '<div style="margin-bottom:16px;">',
@@ -7095,8 +7123,7 @@
           else if (/\.(jpg|jpeg|png|webp)$/.test(lp)) {
             var basename = path.split('/').pop().replace(/\.[^.]+$/, '');
             var ext = lp.split('.').pop().replace('jpeg','jpg');
-            var normKey = _normProductImgKey(basename);
-            imgPromises.push(entry.async('arraybuffer').then(function(buf) { imageMap[normKey] = { buf: buf, ext: ext }; }));
+            imgPromises.push(entry.async('arraybuffer').then(function(buf) { imageMap[basename] = { buf: buf, ext: ext }; }));
           }
         });
         if (!xlsxEntry) { summaryEl.innerHTML = '❌ ZIP 안에 엑셀 파일(.xlsx)이 없습니다.'; return; }
@@ -7121,13 +7148,6 @@
       if (headerIdx < 0) { summaryEl.innerHTML = '헤더 행(브랜드코드*)을 찾을 수 없습니다.'; return; }
 
       var headers = rows[headerIdx].map(function(h){ return String(h).replace('*','').trim(); });
-      var dataRows = rows.slice(headerIdx + 1).filter(function(r){
-        if (!r.some(function(c){ return String(c).trim(); })) return false; // 빈 행
-        var first = String(r[0] || '').trim();
-        if (first.startsWith('예)') || first.startsWith('예시') || first.startsWith('(작성')) return false; // 안내 행
-        return true;
-      });
-
       var COLS = ['브랜드코드','상품명','관리방식','기본판매가','옵션1축이름','옵션1값','옵션2축이름','옵션2값','옵션3축이름','옵션3값','SKU판매가','개체수','메모'];
       var colIdx = {};
       COLS.forEach(function(k){ colIdx[k] = headers.findIndex(function(h){ return h.includes(k); }); });
@@ -7140,7 +7160,11 @@
       var okCount = 0; var errCount = 0;
       var productKeys = new Set();
 
-      dataRows.forEach(function(row, i) {
+      rows.slice(headerIdx + 1).forEach(function(row, rawIdx) {
+        if (!row.some(function(c){ return String(c).trim(); })) return; // 빈 행
+        var firstCell = String(row[0] || '').trim();
+        if (firstCell.startsWith('예)') || firstCell.startsWith('예시') || firstCell.startsWith('(작성')) return; // 안내 행
+        var excelRowNum = headerIdx + 2 + rawIdx; // 실제 엑셀 행 번호 (1부터)
         var get = function(key){ var ci = colIdx[key]; return ci >= 0 ? String(row[ci] || '').trim() : ''; };
         var brandCode = get('브랜드코드').toUpperCase();
         var productName = get('상품명');
@@ -7181,7 +7205,7 @@
         if (errors.length === 0) { okCount++; productKeys.add(productKey); }
         else errCount++;
 
-        results.push({ rowNum: i+1, brandCode, productName, trackingType,
+        results.push({ rowNum: excelRowNum, excelRowNum, brandCode, productName, trackingType,
           basePrice: isNaN(basePrice) ? basePriceRaw : basePrice,
           skuPrice, unitCount, optSummary, memo: get('메모'),
           o1name, o1val, o2name, o2val, o3name, o3val, errors });
@@ -7284,9 +7308,8 @@
         var trackingType = first.trackingType;
         var productRef = doc(db, 'products', productId);
 
-        // 상품 대표 이미지 키: 브랜드코드_상품명
-        var productImgKey = _normProductImgKey(first.brandCode + '_' + first.productName);
-        var productImgData = (window._bulkProductImageMap || {})[productImgKey];
+        // 상품 대표 이미지: 첫 번째 SKU 행 번호로 조회
+        var productImgData = (window._bulkProductImageMap || {})[String(first.excelRowNum)];
         var productImgUrl = '';
         if (productImgData) {
           try {
@@ -7315,16 +7338,10 @@
           var skuId = productId + '-' + optCode;
           var barcodeValue = skuId;
 
-          // SKU 이미지 키: 브랜드코드_상품명_옵션1값_옵션2값_옵션3값
-          var skuImgKeyParts = [skuItem.brandCode, skuItem.productName];
-          if (skuItem.o1val) skuImgKeyParts.push(skuItem.o1val);
-          if (skuItem.o2val) skuImgKeyParts.push(skuItem.o2val);
-          if (skuItem.o3val) skuImgKeyParts.push(skuItem.o3val);
-          var skuImgKey = _normProductImgKey(skuImgKeyParts.join('_'));
-          // SKU 이미지 없으면 상품 대표 이미지 재사용
-          var skuImgData = (window._bulkProductImageMap || {})[skuImgKey] || (skuImgKeyParts.length > 2 ? null : productImgData);
-          var skuImgUrl = (skuImgKey === productImgKey) ? productImgUrl : '';
-          if (skuImgData && skuImgKey !== productImgKey) {
+          // SKU 이미지 키: 엑셀 행 번호
+          var skuImgData = (window._bulkProductImageMap || {})[String(skuItem.excelRowNum)];
+          var skuImgUrl = '';
+          if (skuImgData) {
             try {
               var skuMime = skuImgData.ext === 'png' ? 'image/png' : skuImgData.ext === 'webp' ? 'image/webp' : 'image/jpeg';
               var sRef = ref(storage, 'products/' + productId + '/skus/' + skuId + '/main.' + skuImgData.ext);
