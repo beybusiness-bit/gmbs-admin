@@ -2571,7 +2571,36 @@
   };
 
   /* ── 브랜드 영구 삭제 ── */
-  window.confirmBrandDelete = function(brandId, brandName) {
+  window.confirmBrandDelete = async function(brandId, brandName) {
+    // 삭제 차단 조건 확인
+    try {
+      const productsSnap = await getDocs(query(collection(db, 'products'), where('brand_id', '==', brandId)));
+      if (!productsSnap.empty) {
+        showModal('삭제 불가',
+          '<div style="padding:8px 0;font-size:14px;line-height:1.8;">' +
+          '이 브랜드에 연결된 상품이 <strong>' + productsSnap.size + '개</strong> 있어 삭제할 수 없습니다.<br><br>' +
+          '브랜드를 삭제하려면 먼저 해당 상품을 모두 삭제하거나<br>다른 브랜드로 이전해 주세요.<br><br>' +
+          '<span style="color:var(--gray-500);font-size:13px;">삭제하지 않고 운영을 중단하려면 <b>비활성화</b>를 사용하세요.</span>' +
+          '</div>',
+          '<button class="btn btn-primary" onclick="closeModal()">확인</button>',
+          'sm');
+        return;
+      }
+      const settlementsSnap = await getDocs(query(collection(db, 'settlements'), where('brand_id', '==', brandId), where('pay_status', 'in', ['예정', '검토중', '확정'])));
+      if (!settlementsSnap.empty) {
+        showModal('삭제 불가',
+          '<div style="padding:8px 0;font-size:14px;line-height:1.8;">' +
+          '미결된 정산 내역이 <strong>' + settlementsSnap.size + '건</strong> 있어 삭제할 수 없습니다.<br><br>' +
+          '정산을 모두 완료(지급완료 처리)한 후 다시 시도해 주세요.' +
+          '</div>',
+          '<button class="btn btn-primary" onclick="closeModal()">확인</button>',
+          'sm');
+        return;
+      }
+    } catch(e) {
+      showToast('삭제 가능 여부 확인 실패: ' + e.message, 'error'); return;
+    }
+
     const risks = [
       '이 브랜드에 연결된 모든 <b>상품·SKU·개체·담당자·계약·서류</b>가 함께 삭제됩니다.',
       '삭제된 브랜드코드(<b>' + esc(brandName) + '</b>)로 발급된 바코드는 조회 불가 상태가 됩니다.',
@@ -3390,9 +3419,33 @@
   };
 
   /* ── 일괄 변경 (브랜드) ── */
-  window.bulkDeleteBrands = function() {
+  window.bulkDeleteBrands = async function() {
     const ids = [...(window._brandSelected || new Set())];
     if (!ids.length) return;
+
+    // 삭제 차단 조건 확인
+    const blocked = [];
+    for (const brandId of ids) {
+      const b = (window._allBrands || []).find(x => x.id === brandId);
+      const bName = b ? b.brand_name : brandId;
+      try {
+        const pSnap = await getDocs(query(collection(db, 'products'), where('brand_id', '==', brandId)));
+        if (!pSnap.empty) { blocked.push(esc(bName) + ' — 상품 ' + pSnap.size + '개 있음'); continue; }
+        const sSnap = await getDocs(query(collection(db, 'settlements'), where('brand_id', '==', brandId), where('pay_status', 'in', ['예정', '검토중', '확정'])));
+        if (!sSnap.empty) { blocked.push(esc(bName) + ' — 미결 정산 ' + sSnap.size + '건 있음'); }
+      } catch(e) { blocked.push(esc(bName) + ' — 확인 실패'); }
+    }
+    if (blocked.length > 0) {
+      showModal('일부 브랜드 삭제 불가',
+        '<div style="font-size:13px;line-height:1.8;padding:4px 0;">' +
+        '아래 브랜드는 삭제할 수 없어 전체 삭제가 중단되었습니다:<br><br>' +
+        '<ul style="padding-left:20px;color:var(--red);">' + blocked.map(t => '<li>' + t + '</li>').join('') + '</ul><br>' +
+        '해당 브랜드를 선택 해제하거나, 상품·정산을 먼저 처리한 후 다시 시도하세요.' +
+        '</div>',
+        '<button class="btn btn-primary" onclick="closeModal()">확인</button>', 'sm');
+      return;
+    }
+
     const names = ids.map(id => {
       const b = (window._allBrands || []).find(x => x.id === id);
       return b ? b.brand_name : id;
