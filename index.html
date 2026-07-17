@@ -245,9 +245,8 @@
 
 <div id="login-screen" style="display:none;">
   <div class="login-card">
-    <div class="login-logo">G</div>
-    <div class="login-title">GMBS 관리자</div>
-    <div class="login-sub">바코드 생성 · 상품 등록<br>관리자 전용 도구</div>
+    <div style="font-size:26px;font-weight:900;color:var(--blue);line-height:1.25;margin-bottom:8px;letter-spacing:-0.5px;">게을러서못열뻔한상점</div>
+    <div class="login-title" style="margin-bottom:24px;">메인 관리자</div>
     <button class="btn-google" id="btn-google-login">
       <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
         <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
@@ -303,11 +302,14 @@
       </div>
 
       <div class="nav-section-label">고객 지원</div>
-      <div class="nav-item" data-page="info-management" onclick="navigate('info-management')">
-        <span class="icon">📋</span><span class="nav-label"> 안내</span>
+      <div class="nav-item" data-page="customer-cs" onclick="navigate('customer-cs')">
+        <span class="icon">🛎️</span><span class="nav-label"> 고객 CS</span>
       </div>
       <div class="nav-item" data-page="inquiry-list" onclick="navigate('inquiry-list')">
-        <span class="icon">💬</span><span class="nav-label"> 문의</span>
+        <span class="icon">💬</span><span class="nav-label"> 브랜드 문의</span>
+      </div>
+      <div class="nav-item" data-page="info-management" onclick="navigate('info-management')">
+        <span class="icon">📋</span><span class="nav-label"> 안내</span>
       </div>
       <div class="nav-item" data-page="email-settings" onclick="navigate('email-settings')">
         <span class="icon">✉️</span><span class="nav-label"> 이메일 알림</span>
@@ -513,7 +515,8 @@
     'application-review': '승인 관리',
     'settlement-list': '정산',
     'info-management': '안내 관리',
-    'inquiry-list': '문의',
+    'inquiry-list': '브랜드 문의',
+    'customer-cs': '고객 CS',
     settings: '설정',
     'email-settings': '이메일 알림'
   };
@@ -535,6 +538,7 @@
     else if (page === 'settlement-list') await renderSettlementList(content);
     else if (page === 'info-management') await renderInfoManagement(content);
     else if (page === 'inquiry-list') await renderInquiryList(content);
+    else if (page === 'customer-cs') await renderCustomerCSPage(content);
     else if (page === 'barcode') renderBarcodePage(content);
     else if (page === 'settings') await renderSettings(content);
     else if (page === 'email-settings') await renderEmailSettings(content);
@@ -4839,6 +4843,444 @@
       closeModal();
       navigate('info-management');
     } catch(e) { showToast('삭제 실패: ' + e.message, 'error'); }
+  };
+
+  /* ════════════════════════════════
+     고객 CS (매장 문의)
+  ════════════════════════════════ */
+  const CS_TYPES = ['상품', '재입고', '불량/고장', '기타'];
+  const CS_STATUS = {
+    '답변대기':   { badge: 'badge-yellow', label: '답변대기' },
+    '답변완료':   { badge: 'badge-blue',   label: '답변완료' },
+    '재응답 필요': { badge: 'badge-red',    label: '재응답 필요' },
+    '처리완료':   { badge: 'badge-green',  label: '처리완료' },
+  };
+
+  async function renderCustomerCSPage(container) {
+    document.getElementById('page-header-actions').innerHTML =
+      '<button class="btn btn-primary" style="font-size:13px;" onclick="openCustomerInquiryModal(null)">+ 문의 등록</button>';
+
+    container.innerHTML =
+      '<div style="display:flex;gap:8px;margin-bottom:18px;">' +
+      '<button class="btn btn-primary" id="cs-tab-store" style="font-size:13px;">🏪 매장 문의</button>' +
+      '</div>' +
+      '<div id="cs-content"><div class="spinner" style="margin:60px auto;"></div></div>';
+
+    await loadStoreInquiries();
+  }
+
+  async function loadStoreInquiries(filterStatus) {
+    const wrap = document.getElementById('cs-content');
+    if (!wrap) return;
+    wrap.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+    try {
+      const snap = await getDocs(collection(db, 'customer_inquiries'));
+      let list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+      if (filterStatus) list = list.filter(i => i.status === filterStatus);
+
+      // 필터 바
+      const statusCounts = {};
+      snap.docs.forEach(d => {
+        const s = d.data().status || '답변대기';
+        statusCounts[s] = (statusCounts[s] || 0) + 1;
+      });
+      const filterBar =
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">' +
+        '<button class="btn ' + (!filterStatus ? 'btn-primary' : 'btn-secondary') + '" style="font-size:12px;padding:4px 10px;" onclick="loadStoreInquiries()">전체 ' + snap.size + '</button>' +
+        Object.entries(CS_STATUS).map(([k, v]) =>
+          '<button class="btn ' + (filterStatus === k ? 'btn-primary' : 'btn-secondary') + '" style="font-size:12px;padding:4px 10px;" onclick="loadStoreInquiries(\'' + k + '\')">' +
+          v.label + ' ' + (statusCounts[k] || 0) + '</button>'
+        ).join('') +
+        '</div>';
+
+      if (list.length === 0) {
+        wrap.innerHTML = filterBar + '<div class="empty-state"><div class="empty-state-icon">🛎️</div><div class="empty-state-text">등록된 문의가 없습니다.</div></div>';
+        return;
+      }
+
+      const rows = list.map(i => {
+        const s = CS_STATUS[i.status] || CS_STATUS['답변대기'];
+        return '<tr style="cursor:pointer;" onclick="openCustomerInquiryDetail(\'' + i.id + '\')">' +
+          '<td><span class="badge ' + s.badge + '">' + s.label + '</span></td>' +
+          '<td><span class="badge badge-gray" style="font-size:11px;">' + esc(i.type || '-') + '</span></td>' +
+          '<td style="font-weight:600;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(i.title || '') + '</td>' +
+          '<td style="font-size:12px;color:var(--gray-500);">' + esc(i.brand_name || '-') + '</td>' +
+          '<td style="font-size:12px;color:var(--gray-500);">' + esc(i.product_name || '-') + '</td>' +
+          '<td style="font-size:12px;color:var(--gray-400);">' + esc(fmtDate(i.created_at)) + '</td>' +
+          '</tr>';
+      }).join('');
+
+      wrap.innerHTML = filterBar +
+        '<div style="overflow-x:auto;"><table class="table"><thead><tr>' +
+        '<th>상태</th><th>종류</th><th>제목</th><th>브랜드</th><th>상품</th><th>등록일</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    } catch(e) {
+      wrap.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
+    }
+  }
+
+  /* 문의 등록/수정 모달 */
+  window.openCustomerInquiryModal = async function(inquiryId) {
+    let existing = null;
+    if (inquiryId) {
+      const snap = await getDoc(doc(db, 'customer_inquiries', inquiryId));
+      if (snap.exists()) existing = { id: snap.id, ...snap.data() };
+    }
+    const ci = existing || {};
+    showModal(existing ? '문의 수정' : '매장 문의 등록', '<div class="spinner" style="margin:40px auto;"></div>', '', 'lg');
+    try {
+      const brandsSnap = await getDocs(collection(db, 'brands'));
+      const brands = brandsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(b => b.active !== false)
+        .sort((a, b) => (a.brand_name || '').localeCompare(b.brand_name || ''));
+
+      const typeOpts = CS_TYPES.map(t =>
+        '<option value="' + t + '"' + (ci.type === t ? ' selected' : '') + '>' + t + '</option>'
+      ).join('');
+      const brandOpts = '<option value="">브랜드 선택 안 함</option>' +
+        brands.map(b => '<option value="' + b.id + '"' + (ci.brand_id === b.id ? ' selected' : '') + '>' + esc(b.brand_name) + '</option>').join('');
+
+      const formHtml =
+        '<div class="form-group"><label class="form-label">종류 <span style="color:var(--red);">*</span></label>' +
+        '<select class="form-input" id="ci-type">' + typeOpts + '</select></div>' +
+
+        '<div class="form-group"><label class="form-label">제목 <span style="color:var(--red);">*</span></label>' +
+        '<input class="form-input" id="ci-title" value="' + esc(ci.title || '') + '" placeholder="문의 제목" /></div>' +
+
+        '<div class="form-group"><label class="form-label">내용</label>' +
+        '<textarea class="form-input" id="ci-content" rows="4" style="resize:vertical;" placeholder="고객 문의 내용을 입력하세요">' + esc(ci.content || '') + '</textarea></div>' +
+
+        '<div style="border-top:1px solid var(--gray-100);margin:16px 0;padding-top:16px;">' +
+        '<div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:12px;">관련 상품 (선택)</div>' +
+
+        '<div class="form-group"><label class="form-label">브랜드</label>' +
+        '<select class="form-input" id="ci-brand" onchange="onCSBrandChange()">' + brandOpts + '</select></div>' +
+
+        '<div id="ci-product-area"></div>' +
+        '</div>';
+
+      const footer =
+        '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+        '<button class="btn btn-primary" onclick="saveCustomerInquiry(\'' + (existing ? existing.id : '') + '\')">저장</button>';
+
+      updateModal(null, formHtml, footer);
+
+      // 기존 값 있으면 상품 영역 복원
+      if (ci.brand_id) {
+        const brandSel = document.getElementById('ci-brand');
+        if (brandSel) brandSel.value = ci.brand_id;
+        await onCSBrandChange(ci.product_id, ci.sku_id, ci.unit_id);
+      }
+    } catch(e) {
+      showToast('로드 실패: ' + e.message, 'error'); closeModal();
+    }
+  };
+
+  window.onCSBrandChange = async function(preProductId, preSkuId, preUnitId) {
+    const brandId = (document.getElementById('ci-brand') || {}).value;
+    const area = document.getElementById('ci-product-area');
+    if (!area) return;
+    if (!brandId) { area.innerHTML = ''; return; }
+    area.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:8px 0;"></div>';
+    try {
+      const snap = await getDocs(collection(db, 'products'));
+      const products = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(p => p.brand_id === brandId && p.status !== '판매중지')
+        .sort((a, b) => (a.product_name || '').localeCompare(b.product_name || ''));
+
+      if (products.length === 0) {
+        area.innerHTML = '<div style="font-size:12px;color:var(--gray-400);margin-bottom:12px;">이 브랜드의 등록 상품이 없습니다.</div>';
+        return;
+      }
+      const prodOpts = '<option value="">상품 선택 안 함</option>' +
+        products.map(p => '<option value="' + p.id + '"' + (preProductId === p.id ? ' selected' : '') + '>' +
+          esc(p.product_name || p.id) + ' (' + esc(p.product_number || '') + ')' + '</option>').join('');
+
+      area.innerHTML =
+        '<div class="form-group"><label class="form-label">상품</label>' +
+        '<select class="form-input" id="ci-product" onchange="onCSProductChange()">' + prodOpts + '</select></div>' +
+        '<div id="ci-sku-area"></div>';
+
+      if (preProductId) {
+        const prodSel = document.getElementById('ci-product');
+        if (prodSel) prodSel.value = preProductId;
+        await onCSProductChange(preSkuId, preUnitId);
+      }
+    } catch(e) { area.innerHTML = '<div style="font-size:12px;color:var(--red);">로드 실패</div>'; }
+  };
+
+  window.onCSProductChange = async function(preSkuId, preUnitId) {
+    const productId = (document.getElementById('ci-product') || {}).value;
+    const area = document.getElementById('ci-sku-area');
+    if (!area) return;
+    if (!productId) { area.innerHTML = ''; return; }
+    area.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:8px 0;"></div>';
+    try {
+      const [productSnap, skusSnap] = await Promise.all([
+        getDoc(doc(db, 'products', productId)),
+        getDocs(collection(db, 'products', productId, 'skus')),
+      ]);
+      const product = productSnap.exists() ? productSnap.data() : {};
+      const skus = skusSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.option_sort_order || 0) - (b.option_sort_order || 0));
+
+      // 상품 썸네일
+      const prodThumb = product.photo_url
+        ? '<img src="' + esc(product.photo_url) + '" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);margin-bottom:10px;" />'
+        : '';
+
+      // SKU 선택 — 썸네일 그리드
+      const skuGrid = skus.map(s => {
+        const optLabel = [s.option_1_value, s.option_2_value, s.option_3_value].filter(Boolean).join(' / ') || '기본';
+        const thumb = s.photo_url || product.photo_url || '';
+        return '<div id="sku-card-' + s.id + '" onclick="selectCSsku(\'' + s.id + '\')" ' +
+          'style="cursor:pointer;border:2px solid ' + (preSkuId === s.id ? 'var(--blue)' : 'var(--gray-200)') + ';border-radius:10px;padding:8px;text-align:center;min-width:80px;">' +
+          (thumb ? '<img src="' + esc(thumb) + '" style="width:56px;height:56px;object-fit:cover;border-radius:6px;margin-bottom:4px;" />' :
+            '<div style="width:56px;height:56px;background:var(--gray-100);border-radius:6px;margin:0 auto 4px;display:flex;align-items:center;justify-content:center;font-size:20px;">📦</div>') +
+          '<div style="font-size:11px;color:var(--gray-700);font-weight:600;">' + esc(optLabel) + '</div>' +
+          '<div style="font-size:10px;color:var(--gray-400);">' + esc(s.barcode_value || '') + '</div>' +
+          '</div>';
+      }).join('');
+
+      area.innerHTML =
+        prodThumb +
+        (skus.length > 0
+          ? '<div class="form-group"><label class="form-label">옵션(SKU)</label>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:8px;">' + skuGrid + '</div></div>'
+          : '') +
+        '<input type="hidden" id="ci-sku" value="' + esc(preSkuId || '') + '" />' +
+        '<input type="hidden" id="ci-sku-tracking" value="' + esc(product.tracking_type || '') + '" />' +
+        '<div id="ci-unit-area"></div>';
+
+      if (preSkuId) {
+        const skuEl = document.getElementById('ci-sku');
+        if (skuEl) skuEl.value = preSkuId;
+        const sku = skus.find(s => s.id === preSkuId);
+        if (sku && product.tracking_type === 'individual') {
+          await loadCSUnits(productId, preSkuId, preUnitId);
+        }
+      }
+    } catch(e) { area.innerHTML = ''; }
+  };
+
+  window.selectCSsku = async function(skuId) {
+    // 이전 선택 해제
+    document.querySelectorAll('[id^="sku-card-"]').forEach(el => {
+      el.style.borderColor = 'var(--gray-200)';
+    });
+    const card = document.getElementById('sku-card-' + skuId);
+    if (card) card.style.borderColor = 'var(--blue)';
+    const skuEl = document.getElementById('ci-sku');
+    if (skuEl) skuEl.value = skuId;
+    document.getElementById('ci-unit-area').innerHTML = '';
+
+    const tracking = (document.getElementById('ci-sku-tracking') || {}).value;
+    if (tracking === 'individual') {
+      const productId = (document.getElementById('ci-product') || {}).value;
+      if (productId) await loadCSUnits(productId, skuId, null);
+    }
+  };
+
+  async function loadCSUnits(productId, skuId, preUnitId) {
+    const area = document.getElementById('ci-unit-area');
+    if (!area) return;
+    area.innerHTML = '<div class="spinner" style="width:18px;height:18px;margin:6px 0;"></div>';
+    try {
+      const snap = await getDocs(collection(db, 'products', productId, 'skus', skuId, 'units'));
+      const units = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(u => u.unit_status === '판매중')
+        .sort((a, b) => (a.unit_number || '').localeCompare(b.unit_number || ''));
+      if (units.length === 0) { area.innerHTML = ''; return; }
+      const opts = '<option value="">개체 선택 안 함</option>' +
+        units.map(u => '<option value="' + u.id + '"' + (preUnitId === u.id ? ' selected' : '') + '>' +
+          esc(u.barcode_value || u.unit_number || u.id) + (u.memo ? ' (' + esc(u.memo) + ')' : '') + '</option>').join('');
+      area.innerHTML =
+        '<div class="form-group"><label class="form-label">개체 번호</label>' +
+        '<select class="form-input" id="ci-unit">' + opts + '</select></div>';
+    } catch(e) { area.innerHTML = ''; }
+  }
+
+  window.saveCustomerInquiry = async function(inquiryId) {
+    const type = (document.getElementById('ci-type') || {}).value;
+    const title = ((document.getElementById('ci-title') || {}).value || '').trim();
+    const content = ((document.getElementById('ci-content') || {}).value || '').trim();
+    if (!title) { showToast('제목을 입력해주세요.', 'error'); return; }
+
+    const brandSel = document.getElementById('ci-brand');
+    const brandId = brandSel ? brandSel.value : '';
+    const brandName = brandSel && brandId ? (brandSel.options[brandSel.selectedIndex] || {}).text : '';
+    const productSel = document.getElementById('ci-product');
+    const productId = productSel ? productSel.value : '';
+    const productName = productSel && productId ? (productSel.options[productSel.selectedIndex] || {}).text : '';
+    const skuEl = document.getElementById('ci-sku');
+    const skuId = skuEl ? skuEl.value : '';
+    const unitSel = document.getElementById('ci-unit');
+    const unitId = unitSel ? unitSel.value : '';
+
+    const data = {
+      type, title, content,
+      brand_id: brandId || '',
+      brand_name: brandId ? brandName : '',
+      product_id: productId || '',
+      product_name: productId ? productName : '',
+      sku_id: skuId || '',
+      unit_id: unitId || '',
+      updated_at: today(),
+    };
+
+    try {
+      if (inquiryId) {
+        await updateDoc(doc(db, 'customer_inquiries', inquiryId), data);
+        showToast('수정되었습니다.');
+      } else {
+        data.status = '답변대기';
+        data.created_at = today();
+        data.created_by = auth.currentUser ? auth.currentUser.email : '';
+        await addDoc(collection(db, 'customer_inquiries'), data);
+        showToast('문의가 등록되었습니다.');
+      }
+      closeModal();
+      await loadStoreInquiries();
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  /* 문의 상세 */
+  window.openCustomerInquiryDetail = async function(inquiryId) {
+    showModal('문의 상세', '<div class="spinner" style="margin:40px auto;"></div>', '', 'lg');
+    try {
+      const [inqSnap, responsesSnap] = await Promise.all([
+        getDoc(doc(db, 'customer_inquiries', inquiryId)),
+        getDocs(collection(db, 'customer_inquiries', inquiryId, 'responses')),
+      ]);
+      if (!inqSnap.exists()) { showToast('문의를 찾을 수 없습니다.', 'error'); closeModal(); return; }
+      const inq = { id: inqSnap.id, ...inqSnap.data() };
+      const responses = responsesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+
+      const st = CS_STATUS[inq.status] || CS_STATUS['답변대기'];
+      const statusBadge = '<span class="badge ' + st.badge + '">' + st.label + '</span>';
+
+      // 기본 정보 섹션
+      let body =
+        '<div style="display:grid;grid-template-columns:70px 1fr;gap:6px 12px;font-size:13px;margin-bottom:16px;">' +
+        '<span style="color:var(--gray-500);">상태</span><span>' + statusBadge + '</span>' +
+        '<span style="color:var(--gray-500);">종류</span><span><span class="badge badge-gray">' + esc(inq.type || '-') + '</span></span>' +
+        '<span style="color:var(--gray-500);">등록일</span><span style="color:var(--gray-400);">' + esc(fmtDate(inq.created_at)) + '</span>' +
+        (inq.brand_name ? '<span style="color:var(--gray-500);">브랜드</span><span>' + esc(inq.brand_name) + '</span>' : '') +
+        (inq.product_name ? '<span style="color:var(--gray-500);">상품</span><span>' + esc(inq.product_name) + '</span>' : '') +
+        '</div>' +
+        '<div style="font-size:15px;font-weight:700;margin-bottom:8px;">' + esc(inq.title) + '</div>' +
+        '<div style="font-size:13px;color:var(--gray-700);white-space:pre-wrap;background:var(--gray-50);border-radius:8px;padding:12px;margin-bottom:16px;">' + esc(inq.content || '') + '</div>';
+
+      // 재응답 필요 사유
+      if (inq.status === '재응답 필요' && inq.re_response_note) {
+        body +=
+          '<div style="background:#fff3cd;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;">' +
+          '<div style="font-weight:700;margin-bottom:4px;color:#856404;">⚠️ 재응답 요청 사유</div>' +
+          '<div style="color:#664d03;white-space:pre-wrap;">' + esc(inq.re_response_note) + '</div>' +
+          '</div>';
+      }
+
+      // 응답 이력
+      body += '<div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:10px;border-top:1px solid var(--gray-100);padding-top:14px;">응답 이력</div>';
+      if (responses.length === 0) {
+        body += '<div style="font-size:13px;color:var(--gray-400);margin-bottom:16px;">아직 응답이 없습니다.</div>';
+      } else {
+        body += responses.map(r => {
+          const isVendor = r.author_type === 'vendor';
+          return '<div style="margin-bottom:12px;' + (isVendor ? 'padding-left:0;' : 'padding-left:0;') + '">' +
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
+            '<span style="font-size:12px;font-weight:700;color:' + (isVendor ? 'var(--blue)' : 'var(--gray-700)') + ';">' +
+            (isVendor ? '🏬 ' : '👤 ') + esc(r.author_name || r.author_email || '') + '</span>' +
+            '<span style="font-size:11px;color:var(--gray-400);">' + esc(fmtTs(r.created_at)) + '</span>' +
+            '</div>' +
+            '<div style="font-size:13px;color:var(--gray-700);white-space:pre-wrap;background:' + (isVendor ? 'var(--blue-light)' : 'var(--gray-50)') + ';border-radius:8px;padding:10px;">' +
+            esc(r.content || '') + '</div>' +
+            '</div>';
+        }).join('');
+      }
+
+      // 관리자 응답 작성
+      body +=
+        '<div style="border-top:1px solid var(--gray-100);padding-top:14px;margin-top:4px;">' +
+        '<div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:8px;">관리자 응답 작성</div>' +
+        '<textarea class="form-input" id="ci-admin-response" rows="3" style="resize:vertical;" placeholder="응답 내용을 입력하세요..."></textarea>' +
+        '</div>';
+
+      // 하단 버튼
+      const canClose = inq.status === '답변완료';
+      const canReRequest = inq.status === '답변완료' && inq.brand_id;
+      const footer =
+        '<button class="btn btn-secondary" onclick="openCustomerInquiryModal(\'' + inquiryId + '\')">수정</button>' +
+        '<div style="flex:1;"></div>' +
+        (canReRequest
+          ? '<button class="btn btn-secondary" style="color:var(--red);" onclick="openCSReResponseModal(\'' + inquiryId + '\')">재응답 요청</button>'
+          : '') +
+        (canClose
+          ? '<button class="btn btn-secondary" style="color:var(--green);" onclick="updateCSStatus(\'' + inquiryId + '\',\'처리완료\')">처리완료</button>'
+          : '') +
+        '<button class="btn btn-primary" onclick="submitCSAdminResponse(\'' + inquiryId + '\')">응답 저장</button>';
+
+      updateModal('문의 상세 — ' + esc(inq.title), body,
+        '<div style="display:flex;gap:8px;align-items:center;width:100%;">' + footer + '</div>');
+    } catch(e) {
+      showToast('로드 실패: ' + e.message, 'error'); closeModal();
+    }
+  };
+
+  window.submitCSAdminResponse = async function(inquiryId) {
+    const content = ((document.getElementById('ci-admin-response') || {}).value || '').trim();
+    if (!content) { showToast('응답 내용을 입력해주세요.', 'error'); return; }
+    try {
+      const user = auth.currentUser;
+      await addDoc(collection(db, 'customer_inquiries', inquiryId, 'responses'), {
+        content,
+        author_type: 'admin',
+        author_email: user ? user.email : '',
+        author_name: user ? (user.displayName || user.email) : '관리자',
+        created_at: today(),
+      });
+      await updateDoc(doc(db, 'customer_inquiries', inquiryId), { status: '답변완료', updated_at: today() });
+      showToast('응답이 저장되었습니다.');
+      await openCustomerInquiryDetail(inquiryId);
+      await loadStoreInquiries();
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  window.updateCSStatus = async function(inquiryId, status) {
+    try {
+      await updateDoc(doc(db, 'customer_inquiries', inquiryId), { status, updated_at: today() });
+      showToast('상태가 변경되었습니다.');
+      await openCustomerInquiryDetail(inquiryId);
+      await loadStoreInquiries();
+    } catch(e) { showToast('상태 변경 실패: ' + e.message, 'error'); }
+  };
+
+  window.openCSReResponseModal = function(inquiryId) {
+    const formHtml =
+      '<div style="font-size:13px;color:var(--gray-600);margin-bottom:12px;">브랜드 담당자에게 추가 정보를 요청합니다. 담당자 포털에서 이 내용과 함께 재응답 요청이 표시됩니다.</div>' +
+      '<div class="form-group"><label class="form-label">재응답 요청 사유 / 추가 문의 내용</label>' +
+      '<textarea class="form-input" id="cs-re-note" rows="4" style="resize:vertical;" placeholder="예: 제품 불량 여부 확인 필요, 교환 가능 여부 알려주세요..."></textarea></div>';
+    const footer =
+      '<button class="btn btn-secondary" onclick="openCustomerInquiryDetail(\'' + inquiryId + '\')">취소</button>' +
+      '<button class="btn btn-primary" style="background:var(--red);border-color:var(--red);" onclick="submitCSReResponse(\'' + inquiryId + '\')">재응답 요청 전송</button>';
+    showModal('재응답 요청', formHtml, footer);
+  };
+
+  window.submitCSReResponse = async function(inquiryId) {
+    const note = ((document.getElementById('cs-re-note') || {}).value || '').trim();
+    if (!note) { showToast('요청 사유를 입력해주세요.', 'error'); return; }
+    try {
+      await updateDoc(doc(db, 'customer_inquiries', inquiryId), {
+        status: '재응답 필요',
+        re_response_note: note,
+        updated_at: today(),
+      });
+      showToast('재응답 요청이 전송되었습니다.');
+      closeModal();
+      await loadStoreInquiries();
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
 
   /* ════════════════════════════════
