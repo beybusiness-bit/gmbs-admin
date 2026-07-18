@@ -1590,7 +1590,7 @@
         '<option value="">전체 유형</option><option value="PB">PB</option><option value="위탁">위탁</option><option value="매입">매입</option>' +
         '</select>' +
         '<select id="bl-onboarding-filter" onchange="window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
-        '<option value="">전체 입점상태</option><option value="미계약">미계약</option><option value="계약완료">계약완료</option><option value="심사중">심사중</option><option value="승인">승인</option><option value="거절">거절</option><option value="종료">종료</option>' +
+        '<option value="">전체 입점상태</option><option value="계약 정보 입력 필요">계약 정보 입력 필요</option><option value="미계약">미계약</option><option value="계약 전">계약 전</option><option value="계약완료">계약완료</option><option value="심사중">심사중</option><option value="승인">승인</option><option value="거절">거절</option><option value="종료">종료</option>' +
         '</select>' +
         '<select id="bl-active-filter" onchange="window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="active">활성 브랜드</option><option value="inactive">비활성 브랜드</option><option value="expiring">⚠️ 만료 임박 (30일)</option><option value="all">전체</option>' +
@@ -1707,7 +1707,9 @@
       tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--gray-400);padding:32px;">검색 결과가 없습니다.</td></tr>';
     } else {
       const onboardingBadge = s => ({
+        '계약 정보 입력 필요': '<span class="badge badge-orange">계약 정보 입력 필요</span>',
         '미계약': '<span class="badge badge-gray">미계약</span>',
+        '계약 전': '<span class="badge badge-gray">계약 전</span>',
         '계약완료': '<span class="badge badge-blue">계약완료</span>',
         '심사중': '<span class="badge badge-yellow">심사중</span>',
         '승인': '<span class="badge badge-green">승인</span>',
@@ -2155,6 +2157,13 @@
       }
 
       if (brandId) {
+        // settlement_info 저장 시: onboarding_status가 '계약 정보 입력 필요'이면 '계약 전'으로 전환
+        if (data.settlement_info && data.settlement_info.bank_name) {
+          const bSnap = await getDoc(doc(db, 'brands', brandId));
+          if (bSnap.exists() && bSnap.data().onboarding_status === '계약 정보 입력 필요') {
+            data.onboarding_status = '계약 전';
+          }
+        }
         await updateDoc(doc(db, 'brands', brandId), data);
         showToast('브랜드 정보를 수정했습니다.', 'success');
       } else {
@@ -2198,7 +2207,9 @@
       const bizTypeText = si.business_type === 'individual' ? '개인(사업자없음)' : (si.business_type === 'business' ? '사업자' : '');
 
       const onboardingBadge = s => ({
+        '계약 정보 입력 필요': '<span class="badge badge-orange">계약 정보 입력 필요</span>',
         '미계약': '<span class="badge badge-gray">미계약</span>',
+        '계약 전': '<span class="badge badge-gray">계약 전</span>',
         '계약완료': '<span class="badge badge-blue">계약완료</span>',
         '심사중': '<span class="badge badge-yellow">심사중</span>',
         '승인': '<span class="badge badge-green">승인</span>',
@@ -3770,7 +3781,7 @@
   window.bulkChangeBrandStatus = function() {
     const ids = [...(window._brandSelected || new Set())];
     if (!ids.length) return;
-    const onboardingOpts = ['미계약', '계약완료', '심사중', '승인', '거절', '종료'];
+    const onboardingOpts = ['계약 정보 입력 필요', '미계약', '계약 전', '계약완료', '심사중', '승인', '거절', '종료'];
     const typeOpts = ['PB', '위탁', '매입', '기타'];
     const formHTML =
       '<p style="font-size:13px;color:var(--gray-600);margin-bottom:16px;">선택된 <strong>' + ids.length + '</strong>개 브랜드에 적용할 항목을 선택하세요. 체크한 항목만 변경됩니다.</p>' +
@@ -7695,8 +7706,8 @@
           website_urls: item.website_urls || [],
           settlement_info: item.settlement_info || {},
           fee_info: adminBrandType === '위탁' ? { commission_rate: adminCommission } : {},
-          onboarding_status: '심사중',
-          ...(item.brand_photo_url ? { logo_url: item.brand_photo_url } : {}),
+          onboarding_status: '계약 정보 입력 필요',
+          ...(item.brand_photo_url ? { logo_url: item.brand_photo_url, brand_photo_url: item.brand_photo_url } : {}),
           created_at: today(), updated_at: today()
         });
         const brandId = brandRef.id;
