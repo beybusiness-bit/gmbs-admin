@@ -1844,6 +1844,7 @@
     };
     setupFileUpload('upload-brand-logo', 'preview-brand-logo', 'input-brand-logo');
     setupFileUpload('upload-id-card', 'preview-id-card', 'input-id-card');
+    setupFileUpload('upload-biz-reg-doc', 'preview-biz-reg-doc', 'input-biz-reg-doc');
     setupFileUpload('upload-bank-book', 'preview-bank-book', 'input-bank-book');
     document.getElementById('btn-save-brand').addEventListener('click', () => saveBrand(brandId, existing));
 
@@ -2010,12 +2011,11 @@
       '<input class="form-input" id="f-account-number" type="text" oninput="onAccountNumInput(this)" ' + (isEncrypted(si.account_number) ? 'placeholder="암호화 보관 중 · 변경 시 재입력" data-has-enc="1"' : 'value="' + esc(si.account_number || '') + '" placeholder="- 없이 숫자만 입력"') + ' />',
       '</div>',
 
-      /* 서류 이미지 */
+      /* 서류 이미지 — 사업자: 사업자등록증+통장사본 / 개인: 신분증+통장사본 */
       '<div class="form-row">',
-      '<div class="form-group">',
-      '<label class="form-label">신분증 사본</label>',
-      fileUploadArea('upload-id-card', 'preview-id-card', 'input-id-card', si.id_card_url),
-      '</div>',
+      bizType === 'business'
+        ? '<div class="form-group"><label class="form-label">사업자등록증</label>' + fileUploadArea('upload-biz-reg-doc', 'preview-biz-reg-doc', 'input-biz-reg-doc', si.biz_reg_url) + '</div>'
+        : '<div class="form-group"><label class="form-label">신분증 사본</label>' + fileUploadArea('upload-id-card', 'preview-id-card', 'input-id-card', si.id_card_url) + '</div>',
       '<div class="form-group">',
       '<label class="form-label">통장 사본</label>',
       fileUploadArea('upload-bank-book', 'preview-bank-book', 'input-bank-book', si.bank_book_url),
@@ -2100,23 +2100,30 @@
         const bizInd = document.getElementById('f-biz-individual');
         const bizType = (bizInd && bizInd.checked) ? 'individual' : 'business';
 
-        /* 이미지 업로드 */
-        let idCardUrl = existing && existing.settlement_info ? (existing.settlement_info.id_card_url || '') : '';
-        let bankBookUrl = existing && existing.settlement_info ? (existing.settlement_info.bank_book_url || '') : '';
+        /* 이미지 업로드 — 사업자: 사업자등록증+통장사본 / 개인: 신분증+통장사본 */
+        const si_existing = existing && existing.settlement_info ? existing.settlement_info : {};
+        let idCardUrl = si_existing.id_card_url || '';
+        let bankBookUrl = si_existing.bank_book_url || '';
+        let bizRegDocUrl = si_existing.biz_reg_url || '';
 
-        const idCardFile = document.getElementById('input-id-card') && document.getElementById('input-id-card').files[0];
-        const bankBookFile = document.getElementById('input-bank-book') && document.getElementById('input-bank-book').files[0];
+        async function uploadDocFile(inputId, folder) {
+          const el = document.getElementById(inputId);
+          const file = el && el.files[0];
+          if (!file) return null;
+          const ext = file.name.split('.').pop();
+          const snapFile = await uploadBytes(ref(storage, 'brands/' + brandCode + '/' + folder + '.' + ext), file);
+          return await getDownloadURL(snapFile.ref);
+        }
 
-        if (idCardFile) {
-          const path = 'brands/' + brandCode + '/id_card_' + Date.now();
-          const snapFile = await uploadBytes(ref(storage, path), idCardFile);
-          idCardUrl = await getDownloadURL(snapFile.ref);
+        if (bizType === 'business') {
+          const u = await uploadDocFile('input-biz-reg-doc', 'biz_reg');
+          if (u) bizRegDocUrl = u;
+        } else {
+          const u = await uploadDocFile('input-id-card', 'id_card');
+          if (u) idCardUrl = u;
         }
-        if (bankBookFile) {
-          const path = 'brands/' + brandCode + '/bank_book_' + Date.now();
-          const snapFile = await uploadBytes(ref(storage, path), bankBookFile);
-          bankBookUrl = await getDownloadURL(snapFile.ref);
-        }
+        const uBank = await uploadDocFile('input-bank-book', 'bank_book');
+        if (uBank) bankBookUrl = uBank;
 
         const residentEl = document.getElementById('f-resident');
         const accountEl = document.getElementById('f-account-number');
@@ -2142,7 +2149,8 @@
           account_holder: ((document.getElementById('f-account-holder') || {}).value || '').trim(),
           account_number: encAccount,
           id_card_url: idCardUrl,
-          bank_book_url: bankBookUrl
+          bank_book_url: bankBookUrl,
+          biz_reg_url: bizRegDocUrl
         };
       }
 
@@ -2228,15 +2236,19 @@
           ? sectionLabel('정산 정보 (벤더 제출)') +
             row('사업자 유형', bizTypeText) +
             row('사업자등록번호', isEncrypted(si.business_reg_number)
-              ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealBrandBizReg(\'' + brandId + '\')">🔓 보기</button><span id="bd-biz-reg" style="margin-left:8px;font-family:monospace;"></span>'
+              ? '<div id="bd-biz-reg-wrapper"><button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="revealBrandBizReg(\'' + brandId + '\')">🔓 보기</button></div>'
               : esc(si.business_reg_number || '')) +
             row('과세 유형', esc(si.taxation_type || '')) +
             row('예금주', esc(si.account_holder || '')) +
             row('은행', esc(si.bank_name || '')) +
-            row('계좌번호', isEncrypted(si.account_number) ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealBrandAccountNumber(\'' + brandId + '\')">🔓 보기</button><span id="bd-account-number" style="margin-left:8px;font-family:monospace;"></span>' : esc(si.account_number || '')) +
-            row('신분증 사본', (si.id_card_url ? '<a href="' + esc(si.id_card_url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' : '') + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUrlModal(\'' + brandId + '\',\'id_card_url\')">🔗 URL 입력</button>') +
-            row('통장 사본', (si.bank_book_url ? '<a href="' + esc(si.bank_book_url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' : '') + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUrlModal(\'' + brandId + '\',\'bank_book_url\')">🔗 URL 입력</button>') +
-            (si.business_type === 'business' ? row('사업자등록증', (si.biz_reg_url ? '<a href="' + esc(si.biz_reg_url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' : '') + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUrlModal(\'' + brandId + '\',\'biz_reg_url\')">🔗 URL 입력</button>') : '')
+            row('계좌번호', isEncrypted(si.account_number)
+              ? '<div id="bd-account-number-wrapper"><button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="revealBrandAccountNumber(\'' + brandId + '\')">🔓 보기</button></div>'
+              : esc(si.account_number || '')) +
+            (si.business_type === 'business'
+              ? row('사업자등록증', docFileCell(si.biz_reg_url, brandId, 'biz_reg_url')) +
+                row('통장 사본', docFileCell(si.bank_book_url, brandId, 'bank_book_url'))
+              : row('신분증 사본', docFileCell(si.id_card_url, brandId, 'id_card_url')) +
+                row('통장 사본', docFileCell(si.bank_book_url, brandId, 'bank_book_url')))
           : '') +
         '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">변경 이력</div>' +
         '<div id="brand-activity-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
@@ -2648,40 +2660,37 @@
     }
   }
 
-  window.revealBrandBizReg = async function(brandId) {
-    const btn = event.target;
+  function revealEncryptedField(btn, spanId, loadFn) {
     btn.disabled = true;
     btn.textContent = '복호화 중...';
-    try {
-      const snap = await getDoc(doc(db, 'brands', brandId));
-      const encVal = snap.data()?.settlement_info?.business_reg_number || '';
-      const plain = isEncrypted(encVal) ? await decryptField(encVal) : encVal;
-      const el = document.getElementById('bd-biz-reg');
-      if (el) el.textContent = plain || '(없음)';
-      btn.remove();
-    } catch(e) {
+    loadFn().then(plain => {
+      const wrapper = document.getElementById(spanId + '-wrapper');
+      if (wrapper) {
+        wrapper.innerHTML =
+          '<span style="font-family:monospace;font-size:13px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:6px;padding:4px 10px;color:var(--gray-800);letter-spacing:0.03em;display:inline-block;">' +
+          esc(plain || '(없음)') + '</span>';
+      }
+    }).catch(e => {
       btn.disabled = false;
       btn.textContent = '🔓 보기';
-      showToast('복호화 실패: ' + e.message, 'error');
-    }
+      showToast('복호화 실패: ' + esc(e.message), 'error');
+    });
+  }
+
+  window.revealBrandBizReg = async function(brandId) {
+    revealEncryptedField(event.target, 'bd-biz-reg', async () => {
+      const snap = await getDoc(doc(db, 'brands', brandId));
+      const encVal = snap.data()?.settlement_info?.business_reg_number || '';
+      return isEncrypted(encVal) ? await decryptField(encVal) : encVal;
+    });
   };
 
   window.revealBrandAccountNumber = async function(brandId) {
-    const btn = event.target;
-    btn.disabled = true;
-    btn.textContent = '복호화 중...';
-    try {
+    revealEncryptedField(event.target, 'bd-account-number', async () => {
       const snap = await getDoc(doc(db, 'brands', brandId));
       const accountEnc = snap.data()?.settlement_info?.account_number || '';
-      const plain = isEncrypted(accountEnc) ? await decryptField(accountEnc) : accountEnc;
-      const el = document.getElementById('bd-account-number');
-      if (el) el.textContent = plain || '(없음)';
-      btn.remove();
-    } catch(e) {
-      btn.disabled = false;
-      btn.textContent = '🔓 보기';
-      showToast('복호화 실패: ' + e.message, 'error');
-    }
+      return isEncrypted(accountEnc) ? await decryptField(accountEnc) : accountEnc;
+    });
   };
 
   // 입점 신청 상세 팝업: 주민번호/계좌번호 버튼 클릭 시 복호화
@@ -2846,30 +2855,49 @@
     }
   };
 
-  window.openDocUrlModal = function(brandId, field) {
-    const labels = { id_card_url: '신분증 사본', bank_book_url: '통장 사본', biz_reg_url: '사업자등록증' };
-    const label = labels[field] || field;
+  const DOC_LABELS = { id_card_url: '신분증 사본', bank_book_url: '통장 사본', biz_reg_url: '사업자등록증' };
+
+  function docFileCell(url, brandId, field) {
+    const label = DOC_LABELS[field] || field;
+    const viewBtn = url
+      ? '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> '
+      : '';
+    return viewBtn + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUploadModal(\'' + brandId + '\',\'' + field + '\')">📎 업로드</button>';
+  }
+
+  window.openDocUploadModal = function(brandId, field) {
+    const label = DOC_LABELS[field] || field;
     const formHTML =
-      '<div class="form-group"><label class="form-label">' + esc(label) + ' URL</label>' +
-      '<input class="form-input" id="doc-url-input" type="url" placeholder="https://..." /></div>' +
-      '<div style="font-size:12px;color:var(--gray-400);">Firebase Storage 또는 외부 URL을 입력하세요. 유캔사인 서명 완료 후 자동 저장된 경우 여기서 확인할 수 있습니다.</div>';
+      '<div class="form-group"><label class="form-label">' + esc(label) + '</label>' +
+      '<input type="file" id="doc-upload-input" accept="image/*,.pdf" class="form-input" style="padding:6px;" />' +
+      '<div style="font-size:11px;color:var(--gray-400);margin-top:6px;">이미지(JPG/PNG) 또는 PDF 파일을 선택하세요.</div></div>';
     const footerHTML =
       '<button class="btn btn-secondary" onclick="openBrandDetail(\'' + brandId + '\')">취소</button>' +
-      '<button class="btn btn-primary" onclick="saveDocUrl(\'' + brandId + '\',\'' + field + '\')">저장</button>';
-    showModal(label + ' URL 저장', formHTML, footerHTML);
+      '<button class="btn btn-primary" id="btn-doc-upload-save" onclick="saveDocUpload(\'' + brandId + '\',\'' + field + '\')">업로드</button>';
+    showModal(label + ' 업로드', formHTML, footerHTML);
   };
 
-  window.saveDocUrl = async function(brandId, field) {
-    const url = ((document.getElementById('doc-url-input') || {}).value || '').trim();
-    if (!url) { showToast('URL을 입력해주세요.', 'error'); return; }
+  window.saveDocUpload = async function(brandId, field) {
+    const file = (document.getElementById('doc-upload-input') || {}).files?.[0];
+    if (!file) { showToast('파일을 선택해주세요.', 'error'); return; }
+    const btn = document.getElementById('btn-doc-upload-save');
+    if (btn) { btn.disabled = true; btn.textContent = '업로드 중...'; }
     try {
+      const brandCode = (await getDoc(doc(db, 'brands', brandId))).data()?.brand_code || brandId;
+      const ext = file.name.split('.').pop();
+      const storageRef = ref(storage, 'brands/' + brandCode + '/docs/' + field.replace('_url', '') + '.' + ext);
+      const snap = await uploadBytes(storageRef, file);
+      const downloadUrl = await getDownloadURL(snap.ref);
       await updateDoc(doc(db, 'brands', brandId), {
-        ['settlement_info.' + field]: url,
+        ['settlement_info.' + field]: downloadUrl,
         updated_at: today()
       });
-      showToast('저장되었습니다.');
+      showToast('업로드 완료.');
       openBrandDetail(brandId);
-    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+    } catch(e) {
+      if (btn) { btn.disabled = false; btn.textContent = '업로드'; }
+      showToast('업로드 실패: ' + esc(e.message), 'error');
+    }
   };
 
   window.openContractDocsModal = function(brandId, contractId) {
