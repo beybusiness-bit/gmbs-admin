@@ -2537,7 +2537,7 @@
       const footer =
         '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>'
         + '<button class="btn btn-secondary" onclick="openPersonBrandLinkModal(\'' + personId + '\')">🔗 브랜드 연결</button>'
-        + '<button class="btn btn-secondary" onclick="togglePersonActive(\'' + personId + '\',' + (p.active !== false ? 'true' : 'false') + ')">'
+        + '<button class="btn btn-secondary" onclick="togglePersonActive(\'' + personId + '\',' + (p.active !== false ? 'true' : 'false') + ',\'' + esc(p.name || '') + '\')">'
           + (p.active !== false ? '🔒 비활성화' : '✅ 활성화') + '</button>'
         + '<button class="btn" style="color:var(--red);border-color:var(--red);background:transparent;" onclick="deletePersonConfirm(\'' + personId + '\',\'' + esc(p.name || '') + '\')">🗑 삭제</button>'
         + '<button class="btn btn-primary" onclick="openPersonEditModal(\'' + personId + '\')">✏️ 수정</button>';
@@ -2548,16 +2548,29 @@
     }
   };
 
-  window.togglePersonActive = async function(personId, currentActive) {
+  window.togglePersonActive = function(personId, currentActive, personName) {
     const newActive = !currentActive;
+    const action = newActive ? '활성화' : '비활성화';
+    const bodyHTML =
+      '<div class="form-group"><label class="form-label">사유 <span style="font-size:11px;color:var(--gray-400);">(선택)</span></label>' +
+      '<input class="form-input" id="person-toggle-reason" placeholder="' + action + ' 사유를 입력하세요" /></div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="openPersonDetail(\'' + personId + '\')">취소</button>' +
+      '<button class="btn btn-primary" onclick="executeTogglePersonActive(\'' + personId + '\',' + currentActive + ')">' + action + '</button>';
+    showModal((personName ? esc(personName) + ' — ' : '') + action, bodyHTML, footerHTML, 'sm');
+  };
+
+  window.executeTogglePersonActive = async function(personId, currentActive) {
+    const newActive = !currentActive;
+    const action = newActive ? '활성화' : '비활성화';
+    const reason = ((document.getElementById('person-toggle-reason') || {}).value || '').trim();
     try {
-      await updateDoc(doc(db, 'persons', personId), { active: newActive, updated_at: today() });
-      showToast(newActive ? '활성화했습니다.' : '비활성화했습니다.', 'success');
+      await updateDoc(doc(db, 'persons', personId), { active: newActive, updated_at: today(), ...(reason ? { deactivate_reason: reason } : {}) });
+      showToast(action + '했습니다.', 'success');
       closeModal();
-      // 목록 새로고침
       const content = document.getElementById('page-content');
       if (content) await renderPersonsList(content);
-    } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
+    } catch(e) { showToast('변경 실패: ' + esc(e.message), 'error'); }
   };
 
   window.deletePersonConfirm = async function(personId, name) {
@@ -2982,11 +2995,27 @@
     const action = currentlyInactive ? '활성화' : '비활성화';
     const desc = currentlyInactive
       ? '이 브랜드를 다시 활성화합니다. 브랜드 목록에 표시되고 상품 등록이 가능해집니다.'
-      : '이 브랜드를 비활성화합니다. 브랜드 목록 기본 보기에서 숨겨지며, 상품 등록 드롭다운에서 제외됩니다.\n기존 상품·계약·정산 이력은 보존됩니다.';
-    if (!confirm('[' + brandName + '] ' + action + '\n\n' + desc + '\n\n계속하시겠습니까?')) return;
-    updateDoc(doc(db, 'brands', brandId), { active: !!currentlyInactive, updated_at: today() })
-      .then(() => { showToast('브랜드가 ' + action + '되었습니다.', 'success'); closeModal(); renderBrandList(document.getElementById('page-content')); })
-      .catch(e => showToast(action + ' 실패: ' + esc(e.message), 'error'));
+      : '이 브랜드를 비활성화합니다. 브랜드 목록 기본 보기에서 숨겨지며, 상품 등록 드롭다운에서 제외됩니다. 기존 상품·계약·정산 이력은 보존됩니다.';
+    const bodyHTML =
+      '<p style="font-size:14px;line-height:1.7;margin-bottom:16px;">' + esc(desc) + '</p>' +
+      '<div class="form-group"><label class="form-label">사유 <span style="font-size:11px;color:var(--gray-400);">(선택)</span></label>' +
+      '<input class="form-input" id="deactivate-reason" placeholder="' + (currentlyInactive ? '활성화 사유를 입력하세요' : '비활성화 사유를 입력하세요') + '" /></div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="openBrandDetail(\'' + brandId + '\')">취소</button>' +
+      '<button class="btn btn-primary" onclick="executeBrandDeactivate(\'' + brandId + '\',' + (!!currentlyInactive) + ')">' + action + '</button>';
+    showModal('[' + esc(brandName) + '] ' + action, bodyHTML, footerHTML, 'sm');
+  };
+
+  window.executeBrandDeactivate = async function(brandId, currentlyInactive) {
+    const action = currentlyInactive ? '활성화' : '비활성화';
+    const reason = ((document.getElementById('deactivate-reason') || {}).value || '').trim();
+    try {
+      await updateDoc(doc(db, 'brands', brandId), { active: !!currentlyInactive, updated_at: today() });
+      await writeActivityLog(brandId, 'admin_action', brandId, currentlyInactive ? 'activated' : 'deactivated', null, { reason: reason || '' });
+      showToast('브랜드가 ' + action + '되었습니다.', 'success');
+      closeModal();
+      renderBrandList(document.getElementById('page-content'));
+    } catch(e) { showToast(action + ' 실패: ' + esc(e.message), 'error'); }
   };
 
   /* ── 브랜드 영구 삭제 ── */
@@ -3891,15 +3920,17 @@
       updated_at: today()
     };
 
-    // 승인 시 브랜드코드·거래유형·수수료 함께 저장
+    // 승인 시 브랜드코드·거래유형·수수료 함께 저장, 입점 상태는 '계약 정보 입력 필요'로 자동 전환
     if (status === '승인') {
       const brandCode = ((document.getElementById('approval-brand-code') || {}).value || '').trim().toUpperCase();
       const brandType = (document.getElementById('approval-brand-type') || {}).value;
       const commissionRate = parseFloat((document.getElementById('approval-commission') || {}).value) || 15;
       if (!brandCode) { showToast('브랜드코드를 입력해주세요.', 'error'); return; }
       if (!/^[A-Z0-9]{2,10}$/.test(brandCode)) { showToast('브랜드코드는 영문 대문자·숫자 2~10자만 가능합니다.', 'error'); return; }
-      // 중복 확인 (기존 코드와 다를 때만)
-      if (existingBrand.brand_code !== brandCode) {
+      // 중복 확인 (현재 저장된 코드와 다를 때만)
+      const curSnap = await getDoc(doc(db, 'brands', brandId));
+      const curCode = curSnap.exists() ? (curSnap.data().brand_code || '') : '';
+      if (curCode !== brandCode) {
         const dup = await getDocs(query(collection(db, 'brands'), where('brand_code', '==', brandCode)));
         if (!dup.empty) { showToast('이미 사용 중인 브랜드코드입니다: ' + brandCode, 'error'); return; }
       }
@@ -3907,6 +3938,8 @@
       updateData.brand_type = brandType;
       updateData.fee_info = brandType === '위탁' ? { commission_rate: commissionRate } : {};
       updateData.approved_at = today();
+      // 승인 후 실제 입점 상태는 '계약 정보 입력 필요'로 자동 전환
+      updateData.onboarding_status = '계약 정보 입력 필요';
     }
     if (status === '계약완료') {
       updateData.contract_completed_at = today();
