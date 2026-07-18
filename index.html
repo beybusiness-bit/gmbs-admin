@@ -1715,8 +1715,9 @@
         '종료': '<span class="badge badge-gray">종료</span>'
       }[s] || '<span class="badge badge-gray">미계약</span>');
       tbody.innerHTML = pageItems.map(b => {
-        const logoCell = b.logo_url
-          ? '<img src="' + esc(b.logo_url) + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);" />'
+        const _logoSrc = b.logo_url || b.brand_photo_url || '';
+        const logoCell = _logoSrc
+          ? '<img src="' + esc(_logoSrc) + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);" onerror="this.style.display=\'none\'" />'
           : '<div style="width:72px;height:72px;border-radius:8px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:20px;">🏬</div>';
         const checked = (window._brandSelected || new Set()).has(b.id) ? ' checked' : '';
         const rowStyle = b.active === false ? 'cursor:pointer;opacity:0.45;background:var(--gray-50);' : 'cursor:pointer;';
@@ -1906,7 +1907,7 @@
       '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-bottom:16px;">',
       '<div style="flex:0 0 auto;">',
       '<label class="form-label">대표 사진 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">권장 500×500px · JPG/PNG · 정사각형</span></label>',
-      fileUploadArea('upload-brand-logo', 'preview-brand-logo', 'input-brand-logo', v('logo_url')),
+      fileUploadArea('upload-brand-logo', 'preview-brand-logo', 'input-brand-logo', v('logo_url') || v('brand_photo_url')),
       '</div>',
       '<div style="flex:1;min-width:200px;">',
       '<label class="form-label" for="f-brand-desc">브랜드 간단 소개 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">최대 100자</span></label>',
@@ -2081,7 +2082,7 @@
         .map(el => el.value.trim()).filter(Boolean);
 
       /* 로고 이미지 업로드 */
-      let logoUrl = existing ? (existing.logo_url || '') : '';
+      let logoUrl = existing ? (existing.logo_url || existing.brand_photo_url || '') : '';
       const logoFile = document.getElementById('input-brand-logo') && document.getElementById('input-brand-logo').files[0];
       if (logoFile) {
         const path = 'brands/' + brandCode + '/logo_' + Date.now();
@@ -2181,8 +2182,9 @@
           '<div style="flex:1;font-size:13px;color:var(--gray-800);">' + value + '</div></div>';
       }
 
-      const logoSection = b.logo_url
-        ? '<div style="text-align:center;margin-bottom:20px;"><img src="' + esc(b.logo_url) + '" style="max-height:100px;max-width:200px;object-fit:contain;border-radius:8px;border:1px solid var(--gray-200);" /></div>'
+      const _bLogoSrc = b.logo_url || b.brand_photo_url || '';
+      const logoSection = _bLogoSrc
+        ? '<div style="text-align:center;margin-bottom:20px;"><img src="' + esc(_bLogoSrc) + '" style="max-height:100px;max-width:200px;object-fit:contain;border-radius:8px;border:1px solid var(--gray-200);" onerror="this.style.display=\'none\'" /></div>'
         : '';
 
       const bizTypeText = si.business_type === 'individual' ? '개인(사업자없음)' : (si.business_type === 'business' ? '사업자' : '');
@@ -7629,7 +7631,7 @@
           settlement_info: item.settlement_info || {},
           fee_info: adminBrandType === '위탁' ? { commission_rate: adminCommission } : {},
           onboarding_status: '심사중',
-          ...(item.brand_photo_url ? { brand_photo_url: item.brand_photo_url } : {}),
+          ...(item.brand_photo_url ? { logo_url: item.brand_photo_url } : {}),
           created_at: today(), updated_at: today()
         });
         const brandId = brandRef.id;
