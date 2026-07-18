@@ -502,15 +502,18 @@
   };
 
   window.onResidentNumInput = function(el) {
-    let raw = el.value.replace(/[^\d-]/g, '');
+    // 마스킹 문자 제거 후 숫자/하이픈만 허용
+    let raw = el.value.replace(/●/g, '').replace(/[^\d-]/g, '');
     const digits = raw.replace(/-/g, '');
     if (digits.length > 6 && !raw.includes('-')) {
       raw = digits.slice(0, 6) + '-' + digits.slice(6, 13);
     }
-    el.value = raw.slice(0, 14);
+    raw = raw.slice(0, 14);
+    el.value = raw;
+    el.dataset.actual = raw;
     const hint = document.getElementById('resident-num-hint');
     if (!hint) return;
-    const d = el.value.replace(/-/g, '');
+    const d = raw.replace(/-/g, '');
     if (d.length === 13) {
       const r = validateResidentNumber(d);
       hint.innerHTML = r.ok
@@ -519,6 +522,17 @@
     } else {
       hint.textContent = '';
     }
+  };
+
+  window.onResidentNumBlur = function(el) {
+    const actual = el.dataset.actual || el.value;
+    if (actual.replace(/-/g, '').length === 13) {
+      el.value = actual.slice(0, 8) + '●●●●●●';
+    }
+  };
+
+  window.onResidentNumFocus = function(el) {
+    el.value = el.dataset.actual || '';
   };
 
   window.onAccountNumInput = function(el) {
@@ -549,7 +563,7 @@
     if (btn) { btn.disabled = true; btn.textContent = '조회 중...'; }
     hint.innerHTML = '<span style="color:var(--gray-400);">조회 중...</span>';
     try {
-      const url = 'https://api.odcloud.kr/api/nts-businessman/v1/status?serviceKey=' + encodeURIComponent(apiKey);
+      const url = 'https://api.odcloud.kr/api/nts-businessman/v1/status?serviceKey=' + apiKey;
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -1948,11 +1962,11 @@
       '<div id="section-resident" style="' + (bizType === 'individual' ? '' : 'display:none;') + '">',
       '<div class="form-row" style="margin-bottom:16px;">',
       formGroup('주민등록번호', 'f-resident',
-        '<input class="form-input" id="f-resident" type="password" autocomplete="off" oninput="onResidentNumInput(this)" ' + (isEncrypted(si.resident_number) ? 'placeholder="암호화 보관 중 · 변경 시 재입력" data-has-enc="1"' : 'value="' + esc(si.resident_number || '') + '" placeholder="000000-0000000"') + ' />' +
+        '<input class="form-input" id="f-resident" type="text" inputmode="numeric" autocomplete="off" oninput="onResidentNumInput(this)" onblur="onResidentNumBlur(this)" onfocus="onResidentNumFocus(this)" ' + (isEncrypted(si.resident_number) ? 'placeholder="암호화 보관 중 · 변경 시 재입력" data-has-enc="1"' : 'value="' + esc(si.resident_number || '') + '" placeholder="000000-0000000" data-actual="' + esc(si.resident_number || '') + '"') + ' />' +
         '<div id="resident-num-hint" style="font-size:11px;margin-top:4px;"></div>' +
         '<div class="form-hint">⚠️ 원천징수 세금신고 목적으로만 사용 · 암호화 보관 · 5년 후 파기</div>'),
       '</div>',
-      '<div class="form-hint" style="margin-bottom:14px;line-height:1.8;">🔒 주민등록번호는 소득세법에 따른 원천징수 의무 이행을 위해서만 수집됩니다. 암호화되어 저장되며, 세무법정 보관 기간(5년) 이후 파기됩니다.</div>',
+      '<div class="form-hint" style="margin-bottom:14px;line-height:1.8;">🔒 주민등록번호는 소득세법에 따른 원천징수 의무 이행을 위해서만 수집됩니다. 안전하게 저장되며, 세무법정 보관 기간(5년) 이후 파기됩니다.</div>',
       '</div>',
 
       /* 사업자: 사업자등록번호 + 과세유형 */
@@ -2105,7 +2119,7 @@
 
         const residentEl = document.getElementById('f-resident');
         const accountEl = document.getElementById('f-account-number');
-        const rawResident = bizType === 'individual' ? ((residentEl || {}).value || '').trim() : '';
+        const rawResident = bizType === 'individual' ? ((residentEl || {}).dataset?.actual || (residentEl || {}).value || '').trim() : '';
         const rawAccount = ((accountEl || {}).value || '').trim();
         // data-has-enc="1" + 빈 값: 사용자가 변경하지 않음 → 기존 암호화 값 유지
         const keepResident = bizType === 'individual' && !rawResident && (residentEl || {}).dataset?.hasEnc === '1';
