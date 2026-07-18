@@ -2382,7 +2382,8 @@
         }
       });
 
-      persons.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+      const toStr = v => (v && typeof v.toDate === 'function') ? v.toDate().toISOString() : (v || '');
+      persons.sort((a, b) => toStr(b.created_at).localeCompare(toStr(a.created_at)));
 
       let html = '<div style="padding:16px 0;">';
       html += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">';
@@ -2460,8 +2461,9 @@
         collection(db, 'persons'),
         where('brand_id', '==', brandId)
       ));
+      const tsStr = v => (v && typeof v.toDate === 'function') ? v.toDate().toISOString() : (v || '');
       const persons = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+        .sort((a, b) => tsStr(a.created_at).localeCompare(tsStr(b.created_at)));
       renderPersonsSection(brandId, persons, sec);
     } catch(e) {
       if (sec) sec.innerHTML = '<div style="font-size:12px;color:var(--gray-400);">담당자 로드 실패: ' + esc(e.message) + '</div>';
