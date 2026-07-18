@@ -2471,7 +2471,7 @@
   function personInlineFormHTML(brandId, p, isEdit) {
     const pid = p ? p.id : '';
     const val = p || {};
-    const roleOpts = ['대표','운영 담당자','MD','마케팅 담당자','영업 담당자','기타'];
+    const roleOpts = ['주관리자','부관리자'];
     const roleSelects = roleOpts.map(r =>
       '<option value="' + r + '"' + (val.role === r ? ' selected' : '') + '>' + r + '</option>'
     ).join('');
@@ -2480,8 +2480,9 @@
       '<div class="form-row">' +
         '<div class="form-group"><label class="form-label">이름 <span style="color:var(--red)">*</span></label>' +
         '<input class="form-input" id="pif-name" value="' + esc(val.name || '') + '" placeholder="담당자 이름" /></div>' +
-        '<div class="form-group"><label class="form-label">역할/직책</label>' +
-        '<select class="form-input" id="pif-role"><option value="">선택 안 함</option>' + roleSelects + '</select></div>' +
+        '<div class="form-group"><label class="form-label">역할 <span style="color:var(--red)">*</span></label>' +
+        '<select class="form-input" id="pif-role">' + roleSelects + '</select>' +
+        '<div class="form-hint">주관리자는 브랜드당 1명. 현재 주관리자가 있으면 부관리자만 선택 가능.</div></div>' +
       '</div>' +
       '<div class="form-row">' +
         '<div class="form-group"><label class="form-label">전화번호</label>' +
@@ -2518,7 +2519,11 @@
         return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--gray-100);' + dimStyle + '">' +
           '<div style="flex:1;">' +
           '<div style="font-size:13px;font-weight:600;color:var(--gray-800);">' + esc(p.name || '') +
-          (p.role ? ' <span style="font-size:11px;color:var(--blue);background:var(--blue-light);padding:1px 7px;border-radius:10px;font-weight:500;">' + esc(p.role) + '</span>' : '') +
+          (p.role === '주관리자'
+            ? ' <span style="font-size:11px;color:#fff;background:var(--blue);padding:1px 7px;border-radius:10px;font-weight:600;">주관리자</span>'
+            : p.role === '부관리자'
+              ? ' <span style="font-size:11px;color:var(--blue);background:var(--blue-light);padding:1px 7px;border-radius:10px;font-weight:500;">부관리자</span>'
+              : p.role ? ' <span style="font-size:11px;color:var(--gray-500);background:var(--gray-100);padding:1px 7px;border-radius:10px;">' + esc(p.role) + '</span>' : '') +
           (dim ? ' <span style="font-size:11px;color:var(--gray-400);">(비활성)</span>' : '') +
           '</div>' +
           (p.phone ? '<div style="font-size:12px;color:var(--gray-500);margin-top:2px;">📞 ' + esc(p.phone) + '</div>' : '') +
@@ -2596,15 +2601,31 @@
     const getVal = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
     const name = getVal('pif-name');
     if (!name) { showToast('이름을 입력해주세요.', 'error'); return; }
+    const role = getVal('pif-role');
+    if (!role) { showToast('역할을 선택해주세요.', 'error'); return; }
     const loginEmail = getVal('pif-login-email');
     if (!loginEmail) { showToast('vendor 로그인 구글 계정을 입력해주세요.', 'error'); return; }
     if (!isEdit) {
       const loginEmailConfirm = getVal('pif-login-email-confirm');
       if (loginEmail !== loginEmailConfirm) { showToast('구글 계정 이메일이 일치하지 않습니다.', 'error'); return; }
     }
+    // 주관리자 1명 제한 검사
+    if (role === '주관리자') {
+      const existingSnap = await getDocs(query(
+        collection(db, 'persons'),
+        where('brand_id', '==', brandId),
+        where('role', '==', '주관리자'),
+        where('active', '!=', false)
+      ));
+      const others = existingSnap.docs.filter(d => d.id !== personId);
+      if (others.length > 0) {
+        showToast('이미 주관리자(' + (others[0].data().name || '') + ')가 있습니다. 먼저 해당 담당자의 역할을 부관리자로 변경해주세요.', 'error');
+        return;
+      }
+    }
     const data = {
       name,
-      role: getVal('pif-role'),
+      role,
       phone: getVal('pif-phone').replace(/\D/g, '').replace(/(\d{2,3})(\d{3,4})(\d{4})/, '$1-$2-$3'),
       contact_email: getVal('pif-contact-email'),
       login_google_email: loginEmail,
@@ -7682,7 +7703,7 @@
           brand_id: brandId,
           name: item.applicant_name || '',
           phone: item.applicant_phone || '',
-          role: item.applicant_role || '',
+          role: '주관리자',  // 최초 담당자는 항상 주관리자
           contact_email: item.applicant_contact_email || '',
           login_google_email: (item.applicant_email || '').toLowerCase(),
           active: true,
