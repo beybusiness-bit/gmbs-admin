@@ -2683,12 +2683,12 @@
   };
 
   // 입점 신청 상세 팝업: 주민번호/계좌번호 버튼 클릭 시 복호화
-  window.revealAppField = async function(docId, fieldName, spanId) {
+  window.revealAppField = async function(collectionName, docId, fieldName, spanId) {
     const btn = event.target;
     btn.disabled = true;
     btn.textContent = '복호화 중...';
     try {
-      const snap = await getDoc(doc(db, 'applications', docId));
+      const snap = await getDoc(doc(db, collectionName, docId));
       const encVal = snap.data()?.settlement_info?.[fieldName] || '';
       const plain = isEncrypted(encVal) ? await decryptField(encVal) : encVal;
       const el = document.getElementById(spanId);
@@ -3536,10 +3536,10 @@
       '<input class="form-input" id="approval-brand-code" placeholder="예: ONG" value="' + esc(existingBrand.brand_code || '') + '" style="text-transform:uppercase;font-weight:700;font-family:monospace;" /></div>' +
       '<div class="form-row">' +
       '<div class="form-group"><label class="form-label">거래유형 최종확정 <span style="color:var(--red);">*</span></label>' +
-      '<select class="form-input" id="approval-brand-type">' +
+      '<select class="form-input" id="approval-brand-type" onchange="document.getElementById(\'approval-commission-wrap\').style.display=this.value===\'위탁\'?\'block\':\'none\'">' +
       ['PB','위탁','매입','기타'].map(t => '<option value="' + t + '"' + (existingBrand.brand_type === t ? ' selected' : '') + '>' + t + '</option>').join('') +
       '</select></div>' +
-      '<div class="form-group"><label class="form-label">위탁판매대행수수료 (%)</label>' +
+      '<div class="form-group" id="approval-commission-wrap" style="display:' + (existingBrand.brand_type === '위탁' ? 'block' : 'none') + ';"><label class="form-label">위탁판매대행수수료 (%)</label>' +
       '<input class="form-input" id="approval-commission" type="number" min="0" max="100" step="0.1" value="' + (fi.commission_rate !== undefined ? fi.commission_rate : 15) + '" /></div>' +
       '</div></div>';
 
@@ -7289,12 +7289,12 @@
     const si = item.settlement_info || {};
     const siResidentDisplay = si.resident_number
       ? (isEncrypted(si.resident_number)
-          ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealAppField(\'' + docId + '\',\'resident_number\',\'app-si-resident\')">🔓 보기</button>'
+          ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealAppField(\'' + colName + '\',\'' + docId + '\',\'resident_number\',\'app-si-resident\')">🔓 보기</button>'
           : esc(si.resident_number))
       : '-';
     const siAccountDisplay = si.account_number
       ? (isEncrypted(si.account_number)
-          ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealAppField(\'' + docId + '\',\'account_number\',\'app-si-account\')">🔓 보기</button>'
+          ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealAppField(\'' + colName + '\',\'' + docId + '\',\'account_number\',\'app-si-account\')">🔓 보기</button>'
           : esc(si.account_number))
       : '-';
 
@@ -7306,7 +7306,7 @@
             (si.business_type === 'business' ? '<div><span style="color:var(--gray-500);font-size:11px;">사업자등록번호</span><br>' +
               (si.business_reg_number
                 ? (isEncrypted(si.business_reg_number)
-                    ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealAppField(\'' + docId + '\',\'business_reg_number\',\'app-si-biz-reg\')">🔓 보기</button><span id="app-si-biz-reg" style="margin-left:8px;font-family:monospace;"></span>'
+                    ? '●●●● <button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="revealAppField(\'' + colName + '\',\'' + docId + '\',\'business_reg_number\',\'app-si-biz-reg\')">🔓 보기</button><span id="app-si-biz-reg" style="margin-left:8px;font-family:monospace;"></span>'
                     : esc(si.business_reg_number))
                 : '-') +
               '</div>' : '') +
