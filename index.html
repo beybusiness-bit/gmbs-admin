@@ -7202,34 +7202,28 @@
     };
 
     const appRows = (list) => {
-      if (!list.length) return '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--gray-400);">신청 내역이 없습니다.</td></tr>';
+      if (!list.length) return '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--gray-400);">신청 내역이 없습니다.</td></tr>';
       return list.map(item => {
         const isJoin = item._type === 'join';
-        return '<tr>' +
+        return '<tr style="cursor:pointer;" onclick="openApplicationDetail(\'' + item.id + '\',\'' + item._type + '\')">' +
           '<td>' + statusBadge(item.status) + '</td>' +
           '<td>' + esc(item.applicant_name || '-') + '</td>' +
           '<td style="font-size:12px;">' + esc(item.applicant_email || '-') + '</td>' +
           '<td>' + esc(isJoin ? (item._brandNameDisplay || item.target_brand_id || '-') : (item.brand_name || '-')) + '</td>' +
           '<td>' + esc(item.applicant_role || '-') + '</td>' +
           '<td>' + fmtDate(item.submitted_at) + '</td>' +
-          '<td>' +
-            (item.status === '제출됨'
-              ? '<button class="btn btn-sm btn-primary" onclick="openApplicationDetail(\'' + item.id + '\',\'' + item._type + '\')">심사</button>'
-              : '<button class="btn btn-sm btn-secondary" onclick="openApplicationDetail(\'' + item.id + '\',\'' + item._type + '\')">상세</button>') +
-          '</td>' +
         '</tr>';
       }).join('');
     };
 
     const productRows = (list) => {
-      if (!list.length) return '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--gray-400);">승인 대기 상품이 없습니다.</td></tr>';
-      return list.map(p => '<tr>' +
+      if (!list.length) return '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--gray-400);">승인 대기 상품이 없습니다.</td></tr>';
+      return list.map(p => '<tr style="cursor:pointer;" onclick="openProductApprovalFromReview(\'' + p.id + '\')">' +
         '<td>' + statusBadge(p.approval_status) + '</td>' +
         '<td>' + esc(p.product_name || '-') + '</td>' +
         '<td>' + esc(p.brand_code || '-') + '</td>' +
         '<td>' + esc(p.id || '-') + '</td>' +
         '<td>' + fmtDate(p.created_at) + '</td>' +
-        '<td><button class="btn btn-sm btn-primary" onclick="openProductApprovalFromReview(\'' + p.id + '\')">심사</button></td>' +
       '</tr>').join('');
     };
 
@@ -7248,7 +7242,7 @@
       '<div id="tab-application" style="display:' + (activeTab==='application'?'block':'none') + ';">' +
         '<div class="card" style="overflow-x:auto;">' +
           '<table class="data-table"><thead><tr>' +
-            '<th>상태</th><th>신청자</th><th>이메일</th><th>브랜드명</th><th>역할</th><th>신청일</th><th>처리</th>' +
+            '<th>상태</th><th>신청자</th><th>이메일</th><th>브랜드명</th><th>역할</th><th>신청일</th>' +
           '</tr></thead><tbody>' + appRows(apps) + '</tbody></table>' +
         '</div>' +
       '</div>' +
@@ -7256,7 +7250,7 @@
       '<div id="tab-product" style="display:' + (activeTab==='product'?'block':'none') + ';">' +
         '<div class="card" style="overflow-x:auto;">' +
           '<table class="data-table"><thead><tr>' +
-            '<th>상태</th><th>상품명</th><th>브랜드코드</th><th>상품ID</th><th>등록일</th><th>처리</th>' +
+            '<th>상태</th><th>상품명</th><th>브랜드코드</th><th>상품ID</th><th>등록일</th>' +
           '</tr></thead><tbody>' + productRows(pendingProducts) + '</tbody></table>' +
         '</div>' +
       '</div>' +
@@ -7264,7 +7258,7 @@
       '<div id="tab-join" style="display:' + (activeTab==='join'?'block':'none') + ';">' +
         '<div class="card" style="overflow-x:auto;">' +
           '<table class="data-table"><thead><tr>' +
-            '<th>상태</th><th>신청자</th><th>이메일</th><th>대상 브랜드</th><th>역할</th><th>신청일</th><th>처리</th>' +
+            '<th>상태</th><th>신청자</th><th>이메일</th><th>대상 브랜드</th><th>역할</th><th>신청일</th>' +
           '</tr></thead><tbody>' + appRows(joins) + '</tbody></table>' +
         '</div>' +
       '</div>';
