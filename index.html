@@ -2450,7 +2450,7 @@
         '<div class="card"><div class="table-wrap"><table id="pers-table">' +
         '<thead><tr>' +
         '<th style="width:36px;padding-left:16px;"><input type="checkbox" id="pers-chk-all" onchange="toggleAllPersons(this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></th>' +
-        '<th>이름</th><th>역할</th><th>연락처 이메일</th><th>구글 로그인 이메일</th><th>소속 브랜드</th><th>상태</th><th>등록일</th><th>비고</th>' +
+        '<th>이름</th><th>역할</th><th>연락처 이메일</th><th>구글 로그인 이메일</th><th>담당 브랜드</th><th>상태</th><th>등록일</th><th>비고</th>' +
         '</tr></thead>' +
         '<tbody id="pers-tbody"></tbody></table></div></div>' +
         '</div>';
@@ -2607,8 +2607,11 @@
       const p = { id: snap.id, ...snap.data() };
       const bMap = window._allPersonsBrandMap || {};
 
-      // 이 담당자가 속한 모든 브랜드 조회 (brand_ids 배열 or 단일 brand_id)
-      const brandIds = Array.isArray(p.brand_ids) ? p.brand_ids : (p.brand_id ? [p.brand_id] : []);
+      // 병합된 캐시에서 brand_ids 전체를 가져옴 (Firestore 단일 문서에는 하나만 있을 수 있음)
+      const cached = (window._allPersonsData || []).find(x => x.id === personId);
+      const brandIds = cached && Array.isArray(cached.brand_ids) && cached.brand_ids.length
+        ? cached.brand_ids
+        : (Array.isArray(p.brand_ids) ? p.brand_ids : (p.brand_id ? [p.brand_id] : []));
 
       const tsToDate = v => {
         if (!v) return '-';
@@ -2641,7 +2644,7 @@
         + row('연락처 이메일', esc(p.contact_email || '-'))
         + row('구글 로그인', '<span style="font-size:12px;color:var(--gray-500);">' + esc(p.login_google_email || '-') + '</span>')
         + row('전화번호', esc(p.phone || '-'))
-        + row('소속 브랜드', brandsHtml)
+        + row('담당 브랜드', brandsHtml)
         + row('등록일', tsToDate(p.created_at))
         + '</div>';
 
