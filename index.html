@@ -1600,7 +1600,7 @@
         '<option value="">전체 유형</option><option value="PB">PB</option><option value="위탁">위탁</option><option value="매입">매입</option>' +
         '</select>' +
         '<select id="bl-onboarding-filter" onchange="window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
-        '<option value="">전체 입점상태</option><option value="계약 정보 입력 필요">계약 정보 입력 필요</option><option value="미계약">미계약</option><option value="계약 전">계약 전</option><option value="계약완료">계약완료</option><option value="심사중">심사중</option><option value="승인">승인</option><option value="거절">거절</option><option value="종료">종료</option>' +
+        '<option value="">전체 입점상태</option><option value="계약 정보 입력 필요">계약 정보 입력 필요</option><option value="계약 전">계약 전</option><option value="계약완료">계약완료</option><option value="심사중">심사중</option><option value="승인">승인</option><option value="거절">거절</option><option value="종료">종료</option>' +
         '</select>' +
         '<select id="bl-active-filter" onchange="window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="active">활성 브랜드</option><option value="inactive">비활성 브랜드</option><option value="expiring">⚠️ 만료 임박 (30일)</option><option value="all">전체</option>' +
@@ -2082,7 +2082,7 @@
 
       if (!brandId) {
         data.last_product_number = '000';
-        data.onboarding_status = '계약 전';
+        data.onboarding_status = '계약 정보 입력 필요';
         data.created_at = now;
       }
 
@@ -3695,7 +3695,7 @@
       if (!contractId) {
         try {
           const bsnap = await getDoc(doc(db, 'brands', brandId));
-          if (bsnap.exists() && (bsnap.data().onboarding_status === '미계약' || !bsnap.data().onboarding_status)) {
+          if (bsnap.exists() && (['미계약', '계약 정보 입력 필요', '계약 전'].includes(bsnap.data().onboarding_status) || !bsnap.data().onboarding_status)) {
             await updateDoc(doc(db, 'brands', brandId), {
               onboarding_status: '계약완료',
               onboarding_status_changed_at: today(),
@@ -3845,7 +3845,7 @@
      12단계 입점 심사 워크플로우
   ════════════════════════════════ */
   window.openOnboardingModal = async function(brandId, currentStatus) {
-    const opts = ['미계약', '계약완료', '심사중', '승인', '거절', '종료'];
+    const opts = ['계약 정보 입력 필요', '계약 전', '계약완료', '심사중', '승인', '거절', '종료'];
     // 기존 브랜드 정보 로드 (승인 시 기존값 채우기용)
     let existingBrand = {};
     try { const s = await getDoc(doc(db, 'brands', brandId)); existingBrand = s.data() || {}; } catch(e) {}
@@ -3878,7 +3878,7 @@
     const footerHTML =
       '<button class="btn btn-secondary" onclick="openBrandDetail(\'' + brandId + '\')">취소</button>' +
       '<button class="btn btn-primary" onclick="saveOnboardingStatus(\'' + brandId + '\')">저장</button>';
-    showModal('입점 심사 상태 변경', formHTML, footerHTML);
+    showModal('입점 상태 변경', formHTML, footerHTML);
   };
 
   window.saveOnboardingStatus = async function(brandId) {
@@ -4000,7 +4000,7 @@
   window.bulkChangeBrandStatus = function() {
     const ids = [...(window._brandSelected || new Set())];
     if (!ids.length) return;
-    const onboardingOpts = ['계약 정보 입력 필요', '미계약', '계약 전', '계약완료', '심사중', '승인', '거절', '종료'];
+    const onboardingOpts = ['계약 정보 입력 필요', '계약 전', '계약완료', '심사중', '승인', '거절', '종료'];
     const typeOpts = ['PB', '위탁', '매입', '기타'];
     const formHTML =
       '<p style="font-size:13px;color:var(--gray-600);margin-bottom:16px;">선택된 <strong>' + ids.length + '</strong>개 브랜드에 적용할 항목을 선택하세요. 체크한 항목만 변경됩니다.</p>' +
@@ -8661,7 +8661,7 @@
           brand_desc: item.desc || '',
           contact_info: { phone: item.phone || '', email: item.email || '', sns: item.sns || '' },
           logo_url: '', last_product_number: '000',
-          onboarding_status: '미계약', created_at: now, updated_at: now
+          onboarding_status: '계약 정보 입력 필요', created_at: now, updated_at: now
         };
         if (item.bizDiv) data.biz_div = item.bizDiv;
         if (item.ceo) data.ceo_name = item.ceo;
