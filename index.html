@@ -2388,23 +2388,53 @@
       const brandMap = {};
       brandsSnap.docs.forEach(d => { brandMap[d.id] = d.data().brand_name || d.id; });
 
-      // persons 컬렉션에 있는 문서
-      const persons = personsSnap.docs.map(d => ({ id: d.id, _source: 'persons', ...d.data() }));
-      const personIdSet = new Set(persons.map(p => p.id));
+      // persons 컬렉션 전체 로드
+      const rawPersons = personsSnap.docs.map(d => ({ id: d.id, _source: 'persons', ...d.data() }));
+
+      // 같은 구글 계정(login_google_email)을 기준으로 중복 병합
+      // → 한 사람이 여러 브랜드에 등록돼 있어도 한 행으로 표시
+      const mergedMap = {};
+      rawPersons.forEach(p => {
+        const key = (p.login_google_email || p.contact_email || p.id).toLowerCase();
+        if (!mergedMap[key]) {
+          mergedMap[key] = {
+            ...p,
+            _doc_ids: [p.id],                                    // 실제 persons 문서 ID 목록
+            brand_ids: p.brand_id ? [p.brand_id] : (Array.isArray(p.brand_ids) ? p.brand_ids : [])
+          };
+        } else {
+          const existing = mergedMap[key];
+          existing._doc_ids.push(p.id);
+          // 브랜드 병합
+          const bidsToAdd = p.brand_id ? [p.brand_id] : (Array.isArray(p.brand_ids) ? p.brand_ids : []);
+          bidsToAdd.forEach(bid => { if (bid && !existing.brand_ids.includes(bid)) existing.brand_ids.push(bid); });
+          // 역할: 주관리자가 있으면 우선
+          if (!existing.role || (p.role === '주관리자')) existing.role = p.role || existing.role;
+          // 가장 빠른 created_at 유지
+          if (p.created_at && (!existing.created_at || String(p.created_at) < String(existing.created_at)))
+            existing.created_at = p.created_at;
+        }
+      });
+      const persons = Object.values(mergedMap);
+      const personEmailSet = new Set(Object.keys(mergedMap));
+      const personIdSet = new Set(rawPersons.map(p => p.id));
 
       // users 컬렉션에는 있지만 persons 문서가 없는 벤더 회원 → 미등록 담당자로 표시
       usersSnap.docs.forEach(d => {
         const u = d.data();
-        const alreadyIn = u.person_id && personIdSet.has(u.person_id);
+        const email = (u.email || '').toLowerCase();
+        const alreadyIn = (u.person_id && personIdSet.has(u.person_id)) || personEmailSet.has(email);
         if (!alreadyIn) {
           persons.push({
             id: d.id,
             _source: 'users',
             _uid: d.id,
+            _doc_ids: [],
             name: u.display_name || u.displayName || '',
             login_google_email: u.email || '',
             contact_email: u.email || '',
             role: '',
+            brand_ids: u.brand_id ? [u.brand_id] : [],
             brand_id: u.brand_id || null,
             active: u.member_status === '브랜드회원',
             created_at: u.created_at || ''
@@ -2510,8 +2540,9 @@
     const activeFilter = ((document.getElementById('pers-filter-active') || {}).value || 'all');
     const bMap = window._allPersonsBrandMap || {};
     const filtered = (window._allPersonsData || []).filter(p => {
-      const brandName = p.brand_id ? (bMap[p.brand_id] || '') : '';
-      const matchQ = !q || [p.name, p.contact_email, p.login_google_email, p.role, brandName].some(v => v && v.toLowerCase().includes(q));
+      const bids = Array.isArray(p.brand_ids) ? p.brand_ids : (p.brand_id ? [p.brand_id] : []);
+      const brandNames = bids.map(bid => bMap[bid] || '').join(' ');
+      const matchQ = !q || [p.name, p.contact_email, p.login_google_email, p.role, brandNames].some(v => v && v.toLowerCase().includes(q));
       const matchActive = activeFilter === 'all' || (activeFilter === 'active' ? p.active !== false : p.active === false);
       return matchQ && matchActive;
     });
@@ -2539,7 +2570,10 @@
       tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--gray-400);padding:32px;">검색 결과가 없습니다.</td></tr>';
     } else {
       tbody.innerHTML = pageItems.map(p => {
-        const brandName = p.brand_id ? (bMap[p.brand_id] || p.brand_id) : '<span style="color:var(--gray-400);">없음</span>';
+        const bids = Array.isArray(p.brand_ids) ? p.brand_ids : (p.brand_id ? [p.brand_id] : []);
+        const brandName = bids.length
+          ? bids.map(bid => bMap[bid] || bid).join(', ')
+          : '<span style="color:var(--gray-400);">없음</span>';
         const statusBadge = p.active !== false
           ? '<span class="badge badge-green">활성</span>'
           : '<span class="badge badge-gray">비활성</span>';
