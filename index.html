@@ -620,7 +620,8 @@
           default_label_width: 60, default_label_height: 40
         });
       }
-      navigate('dashboard');
+      const hashPage = (window.location.hash || '').replace('#', '');
+      navigate(hashPage && PAGE_TITLES[hashPage] ? hashPage : 'dashboard');
       refreshSidebarBadges();
       migratePersonsToTopLevel().catch(() => {});
     } else {
@@ -721,6 +722,9 @@
   };
 
   window.navigate = async (page, params) => {
+    if (window.location.hash !== '#' + page) {
+      history.replaceState(null, '', '#' + page);
+    }
     closeSidebar();
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     const activeEl = document.querySelector('.nav-item[data-page="' + page + '"]');
