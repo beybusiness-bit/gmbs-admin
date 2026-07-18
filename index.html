@@ -359,7 +359,7 @@
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
   import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-  import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, getDocs, query, where, orderBy, runTransaction, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+  import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, runTransaction, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
   import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
   import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 
@@ -7248,14 +7248,18 @@
       if (si.business_type === 'individual') return '개인';
       return '-';
     };
+    const thumbCell = url => url
+      ? '<td style="width:44px;padding:6px 8px;"><img src="' + esc(url) + '" style="width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200);" onerror="this.style.display=\'none\'"></td>'
+      : '<td style="width:44px;padding:6px 8px;"><div style="width:36px;height:36px;border-radius:6px;background:var(--gray-100);"></div></td>';
     const appRows = (list) => {
-      if (!list.length) return '<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--gray-400);">신청 내역이 없습니다.</td></tr>';
+      if (!list.length) return '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--gray-400);">신청 내역이 없습니다.</td></tr>';
       return list.map(item => {
         const isJoin = item._type === 'join';
         const brandDisplay = isJoin ? (item._brandNameDisplay || item.target_brand_id || '-') : (item.brand_name || '-');
         const biz = isJoin ? '-' : bizTypeLabel(item.settlement_info);
         return '<tr style="cursor:pointer;" onclick="openApplicationDetail(\'' + item.id + '\',\'' + item._type + '\')">' +
           '<td>' + statusBadge(item.status) + '</td>' +
+          thumbCell(item.brand_photo_url) +
           '<td>' + esc(brandDisplay) + '</td>' +
           '<td>' + esc(biz) + '</td>' +
           '<td>' + fmtDate(item.submitted_at) + '</td>' +
@@ -7289,7 +7293,7 @@
       '<div id="tab-application" style="display:' + (activeTab==='application'?'block':'none') + ';">' +
         '<div class="card" style="overflow-x:auto;">' +
           '<table class="data-table"><thead><tr>' +
-            '<th>상태</th><th>브랜드명</th><th>사업자 구분</th><th>신청일</th>' +
+            '<th>상태</th><th style="width:44px;"></th><th>브랜드명</th><th>사업자 구분</th><th>신청일</th>' +
           '</tr></thead><tbody>' + appRows(apps) + '</tbody></table>' +
         '</div>' +
       '</div>' +
@@ -7305,7 +7309,7 @@
       '<div id="tab-join" style="display:' + (activeTab==='join'?'block':'none') + ';">' +
         '<div class="card" style="overflow-x:auto;">' +
           '<table class="data-table"><thead><tr>' +
-            '<th>상태</th><th>대상 브랜드</th><th>사업자 구분</th><th>신청일</th>' +
+            '<th>상태</th><th style="width:44px;"></th><th>대상 브랜드</th><th>사업자 구분</th><th>신청일</th>' +
           '</tr></thead><tbody>' + appRows(joins) + '</tbody></table>' +
         '</div>' +
       '</div>';
@@ -7402,6 +7406,9 @@
       // ② 브랜드 정보
       '<div style="margin-bottom:14px;padding:14px;background:var(--gray-50);border-radius:8px;">' +
         '<div style="font-size:12px;font-weight:700;color:var(--gray-500);margin-bottom:10px;">브랜드 정보</div>' +
+        (item.brand_photo_url
+          ? '<div style="margin-bottom:12px;"><img src="' + esc(item.brand_photo_url) + '" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);" onerror="this.style.display=\'none\'"></div>'
+          : '') +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
           field2(isJoin ? '합류 대상 브랜드' : '브랜드명', '<strong>' + esc(brandNameDisplay) + '</strong>') +
           (!isJoin && item.brand_type ? field2('거래유형 (신청)', esc(typeLabel[item.brand_type] || item.brand_type)) : '') +
