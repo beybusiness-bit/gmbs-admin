@@ -2242,6 +2242,10 @@
         '<div id="brand-persons-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
         '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">계약</div>' +
         '<div id="brand-contracts-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
+        '<div style="margin-top:24px;padding-top:12px;border-top:1px solid var(--gray-100);display:flex;align-items:center;gap:16px;">' +
+        renderDocId(brandId, '브랜드') +
+        '<span style="font-size:11px;color:var(--gray-300);">등록일 ' + esc(b.created_at || '-') + '</span>' +
+        '</div>' +
         '</div>';
 
       const isActive = b.active !== false;
@@ -2810,6 +2814,19 @@
         }
       }
       await Promise.all(personPromises);
+      // 관련 신청서에 brand_deleted 플래그 → 승인 목록에서 숨김
+      const [appSnap2, joinSnap2] = await Promise.all([
+        getDocs(query(collection(db, 'brand_applications'), where('target_brand_id', '==', brandId))),
+        getDocs(query(collection(db, 'brand_join_requests'), where('target_brand_id', '==', brandId)))
+      ]);
+      const flagPromises = [
+        ...appSnap2.docs.map(d => updateDoc(d.ref, { brand_deleted: true })),
+        ...joinSnap2.docs.map(d => updateDoc(d.ref, { brand_deleted: true }))
+      ];
+      // brand_applications에서 brand_id 필드로 연결된 신규 입점 신청도 처리
+      const appByBrandId = await getDocs(query(collection(db, 'brand_applications'), where('brand_id', '==', brandId)));
+      appByBrandId.docs.forEach(d => flagPromises.push(updateDoc(d.ref, { brand_deleted: true })));
+      await Promise.all(flagPromises);
       // contracts는 브랜드 서브컬렉션 — 브랜드 삭제 시 함께 삭제
       const contractsSnap = await getDocs(collection(db, 'brands', brandId, 'contracts'));
       await Promise.all(contractsSnap.docs.map(d => deleteDoc(d.ref)));
@@ -4084,6 +4101,11 @@
         '<tbody>' + skuRows + '</tbody></table></div>' +
         '<input type="file" id="sku-img-input" accept="image/*" style="display:none;" />';
 
+      body += '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--gray-100);display:flex;align-items:center;gap:16px;">' +
+        renderDocId(productId, '상품') +
+        '<span style="font-size:11px;color:var(--gray-300);">등록일 ' + esc(p.created_at || '-') + '</span>' +
+        '</div>';
+
       const footerHTML =
         '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>' +
         '<button class="btn btn-secondary" style="color:var(--red);border-color:var(--red);" onclick="confirmProductDelete(\'' + productId + '\',\'' + esc(p.product_name) + '\')">🗑 삭제</button>' +
@@ -5199,6 +5221,8 @@
               ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openWithholdingModal(\'' + settlementId + '\',\'' + esc(s.withholding_status||'') + '\')">변경</button>'
             : '<span style="color:var(--gray-400);">해당없음</span> <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openWithholdingModal(\'' + settlementId + '\',\'\')">등록</button>'));
 
+      body += '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--gray-100);display:flex;align-items:center;gap:16px;">' +
+        renderDocId(settlementId, '정산') + '</div>';
       const footerHTML = '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>';
       showModal('정산 상세 — ' + periodLabel + ' / ' + esc(s.brand_id || ''), body, footerHTML, 'lg');
     } catch(e) { showToast('로드 실패: ' + e.message, 'error'); closeModal(); }
@@ -6416,10 +6440,12 @@
         ? '<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--gray-800);background:var(--blue-light);border-radius:8px;padding:14px;">' + esc(i.answer) + '</div>' +
           '<div style="font-size:11px;color:var(--gray-400);margin-top:6px;">' + esc(i.answered_by || '') + ' · ' + esc(fmtTs(i.answered_at)) + '</div>'
         : '<textarea class="form-input" id="inquiry-answer" rows="5" placeholder="답변을 입력하세요" style="resize:vertical;"></textarea>');
+    const inquiryIdBar = '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--gray-100);display:flex;align-items:center;gap:16px;">' +
+      renderDocId(inquiryId, '문의') + '</div>';
     const footerHTML =
       '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>' +
       (!i.answer ? '<button class="btn btn-primary" onclick="saveInquiryAnswer(\'' + inquiryId + '\')">답변 저장</button>' : '');
-    showModal(esc(i.title || '문의'), body, footerHTML, 'lg');
+    showModal(esc(i.title || '문의'), body + inquiryIdBar, footerHTML, 'lg');
   };
 
   window.saveInquiryAnswer = async function(inquiryId) {
@@ -7115,8 +7141,8 @@
         getDocs(query(collection(db, 'brand_join_requests'), orderBy('submitted_at', 'desc'))),
         getDocs(query(collection(db, 'products'), orderBy('created_at', 'desc')))
       ]);
-      const apps = appsSnap.docs.map(d => ({ id: d.id, _type: 'application', ...d.data() }));
-      const joins = joinsSnap.docs.map(d => ({ id: d.id, _type: 'join', ...d.data() }));
+      const apps = appsSnap.docs.map(d => ({ id: d.id, _type: 'application', ...d.data() })).filter(d => !d.brand_deleted);
+      const joins = joinsSnap.docs.map(d => ({ id: d.id, _type: 'join', ...d.data() })).filter(d => !d.brand_deleted);
       // 상품 승인대기 목록 (approval_status가 '승인대기'인 것만)
       const pendingProducts = productsSnap.docs
         .map(d => ({ id: d.id, ...d.data() }))
@@ -7356,7 +7382,9 @@
     const title = isJoin
       ? '합류 신청 상세 — ' + esc(item.applicant_name || '')
       : '브랜드 등록 신청 — ' + esc(item.brand_name || item.applicant_name || '');
-    showModal(title, bodyHTML, footerHTML);
+    const idBar = '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--gray-100);display:flex;align-items:center;gap:16px;">' +
+      renderDocId(docId, isJoin ? '합류신청' : '신청서') + '</div>';
+    showModal(title, bodyHTML + idBar, footerHTML);
 
     // 승인 시 필요한 전체 데이터를 전역에 보관
     window._pendingAppItem = { ...item, id: docId, _type: type, _brandNameDisplay: brandNameDisplay };
@@ -7865,6 +7893,21 @@
   }
   function esc(str) {
     return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  /* 문서 ID 축약 표시 (클릭하면 전체 복사) */
+  function renderDocId(id, label) {
+    if (!id) return '';
+    const short = id.slice(0, 8) + '…';
+    const safeId = esc(id);
+    const lbl = label ? esc(label) + ' ' : '';
+    return '<span style="display:inline-flex;align-items:center;gap:4px;">' +
+      '<span style="font-size:11px;color:var(--gray-400);">' + lbl + 'ID</span>' +
+      '<span onclick="navigator.clipboard.writeText(\'' + safeId + '\').then(()=>showToast(\'ID 복사됨\'))" ' +
+      'title="클릭하여 복사: ' + safeId + '" ' +
+      'style="font-family:monospace;font-size:11px;color:var(--gray-500);cursor:pointer;padding:1px 6px;border:1px solid var(--gray-200);border-radius:4px;background:var(--gray-50);" ' +
+      'onmouseover="this.style.color=\'var(--primary)\'" onmouseout="this.style.color=\'var(--gray-500)\'">' +
+      short + '</span></span>';
   }
 
   // ═══════════════════════════════════════════════
