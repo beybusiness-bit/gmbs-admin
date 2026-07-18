@@ -3330,7 +3330,7 @@
       // functions 미연결 또는 오류 시 — 생성된 contract 문서는 유지 (이력 보존)
       const isUnimplemented = e.code === 'functions/unimplemented' || e.code === 'functions/not-found' || e.message.includes('NOT_FOUND');
       if (isUnimplemented) {
-        showToast('⚠️ gmbs-functions 미연결 상태입니다. 계약 문서는 저장됐으나 실제 발송은 functions 연결 후 가능합니다.', 'error');
+        showToast('⚠️ 발송 함수를 찾을 수 없습니다. Firebase Functions 배포 상태를 확인해주세요. 계약 문서는 저장됐습니다.', 'error');
       } else {
         // 발송 실패 시 contract 문서 status를 '발송실패'로 업데이트
         try { await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), { status: '발송실패', updated_at: today() }); } catch(_) {}
@@ -6830,7 +6830,7 @@
       '</div>' +
       '<div id="ct-vars-panel" style="display:none;background:#f8f7ff;border:1px solid #ddd6fe;border-radius:8px;padding:12px;margin-bottom:10px;font-size:12px;">' +
       '<div style="color:#5b21b6;font-weight:700;margin-bottom:6px;">기본값 입력 시 아래 변수를 사용할 수 있습니다. 클릭하면 클립보드에 복사됩니다.</div>' +
-      '<div style="background:#fff3cd;border-radius:6px;padding:6px 10px;margin-bottom:8px;font-size:11px;color:#856404;">⚠️ 변수 치환은 전자계약 발송 기능이 완성된 후 자동 적용됩니다. <strong>지금은 기본값으로 저장만 됩니다.</strong></div>' +
+      '<div style="background:#f0fdf4;border-radius:6px;padding:6px 10px;margin-bottom:8px;font-size:11px;color:#166534;">✅ 계약서 발송 시 아래 변수가 <strong>브랜드·담당자 데이터로 자동 치환</strong>됩니다. 기본값은 치환에 실패할 경우 대신 사용됩니다.</div>' +
       '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:11px;color:#166534;line-height:1.7;">' +
       '📅 <strong>날짜 변수</strong>: 발송 시점의 <strong>오늘 날짜</strong>가 자동으로 채워집니다. 특정 날짜를 고정하려면 기본값 칸에 <code style="background:#dcfce7;padding:1px 4px;border-radius:3px;">2026-08-01</code> 처럼 직접 입력하세요.<br>' +
       '💰 <strong>수수료율</strong>: 숫자만 들어갑니다 (예: <code style="background:#dcfce7;padding:1px 4px;border-radius:3px;">10</code>). %기호는 포함되지 않으므로 계약서 템플릿에 "%" 를 직접 붙여두세요.' +
