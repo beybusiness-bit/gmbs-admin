@@ -2859,11 +2859,25 @@
 
   function docFileCell(url, brandId, field) {
     const label = DOC_LABELS[field] || field;
-    const viewBtn = url
-      ? '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> '
-      : '';
-    return viewBtn + '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUploadModal(\'' + brandId + '\',\'' + field + '\')">📎 업로드</button>';
+    if (url) {
+      return '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;">보기</a> ' +
+        '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUploadModal(\'' + brandId + '\',\'' + field + '\')">📎 재업로드</button> ' +
+        '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;color:var(--red);border-color:var(--red);" onclick="deleteDocFile(\'' + brandId + '\',\'' + field + '\',\'' + esc(label) + '\')">🗑 삭제</button>';
+    }
+    return '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openDocUploadModal(\'' + brandId + '\',\'' + field + '\')">📎 업로드</button>';
   }
+
+  window.deleteDocFile = async function(brandId, field, label) {
+    if (!confirm('[' + label + '] 파일을 삭제하시겠습니까?\n삭제 후에는 복구할 수 없습니다.')) return;
+    try {
+      await updateDoc(doc(db, 'brands', brandId), {
+        ['settlement_info.' + field]: '',
+        updated_at: today()
+      });
+      showToast('삭제되었습니다.');
+      openBrandDetail(brandId);
+    } catch(e) { showToast('삭제 실패: ' + esc(e.message), 'error'); }
+  };
 
   window.openDocUploadModal = function(brandId, field) {
     const label = DOC_LABELS[field] || field;
