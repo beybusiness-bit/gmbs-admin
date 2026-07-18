@@ -1608,7 +1608,7 @@
         '<option value="">전체 유형</option><option value="PB">PB</option><option value="위탁">위탁</option><option value="매입">매입</option>' +
         '</select>' +
         '<select id="bl-onboarding-filter" onchange="window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
-        '<option value="">전체 입점상태</option><option value="계약 정보 입력 필요">계약 정보 입력 필요</option><option value="계약 전">계약 전</option><option value="계약완료">계약완료</option><option value="심사중">심사중</option><option value="승인">승인</option><option value="거절">거절</option><option value="입점 종료">입점 종료</option><option value="계약기간 만료">계약기간 만료</option>' +
+        '<option value="">전체 입점상태</option><option value="심사중">심사중</option><option value="승인">승인</option><option value="거절">거절</option><option value="계약 정보 입력 필요">계약 정보 입력 필요</option><option value="계약 전">계약 전</option><option value="입점 중">입점 중</option><option value="계약기간 만료">계약기간 만료</option><option value="입점 종료">입점 종료</option>' +
         '</select>' +
         '<select id="bl-active-filter" onchange="window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="active">활성 브랜드</option><option value="inactive">비활성 브랜드</option><option value="all">전체</option>' +
@@ -1722,7 +1722,7 @@
         '계약 정보 입력 필요': '<span class="badge badge-orange">계약 정보 입력 필요</span>',
         '미계약': '<span class="badge badge-gray">미계약</span>',
         '계약 전': '<span class="badge badge-gray">계약 전</span>',
-        '계약완료': '<span class="badge badge-blue">계약완료</span>',
+        '입점 중': '<span class="badge badge-green">입점 중</span>',
         '심사중': '<span class="badge badge-yellow">심사중</span>',
         '승인': '<span class="badge badge-green">승인</span>',
         '거절': '<span class="badge badge-red">거절</span>',
@@ -2228,7 +2228,7 @@
         '계약 정보 입력 필요': '<span class="badge badge-orange">계약 정보 입력 필요</span>',
         '미계약': '<span class="badge badge-gray">미계약</span>',
         '계약 전': '<span class="badge badge-gray">계약 전</span>',
-        '계약완료': '<span class="badge badge-blue">계약완료</span>',
+        '입점 중': '<span class="badge badge-green">입점 중</span>',
         '심사중': '<span class="badge badge-yellow">심사중</span>',
         '승인': '<span class="badge badge-green">승인</span>',
         '거절': '<span class="badge badge-red">거절</span>',
@@ -2255,8 +2255,7 @@
         sectionTitle('브랜드 정보') +
         '<div class="detail-section">' +
           drow('입점 상태', onboardingBadge(b.onboarding_status) +
-            (b.onboarding_status_reason ? ' <span style="font-size:12px;color:var(--gray-500);">— ' + esc(b.onboarding_status_reason) + '</span>' : '') +
-            ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openOnboardingModal(\'' + brandId + '\',\'' + esc(b.onboarding_status || '') + '\')">상태 변경</button>') +
+            (b.onboarding_status_reason ? ' <span style="font-size:12px;color:var(--gray-500);">— ' + esc(b.onboarding_status_reason) + '</span>' : '')) +
           drow('브랜드명', '<strong>' + esc(b.brand_name) + '</strong>') +
           drow('브랜드코드', brandCodeVal) +
           drow('거래 유형', brandTypeVal) +
@@ -2315,11 +2314,15 @@
         '</div>';
 
       const isActive = b.active !== false;
+      const isTerminated = b.onboarding_status === '입점 종료';
       const footer =
         '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>' +
+        (!isTerminated
+          ? '<button class="btn btn-secondary" style="color:var(--red);border-color:var(--red);" onclick="openTerminateBrandModal(\'' + brandId + '\',\'' + esc(b.brand_name) + '\')">🚪 입점 종료</button>'
+          : '') +
         '<button class="btn btn-secondary" style="color:var(--red);border-color:var(--red);" onclick="confirmBrandDeactivate(\'' + brandId + '\',\'' + esc(b.brand_name) + '\',' + !isActive + ')">' +
           (isActive ? '🚫 비활성화' : '✅ 활성화') + '</button>' +
-        '<button class="btn btn-secondary" style="color:var(--red);border-color:var(--red);margin-left:4px;" onclick="confirmBrandDelete(\'' + brandId + '\',\'' + esc(b.brand_name) + '\')">🗑 삭제</button>' +
+        '<button class="btn btn-secondary" style="color:var(--red);border-color:var(--red);" onclick="confirmBrandDelete(\'' + brandId + '\',\'' + esc(b.brand_name) + '\')">🗑 삭제</button>' +
         '<button class="btn btn-primary" onclick="openBrandModal(\'' + brandId + '\')">✏️ 수정</button>';
 
       showModal('브랜드 정보 — ' + esc(b.brand_name), body, footer, 'lg');
@@ -3883,12 +3886,12 @@
           });
         } catch(e2) {}
       } else if (!contractId) {
-        // 새 계약 추가 시 브랜드가 미계약/계약전 상태이면 '계약완료'로 자동 전환
+        // 새 계약 추가 시 브랜드가 미계약/계약전 상태이면 '입점 중'로 자동 전환
         try {
           const bsnap = await getDoc(doc(db, 'brands', brandId));
           if (bsnap.exists() && (['미계약', '계약 정보 입력 필요', '계약 전'].includes(bsnap.data().onboarding_status) || !bsnap.data().onboarding_status)) {
             await updateDoc(doc(db, 'brands', brandId), {
-              onboarding_status: '계약완료',
+              onboarding_status: '입점 중',
               onboarding_status_changed_at: today(),
               contract_completed_at: today(),
               updated_at: today()
@@ -4036,7 +4039,7 @@
      12단계 입점 심사 워크플로우
   ════════════════════════════════ */
   window.openOnboardingModal = async function(brandId, currentStatus) {
-    const opts = ['계약 정보 입력 필요', '계약 전', '계약완료', '심사중', '승인', '거절', '입점 종료', '계약기간 만료'];
+    const opts = ['심사중', '승인', '거절', '계약 정보 입력 필요', '계약 전', '입점 중', '계약기간 만료', '입점 종료'];
     // 기존 브랜드 정보 로드 (승인 시 기존값 채우기용)
     let existingBrand = {};
     try { const s = await getDoc(doc(db, 'brands', brandId)); existingBrand = s.data() || {}; } catch(e) {}
@@ -4103,7 +4106,7 @@
       // 승인 후 실제 입점 상태는 '계약 정보 입력 필요'로 자동 전환
       updateData.onboarding_status = '계약 정보 입력 필요';
     }
-    if (status === '계약완료') {
+    if (status === '입점 중') {
       updateData.contract_completed_at = today();
     }
 
@@ -4112,6 +4115,34 @@
       await writeActivityLog(brandId, 'admin_action', brandId, 'status_changed', null,
         { onboarding_status: status, reason, ...(status === '승인' ? { brand_code: updateData.brand_code, brand_type: updateData.brand_type } : {}) });
       showToast('입점 상태를 변경했습니다.');
+      openBrandDetail(brandId);
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  /* ── 입점 종료 전용 모달 ── */
+  window.openTerminateBrandModal = function(brandId, brandName) {
+    const formHTML =
+      '<div style="background:#fff8f0;border:1px solid #f59e0b;border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:#92400e;">' +
+        '⚠️ 입점 종료 처리 후에는 해당 브랜드가 운영 대상에서 제외됩니다.' +
+      '</div>' +
+      '<div class="form-group"><label class="form-label">종료 사유 <span style="font-size:11px;color:var(--gray-400);">(선택)</span></label>' +
+      '<input class="form-input" id="terminate-reason" placeholder="예: 계약 기간 종료 후 재계약 없음" /></div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="openBrandDetail(\'' + brandId + '\')">취소</button>' +
+      '<button class="btn btn-primary" style="background:var(--red);border-color:var(--red);" onclick="executeTerminateBrand(\'' + brandId + '\')">입점 종료 확정</button>';
+    showModal(esc(brandName) + ' — 입점 종료', formHTML, footerHTML, 'sm');
+  };
+
+  window.executeTerminateBrand = async function(brandId) {
+    const reason = ((document.getElementById('terminate-reason') || {}).value || '').trim();
+    try {
+      await updateDoc(doc(db, 'brands', brandId), {
+        onboarding_status: '입점 종료',
+        onboarding_status_reason: reason || '',
+        onboarding_status_changed_at: today(),
+        updated_at: today()
+      });
+      showToast('입점 종료 처리되었습니다.');
       openBrandDetail(brandId);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
@@ -4195,7 +4226,7 @@
   window.bulkChangeBrandStatus = function() {
     const ids = [...(window._brandSelected || new Set())];
     if (!ids.length) return;
-    const onboardingOpts = ['계약 정보 입력 필요', '계약 전', '계약완료', '심사중', '승인', '거절', '입점 종료', '계약기간 만료'];
+    const onboardingOpts = ['심사중', '승인', '거절', '계약 정보 입력 필요', '계약 전', '입점 중', '계약기간 만료', '입점 종료'];
     const typeOpts = ['PB', '위탁', '매입', '기타'];
     const formHTML =
       '<p style="font-size:13px;color:var(--gray-600);margin-bottom:16px;">선택된 <strong>' + ids.length + '</strong>개 브랜드에 적용할 항목을 선택하세요. 체크한 항목만 변경됩니다.</p>' +
