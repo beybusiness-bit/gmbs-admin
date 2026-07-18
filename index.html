@@ -2381,7 +2381,7 @@
 
   /* ── vendor_accounts/persons → managers 1회 마이그레이션 ── */
   async function migrateToManagersCollection() {
-    const migKey = 'managers_migrated_v2';
+    const migKey = 'managers_migrated_v3';
     if (localStorage.getItem(migKey)) return;
     const [vaSnap, brandsSnap] = await Promise.all([
       getDocs(collection(db, 'vendor_accounts')),
@@ -2436,12 +2436,14 @@
       }
     }
     // brands/{brandId}/persons → brands/{brandId}/managers
+    // + managers/{email}.brand_ids에 해당 브랜드 추가 (persons에만 있고 vendor_accounts에 없던 케이스 보완)
     for (const bd of brandsSnap.docs) {
       const subSnap = await getDocs(collection(db, 'brands', bd.id, 'persons'));
       for (const pd of subSnap.docs) {
         const pdata = pd.data();
         const email = pdata.login_google_email || '';
         if (!email) continue;
+        // 서브컬렉션 마이그레이션
         const mgrsSnap = await getDocs(query(
           collection(db, 'brands', bd.id, 'managers'),
           where('login_google_email', '==', email)
@@ -2456,6 +2458,33 @@
             active: pdata.active !== false,
             created_at: pdata.created_at || today(),
             updated_at: today(),
+          }));
+        }
+        // managers/{email}.brand_ids 동기화: persons에는 있지만 managers 문서에 브랜드가 누락된 경우 보완
+        const mgrDocRef = doc(db, 'managers', email);
+        const mgrDocSnap = await getDoc(mgrDocRef);
+        if (mgrDocSnap.exists()) {
+          const mgrData = mgrDocSnap.data();
+          const existingBrandIds = mgrData.brand_ids || [];
+          if (!existingBrandIds.includes(bd.id)) {
+            const roles = { ...(mgrData.roles || {}), [bd.id]: pdata.role || '담당자' };
+            writes.push(updateDoc(mgrDocRef, { brand_ids: arrayUnion(bd.id), roles, updated_at: today() }));
+          }
+        } else {
+          // managers 문서 자체가 없는 경우 (vendor_accounts도 없던 담당자) 새로 생성
+          writes.push(setDoc(mgrDocRef, {
+            uid: null,
+            name: pdata.name || '',
+            phone: pdata.phone || '',
+            contact_email: pdata.contact_email || email,
+            login_google_email: email,
+            brand_ids: [bd.id],
+            roles: { [bd.id]: pdata.role || '담당자' },
+            status: '연결됨',
+            active: pdata.active !== false,
+            created_at: pdata.created_at || today(),
+            updated_at: today(),
+            linked_at: pdata.created_at || today(),
           }));
         }
       }
