@@ -3416,23 +3416,42 @@
      13단계 상품 승인 워크플로우
   ════════════════════════════════ */
   window.openApprovalModal = function(productId, currentStatus) {
+    const decisions = [
+      { value: '승인', label: '✓ 승인', activeStyle: 'border:2px solid var(--primary);background:var(--primary-light,#f3eeff);color:var(--primary);' },
+      { value: '거절', label: '✕ 거절', activeStyle: 'border:2px solid #dc2626;background:#fee2e2;color:#dc2626;' },
+      { value: '판매중지', label: '⏸ 판매중지', activeStyle: 'border:2px solid #d97706;background:#fef3c7;color:#d97706;' },
+    ];
+    const baseStyle = 'flex:1;padding:10px 0;border:2px solid var(--gray-200);border-radius:8px;background:var(--gray-50);color:var(--gray-500);font-size:13px;font-weight:600;cursor:pointer;';
+    const buttonsHTML = decisions.map(d =>
+      '<button id="prod-decision-' + d.value + '" onclick="window.selectProdDecision(\'' + d.value + '\')" type="button" style="' +
+      (d.value === currentStatus ? d.activeStyle : '') + baseStyle + '">' + d.label + '</button>'
+    ).join('');
     const formHTML =
-      '<div class="form-group"><label class="form-label">승인 상태</label>' +
-      '<select class="form-input" id="approval-status">' +
-      '<option value="">미설정</option>' +
-      ['승인대기','승인','거절','판매중지'].map(o => '<option value="' + o + '"' + (o === currentStatus ? ' selected' : '') + '>' + o + '</option>').join('') +
-      '</select></div>' +
+      '<div style="margin-bottom:4px;font-size:13px;font-weight:700;color:var(--gray-700);">처리 결정</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:16px;">' + buttonsHTML + '</div>' +
       '<div id="approval-extra"></div>';
     const footerHTML =
       '<button class="btn btn-secondary" onclick="openProductDetail(\'' + productId + '\')">취소</button>' +
       '<button class="btn btn-primary" onclick="saveApproval(\'' + productId + '\')">저장</button>';
     showModal('상품 승인 심사', formHTML, footerHTML);
+    window._prodDecision = currentStatus || '';
+    renderApprovalExtra(currentStatus || '');
+  };
 
-    // 상태 선택에 따라 추가 입력 필드 동적 표시
-    document.getElementById('approval-status').addEventListener('change', function() {
-      renderApprovalExtra(this.value);
+  window.selectProdDecision = function(decision) {
+    window._prodDecision = decision;
+    const decisions = ['승인','거절','판매중지'];
+    const activeStyles = {
+      '승인': 'border:2px solid var(--primary);background:var(--primary-light,#f3eeff);color:var(--primary);',
+      '거절': 'border:2px solid #dc2626;background:#fee2e2;color:#dc2626;',
+      '판매중지': 'border:2px solid #d97706;background:#fef3c7;color:#d97706;',
+    };
+    const baseStyle = 'flex:1;padding:10px 0;border:2px solid var(--gray-200);border-radius:8px;background:var(--gray-50);color:var(--gray-500);font-size:13px;font-weight:600;cursor:pointer;';
+    decisions.forEach(d => {
+      const btn = document.getElementById('prod-decision-' + d);
+      if (btn) btn.style.cssText = (d === decision ? activeStyles[d] : '') + baseStyle;
     });
-    renderApprovalExtra(currentStatus);
+    renderApprovalExtra(decision);
   };
 
   function renderApprovalExtra(status) {
@@ -3492,7 +3511,7 @@
   window.calcRetailPrice = window.calcRetailFromSupply;
 
   window.saveApproval = async function(productId) {
-    const status = document.getElementById('approval-status').value;
+    const status = window._prodDecision || '';
     const reason = ((document.getElementById('approval-reason') || {}).value || '').trim();
     const data = { approval_status: status || null, updated_at: today() };
 
@@ -7348,40 +7367,23 @@
       websiteSection +
       settlementSection +
       (item.rejection_reason ? '<div style="padding:10px;background:#fee2e2;border-radius:6px;font-size:12px;color:#991b1b;margin-bottom:12px;">거절 사유: ' + esc(item.rejection_reason) + '</div>' : '') +
-      (isPending && !isJoin
-        ? '<div style="border-top:1px solid var(--gray-200);padding-top:16px;margin-top:4px;background:var(--blue-light);border-radius:10px;padding:14px 16px;margin-bottom:12px;">' +
-            '<div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:10px;">✅ 승인 시 확정 정보</div>' +
-            '<div class="form-group" style="margin-bottom:8px;">' +
-              '<label class="form-label">브랜드코드 <span style="color:var(--red);">*</span> <span style="font-size:11px;font-weight:400;color:var(--gray-400);">영문대문자·숫자 2~10자</span></label>' +
-              '<div style="display:flex;gap:8px;align-items:center;">' +
-              '<input class="form-input" id="app-brand-code" type="text" placeholder="예: ONG" maxlength="10" style="text-transform:uppercase;font-weight:700;font-family:monospace;flex:1;" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,\'\')" />' +
-              '<button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;white-space:nowrap;" type="button" onclick="checkAppBrandCode()">중복 확인</button>' +
-              '</div>' +
-              '<div id="app-brand-code-msg" style="font-size:12px;margin-top:4px;"></div>' +
+      (isPending
+        ? '<div id="app-decision-wrap" style="border-top:1px solid var(--gray-200);padding-top:16px;margin-top:8px;">' +
+            '<div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:10px;">처리 결정</div>' +
+            '<div style="display:flex;gap:8px;margin-bottom:14px;">' +
+              '<button id="app-btn-reject" onclick="window.selectAppDecision(\'거절\')" type="button" ' +
+                'style="flex:1;padding:10px 0;border:2px solid var(--gray-200);border-radius:8px;background:var(--gray-50);color:var(--gray-500);font-size:14px;font-weight:600;cursor:pointer;">✕ 거절</button>' +
+              '<button id="app-btn-approve" onclick="window.selectAppDecision(\'승인\')" type="button" ' +
+                'style="flex:1;padding:10px 0;border:2px solid var(--gray-200);border-radius:8px;background:var(--gray-50);color:var(--gray-500);font-size:14px;font-weight:600;cursor:pointer;">✓ 승인</button>' +
             '</div>' +
-            '<div class="form-row" style="margin-bottom:8px;">' +
-              '<div class="form-group"><label class="form-label">거래유형 <span style="color:var(--red);">*</span></label>' +
-              '<select class="form-input" id="app-brand-type">' +
-              ['PB','위탁','매입','기타'].map(t => '<option value="' + t + '"' + ((item.brand_type||'위탁') === t ? ' selected' : '') + '>' + t + '</option>').join('') +
-              '</select></div>' +
-              '<div class="form-group"><label class="form-label">위탁수수료 (%)</label>' +
-              '<input class="form-input" id="app-commission" type="number" min="0" max="100" step="0.1" value="' + esc(String(item.requested_commission_rate || 15)) + '" /></div>' +
-            '</div>' +
-            '<div class="form-label" style="margin-bottom:4px;">승인/거절 사유 <span style="font-size:11px;color:var(--gray-400);">(선택 — 이메일로 전달됩니다)</span></div>' +
-            '<textarea id="app-reject-reason" class="form-input" rows="2" placeholder="예: 서류 확인 완료 / 기준 미달 등"></textarea>' +
-          '</div>'
-        : isPending
-        ? '<div style="border-top:1px solid var(--gray-200);padding-top:16px;margin-top:4px;">' +
-            '<div class="form-label" style="margin-bottom:4px;">승인/거절 사유 <span style="font-size:11px;color:var(--gray-400);">(선택 — 이메일로 전달됩니다)</span></div>' +
-            '<textarea id="app-reject-reason" class="form-input" rows="3" placeholder="예: 서류 확인 완료 / 기준 미달 등"></textarea>' +
+            '<div id="app-decision-fields"></div>' +
           '</div>'
         : '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">처리자: ' + esc(item.reviewer_email || '-') + ' · ' + fmtDate(item.reviewed_at) + '</div>' +
           (item.rejection_reason || item.approval_reason ? '<div style="font-size:12px;color:var(--gray-500);margin-top:4px;">사유: ' + esc(item.rejection_reason || item.approval_reason || '') + '</div>' : ''));
 
     const footerHTML = isPending
       ? '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>' +
-        '<button class="btn" style="background:var(--red);color:#fff;" onclick="rejectApplication(\'' + docId + '\',\'' + type + '\',\'' + esc(item.applicant_email) + '\',\'' + esc(item.applicant_name) + '\',\'' + esc(item.applicant_contact_email || '') + '\',\'' + esc(brandNameDisplay) + '\')">거절</button>' +
-        '<button class="btn btn-primary" onclick="approveApplication(\'' + docId + '\',\'' + type + '\')">승인</button>'
+        '<button class="btn btn-primary" onclick="window.submitAppDecision(\'' + docId + '\',\'' + type + '\')">처리 완료</button>'
       : '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>';
 
     const title = isJoin
@@ -7393,6 +7395,72 @@
 
     // 승인 시 필요한 전체 데이터를 전역에 보관
     window._pendingAppItem = { ...item, id: docId, _type: type, _brandNameDisplay: brandNameDisplay };
+  };
+
+  window.selectAppDecision = function(decision) {
+    window._appDecision = decision;
+    const rBtn = document.getElementById('app-btn-reject');
+    const aBtn = document.getElementById('app-btn-approve');
+    const fields = document.getElementById('app-decision-fields');
+    if (!fields) return;
+    const baseStyle = 'flex:1;padding:10px 0;border:2px solid var(--gray-200);border-radius:8px;background:var(--gray-50);color:var(--gray-500);font-size:14px;font-weight:600;cursor:pointer;';
+    if (rBtn) rBtn.style.cssText = decision === '거절'
+      ? 'flex:1;padding:10px 0;border:2px solid #dc2626;border-radius:8px;background:#fee2e2;color:#dc2626;font-size:14px;font-weight:700;cursor:pointer;'
+      : baseStyle;
+    if (aBtn) aBtn.style.cssText = decision === '승인'
+      ? 'flex:1;padding:10px 0;border:2px solid var(--primary);border-radius:8px;background:var(--primary-light,#f3eeff);color:var(--primary);font-size:14px;font-weight:700;cursor:pointer;'
+      : baseStyle;
+    const item = window._pendingAppItem || {};
+    const isJoin = item._type === 'join';
+    if (decision === '거절') {
+      fields.innerHTML =
+        '<div class="form-group">' +
+          '<label class="form-label">거절 사유 <span style="font-size:11px;color:var(--gray-400);">(선택 — 이메일로 전달됩니다)</span></label>' +
+          '<textarea id="app-reason" class="form-input" rows="3" placeholder="예: 기준 미달, 서류 미비 등"></textarea>' +
+        '</div>';
+    } else if (decision === '승인') {
+      fields.innerHTML =
+        (!isJoin
+          ? '<div style="background:var(--blue-light,#eff6ff);border-radius:8px;padding:14px;margin-bottom:12px;">' +
+              '<div style="font-size:12px;font-weight:700;color:var(--blue,#2563eb);margin-bottom:10px;">✅ 승인 확정 정보</div>' +
+              '<div class="form-group" style="margin-bottom:8px;">' +
+                '<label class="form-label">브랜드코드 <span style="color:var(--red);">*</span> <span style="font-size:11px;font-weight:400;color:var(--gray-400);">영문대문자·숫자 2~10자</span></label>' +
+                '<div style="display:flex;gap:8px;align-items:center;">' +
+                  '<input class="form-input" id="app-brand-code" type="text" placeholder="예: ONG" maxlength="10" style="text-transform:uppercase;font-weight:700;font-family:monospace;flex:1;" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,\'\')" />' +
+                  '<button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;white-space:nowrap;" type="button" onclick="checkAppBrandCode()">중복 확인</button>' +
+                '</div>' +
+                '<div id="app-brand-code-msg" style="font-size:12px;margin-top:4px;"></div>' +
+              '</div>' +
+              '<div class="form-row" style="margin-bottom:0;">' +
+                '<div class="form-group" style="margin-bottom:0;"><label class="form-label">거래유형 <span style="color:var(--red);">*</span></label>' +
+                  '<select class="form-input" id="app-brand-type" onchange="document.getElementById(\'app-commission-wrap\').style.display=this.value===\'위탁\'?\'block\':\'none\'">' +
+                  ['PB','위탁','매입','기타'].map(t => '<option value="' + t + '"' + ((item.brand_type||'위탁') === t ? ' selected' : '') + '>' + t + '</option>').join('') +
+                  '</select></div>' +
+                '<div class="form-group" id="app-commission-wrap" style="margin-bottom:0;display:' + ((item.brand_type||'위탁') === '위탁' ? 'block' : 'none') + ';"><label class="form-label">위탁수수료 (%)</label>' +
+                  '<input class="form-input" id="app-commission" type="number" min="0" max="100" step="0.1" value="' + esc(String(item.requested_commission_rate || 15)) + '" /></div>' +
+              '</div>' +
+            '</div>'
+          : '') +
+        '<div class="form-group">' +
+          '<label class="form-label">승인 사유 <span style="font-size:11px;color:var(--gray-400);">(선택 — 이메일로 전달됩니다)</span></label>' +
+          '<textarea id="app-reason" class="form-input" rows="2" placeholder="예: 서류 확인 완료"></textarea>' +
+        '</div>';
+    }
+  };
+
+  window.submitAppDecision = async function(docId, type) {
+    const decision = window._appDecision;
+    if (!decision) { showToast('처리 결정을 선택해주세요.', 'error'); return; }
+    const reason = ((document.getElementById('app-reason') || {}).value || '').trim();
+    const item = window._pendingAppItem;
+    if (!item || item.id !== docId) { showToast('데이터 오류', 'error'); return; }
+    if (decision === '승인') {
+      await window.approveApplication(docId, type, reason);
+    } else {
+      await window.rejectApplication(docId, type,
+        item.applicant_email, item.applicant_name,
+        item.applicant_contact_email || '', item._brandNameDisplay || '', reason);
+    }
   };
 
   window.checkAppBrandCode = async function() {
@@ -7418,13 +7486,13 @@
     }
   };
 
-  window.approveApplication = async function(docId, type) {
+  window.approveApplication = async function(docId, type, _reason) {
     const item = window._pendingAppItem;
     if (!item || item.id !== docId) { showToast('데이터 오류', 'error'); return; }
     const isJoin = type === 'join';
     const auth = getAuth();
     const reviewerEmail = auth.currentUser ? auth.currentUser.email : '';
-    const approvalReason = ((document.getElementById('app-reject-reason') || {}).value || '').trim();
+    const approvalReason = _reason !== undefined ? _reason : ((document.getElementById('app-reason') || {}).value || '').trim();
 
     try {
       if (isJoin) {
@@ -7547,8 +7615,8 @@
     }
   };
 
-  window.rejectApplication = async function(docId, type, applicantEmail, applicantName, contactEmail, brandName) {
-    const reason = (document.getElementById('app-reject-reason') || {}).value || '';
+  window.rejectApplication = async function(docId, type, applicantEmail, applicantName, contactEmail, brandName, _reason) {
+    const reason = _reason !== undefined ? _reason : ((document.getElementById('app-reason') || {}).value || '');
     const auth = getAuth();
     const reviewerEmail = auth.currentUser ? auth.currentUser.email : '';
     const colName = type === 'application' ? 'brand_applications' : 'brand_join_requests';
