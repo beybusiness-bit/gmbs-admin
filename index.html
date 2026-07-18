@@ -2381,12 +2381,27 @@
 
   /* ── vendor_accounts/persons → managers 1회 마이그레이션 ── */
   async function migrateToManagersCollection() {
-    const migKey = 'managers_migrated_v1';
+    const migKey = 'managers_migrated_v2';
     if (localStorage.getItem(migKey)) return;
     const [vaSnap, brandsSnap] = await Promise.all([
       getDocs(collection(db, 'vendor_accounts')),
       getDocs(collection(db, 'brands'))
     ]);
+    // persons 서브컬렉션 전체를 미리 로드해 email 기준으로 인덱싱
+    const personsByEmail = {}; // { email: { name, phone, contact_email, roles: {brandId: role} } }
+    for (const bd of brandsSnap.docs) {
+      const subSnap = await getDocs(collection(db, 'brands', bd.id, 'persons'));
+      for (const pd of subSnap.docs) {
+        const pdata = pd.data();
+        const em = pdata.login_google_email || '';
+        if (!em) continue;
+        if (!personsByEmail[em]) personsByEmail[em] = { name: '', phone: '', contact_email: em, roles: {} };
+        if (!personsByEmail[em].name && pdata.name) personsByEmail[em].name = pdata.name;
+        if (!personsByEmail[em].phone && pdata.phone) personsByEmail[em].phone = pdata.phone;
+        if (!personsByEmail[em].contact_email && pdata.contact_email) personsByEmail[em].contact_email = pdata.contact_email;
+        if (pdata.role) personsByEmail[em].roles[bd.id] = pdata.role;
+      }
+    }
     const writes = [];
     // vendor_accounts/{email} → managers/{email}
     for (const vd of vaSnap.docs) {
@@ -2395,14 +2410,23 @@
       const existing = await getDoc(doc(db, 'managers', email));
       if (!existing.exists()) {
         const brandIds = va.brand_ids || (va.brand_id ? [va.brand_id] : []);
+        const fromPersons = personsByEmail[email] || {};
+        // roles: persons 서브컬렉션에서 조회한 값 우선, 없으면 va.roles 사용
+        let roles = (fromPersons.roles && Object.keys(fromPersons.roles).length > 0)
+          ? fromPersons.roles
+          : (va.roles || {});
+        // brand_ids에 있지만 roles에 없는 브랜드는 기본 역할로 채움
+        for (const bid of brandIds) {
+          if (!roles[bid]) roles[bid] = '담당자';
+        }
         writes.push(setDoc(doc(db, 'managers', email), {
           uid: va.uid || null,
-          name: va.name || '',
-          phone: va.phone || '',
-          contact_email: email,
+          name: fromPersons.name || va.name || '',
+          phone: fromPersons.phone || va.phone || '',
+          contact_email: fromPersons.contact_email || email,
           login_google_email: email,
           brand_ids: brandIds,
-          roles: va.roles || {},
+          roles,
           status: va.status || '초대됨',
           active: va.active !== false,
           created_at: va.created_at || today(),
