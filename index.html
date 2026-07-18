@@ -2668,6 +2668,9 @@
         + row('전화번호', esc(p.phone || '-'))
         + row('담당 브랜드', brandsHtml)
         + row('등록일', tsToDate(p.created_at))
+        + '<div style="margin-top:16px;padding-top:10px;border-top:1px solid var(--gray-100);">'
+        + renderDocId(personId, '담당자')
+        + '</div>'
         + '</div>';
 
       const footer =
