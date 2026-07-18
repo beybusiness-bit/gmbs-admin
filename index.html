@@ -7595,7 +7595,8 @@
 
         await updateDoc(doc(db, 'brand_applications', docId), {
           status: '승인', reviewed_at: today(), reviewer_email: reviewerEmail,
-          approval_reason: approvalReason
+          approval_reason: approvalReason,
+          brand_id: brandId
         });
 
         await sendEmailByTrigger('brand_approved', {
