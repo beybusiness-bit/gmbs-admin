@@ -2815,17 +2815,22 @@
       }
       await Promise.all(personPromises);
       // 관련 신청서에 brand_deleted 플래그 → 승인 목록에서 숨김
-      const [appSnap2, joinSnap2] = await Promise.all([
+      const brandSnap = await getDoc(doc(db, 'brands', brandId));
+      const brandCode = brandSnap.exists() ? (brandSnap.data().brand_code || '') : '';
+      const flagQueries = [
         getDocs(query(collection(db, 'brand_applications'), where('target_brand_id', '==', brandId))),
-        getDocs(query(collection(db, 'brand_join_requests'), where('target_brand_id', '==', brandId)))
-      ]);
-      const flagPromises = [
-        ...appSnap2.docs.map(d => updateDoc(d.ref, { brand_deleted: true })),
-        ...joinSnap2.docs.map(d => updateDoc(d.ref, { brand_deleted: true }))
+        getDocs(query(collection(db, 'brand_join_requests'), where('target_brand_id', '==', brandId))),
+        getDocs(query(collection(db, 'brand_applications'), where('brand_id', '==', brandId))),
       ];
-      // brand_applications에서 brand_id 필드로 연결된 신규 입점 신청도 처리
-      const appByBrandId = await getDocs(query(collection(db, 'brand_applications'), where('brand_id', '==', brandId)));
-      appByBrandId.docs.forEach(d => flagPromises.push(updateDoc(d.ref, { brand_deleted: true })));
+      if (brandCode) {
+        flagQueries.push(getDocs(query(collection(db, 'brand_applications'), where('brand_code', '==', brandCode))));
+      }
+      const flagSnaps = await Promise.all(flagQueries);
+      const flagPromises = [];
+      const flaggedIds = new Set();
+      flagSnaps.forEach(snap => snap.docs.forEach(d => {
+        if (!flaggedIds.has(d.id)) { flaggedIds.add(d.id); flagPromises.push(updateDoc(d.ref, { brand_deleted: true })); }
+      }));
       await Promise.all(flagPromises);
       // contracts는 브랜드 서브컬렉션 — 브랜드 삭제 시 함께 삭제
       const contractsSnap = await getDocs(collection(db, 'brands', brandId, 'contracts'));
@@ -7165,8 +7170,24 @@
         getDocs(query(collection(db, 'brand_join_requests'), orderBy('submitted_at', 'desc'))),
         getDocs(query(collection(db, 'products'), orderBy('created_at', 'desc')))
       ]);
-      const apps = appsSnap.docs.map(d => ({ id: d.id, _type: 'application', ...d.data() })).filter(d => !d.brand_deleted);
-      const joins = joinsSnap.docs.map(d => ({ id: d.id, _type: 'join', ...d.data() })).filter(d => !d.brand_deleted);
+      let apps = appsSnap.docs.map(d => ({ id: d.id, _type: 'application', ...d.data() })).filter(d => !d.brand_deleted);
+      let joins = joinsSnap.docs.map(d => ({ id: d.id, _type: 'join', ...d.data() })).filter(d => !d.brand_deleted);
+      // 승인됐지만 brand_id 없이 brand_code만 있는 구형 문서 중 브랜드가 삭제된 경우 자동 정리
+      const orphanApps = apps.filter(a => a.status === '승인' && !a.brand_id && a.brand_code);
+      if (orphanApps.length > 0) {
+        const codeSet = [...new Set(orphanApps.map(a => a.brand_code))];
+        const existingCodes = new Set();
+        await Promise.all(codeSet.map(async code => {
+          const snap = await getDocs(query(collection(db, 'brands'), where('brand_code', '==', code), limit(1)));
+          if (!snap.empty) existingCodes.add(code);
+        }));
+        const toFlag = orphanApps.filter(a => !existingCodes.has(a.brand_code));
+        if (toFlag.length > 0) {
+          await Promise.all(toFlag.map(a => updateDoc(doc(db, 'brand_applications', a.id), { brand_deleted: true })));
+          const flaggedSet = new Set(toFlag.map(a => a.id));
+          apps = apps.filter(a => !flaggedSet.has(a.id));
+        }
+      }
       // 상품 승인대기 목록 (approval_status가 '승인대기'인 것만)
       const pendingProducts = productsSnap.docs
         .map(d => ({ id: d.id, ...d.data() }))
@@ -7409,7 +7430,7 @@
     if (decision === '거절') {
       fields.innerHTML =
         '<div class="form-group">' +
-          '<label class="form-label">거절 사유 <span style="font-size:11px;color:var(--gray-400);">(선택 — 이메일로 전달됩니다)</span></label>' +
+          '<label class="form-label">거절 사유 <span style="font-size:11px;color:var(--gray-400);">(선택)</span></label>' +
           '<textarea id="app-reason" class="form-input" rows="3" placeholder="예: 기준 미달, 서류 미비 등"></textarea>' +
         '</div>';
     } else if (decision === '승인') {
@@ -7436,7 +7457,7 @@
             '</div>'
           : '') +
         '<div class="form-group">' +
-          '<label class="form-label">승인 사유 <span style="font-size:11px;color:var(--gray-400);">(선택 — 이메일로 전달됩니다)</span></label>' +
+          '<label class="form-label">승인 사유 <span style="font-size:11px;color:var(--gray-400);">(선택)</span></label>' +
           '<textarea id="app-reason" class="form-input" rows="2" placeholder="예: 서류 확인 완료"></textarea>' +
         '</div>';
     }
