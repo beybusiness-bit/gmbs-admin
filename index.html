@@ -7759,14 +7759,32 @@
     const appRows = (list) => {
       if (!list.length) return '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--gray-400);">신청 내역이 없습니다.</td></tr>';
       return list.map(item => {
-        const isJoin = item._type === 'join';
-        const brandDisplay = isJoin ? (item._brandNameDisplay || item.target_brand_id || '-') : (item.brand_name || '-');
-        const biz = isJoin ? '-' : bizTypeLabel(item.settlement_info);
+        const brandDisplay = item.brand_name || '-';
+        const biz = bizTypeLabel(item.settlement_info);
         return '<tr style="cursor:pointer;" onclick="openApplicationDetail(\'' + item.id + '\',\'' + item._type + '\')">' +
           '<td>' + statusBadge(item.status) + '</td>' +
           thumbCell(item.brand_photo_url) +
           '<td>' + esc(brandDisplay) + '</td>' +
           '<td>' + esc(biz) + '</td>' +
+          '<td>' + fmtDate(item.submitted_at) + '</td>' +
+        '</tr>';
+      }).join('');
+    };
+
+    const joinRows = (list) => {
+      if (!list.length) return '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--gray-400);">신청 내역이 없습니다.</td></tr>';
+      return list.map(item => {
+        const brandDisplay = item._brandNameDisplay || item.target_brand_id || '-';
+        const applicantName = esc(item.applicant_name || item.name || '-');
+        const applicantRole = esc(item.role || item.requested_role || '-');
+        const applicantEmail = esc(item.applicant_email || item.email || item.contact_email || '-');
+        return '<tr style="cursor:pointer;" onclick="openApplicationDetail(\'' + item.id + '\',\'' + item._type + '\')">' +
+          '<td>' + statusBadge(item.status) + '</td>' +
+          thumbCell(item.brand_photo_url) +
+          '<td>' + esc(brandDisplay) + '</td>' +
+          '<td>' + applicantName + '</td>' +
+          '<td>' + applicantRole + '</td>' +
+          '<td>' + applicantEmail + '</td>' +
           '<td>' + fmtDate(item.submitted_at) + '</td>' +
         '</tr>';
       }).join('');
@@ -7814,8 +7832,8 @@
       '<div id="tab-join" style="display:' + (activeTab==='join'?'block':'none') + ';">' +
         '<div class="card" style="overflow-x:auto;">' +
           '<table class="data-table"><thead><tr>' +
-            '<th>상태</th><th style="width:44px;"></th><th>대상 브랜드</th><th>사업자 구분</th><th>신청일</th>' +
-          '</tr></thead><tbody>' + appRows(joins) + '</tbody></table>' +
+            '<th>상태</th><th style="width:44px;"></th><th>대상 브랜드</th><th>신청자명</th><th>역할</th><th>이메일</th><th>신청일</th>' +
+          '</tr></thead><tbody>' + joinRows(joins) + '</tbody></table>' +
         '</div>' +
       '</div>';
 
