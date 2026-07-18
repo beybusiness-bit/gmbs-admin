@@ -369,7 +369,7 @@
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
   import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-  import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, runTransaction, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+  import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, runTransaction, writeBatch, arrayUnion, arrayRemove } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
   import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
   import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 
@@ -647,7 +647,7 @@
       const hashPage = (window.location.hash || '').replace('#', '');
       navigate(hashPage && PAGE_TITLES[hashPage] ? hashPage : 'dashboard');
       refreshSidebarBadges();
-      migratePersonsToTopLevel().catch(() => {});
+      migrateToManagersCollection().catch(() => {});
     } else {
       window._currentUser = null;
       loading.style.display = 'none';
@@ -2379,24 +2379,66 @@
     }
   }
 
-  /* ── persons 서브컬렉션 → 최상위 컬렉션 1회 마이그레이션 ── */
-  async function migratePersonsToTopLevel() {
-    const migKey = 'persons_migrated_v1';
+  /* ── vendor_accounts/persons → managers 1회 마이그레이션 ── */
+  async function migrateToManagersCollection() {
+    const migKey = 'managers_migrated_v1';
     if (localStorage.getItem(migKey)) return;
-    const brandsSnap = await getDocs(collection(db, 'brands'));
+    const [vaSnap, brandsSnap] = await Promise.all([
+      getDocs(collection(db, 'vendor_accounts')),
+      getDocs(collection(db, 'brands'))
+    ]);
     const writes = [];
+    // vendor_accounts/{email} → managers/{email}
+    for (const vd of vaSnap.docs) {
+      const email = vd.id;
+      const va = vd.data();
+      const existing = await getDoc(doc(db, 'managers', email));
+      if (!existing.exists()) {
+        const brandIds = va.brand_ids || (va.brand_id ? [va.brand_id] : []);
+        writes.push(setDoc(doc(db, 'managers', email), {
+          uid: va.uid || null,
+          name: va.name || '',
+          phone: va.phone || '',
+          contact_email: email,
+          login_google_email: email,
+          brand_ids: brandIds,
+          roles: va.roles || {},
+          status: va.status || '초대됨',
+          active: va.active !== false,
+          created_at: va.created_at || today(),
+          updated_at: today(),
+          linked_at: va.linked_at || null,
+        }));
+      }
+    }
+    // brands/{brandId}/persons → brands/{brandId}/managers
     for (const bd of brandsSnap.docs) {
       const subSnap = await getDocs(collection(db, 'brands', bd.id, 'persons'));
       for (const pd of subSnap.docs) {
-        const existing = await getDoc(doc(db, 'persons', pd.id));
-        if (!existing.exists()) {
-          writes.push(setDoc(doc(db, 'persons', pd.id), { brand_id: bd.id, ...pd.data() }));
+        const pdata = pd.data();
+        const email = pdata.login_google_email || '';
+        if (!email) continue;
+        const mgrsSnap = await getDocs(query(
+          collection(db, 'brands', bd.id, 'managers'),
+          where('login_google_email', '==', email)
+        ));
+        if (mgrsSnap.empty) {
+          writes.push(addDoc(collection(db, 'brands', bd.id, 'managers'), {
+            login_google_email: email,
+            name: pdata.name || '',
+            role: pdata.role || '',
+            phone: pdata.phone || '',
+            contact_email: pdata.contact_email || email,
+            active: pdata.active !== false,
+            created_at: pdata.created_at || today(),
+            updated_at: today(),
+          }));
         }
       }
     }
     await Promise.all(writes);
     localStorage.setItem(migKey, '1');
-    if (writes.length > 0) console.log('[migration] persons 마이그레이션 완료:', writes.length, '건');
+    if (writes.length > 0) console.log('[migration] managers 마이그레이션 완료:', writes.length, '건');
   }
 
   /* ════════════════════════════════
@@ -2405,49 +2447,22 @@
   async function renderPersonsList(container) {
     container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
     try {
-      const [personsSnap, brandsSnap, usersSnap] = await Promise.all([
-        getDocs(collection(db, 'persons')),
-        getDocs(collection(db, 'brands')),
-        getDocs(query(collection(db, 'users'), where('member_status', '!=', null)))
+      const [managersSnap, brandsSnap] = await Promise.all([
+        getDocs(collection(db, 'managers')),
+        getDocs(collection(db, 'brands'))
       ]);
       const brandMap = {};
       brandsSnap.docs.forEach(d => { brandMap[d.id] = d.data().brand_name || d.id; });
 
-      // persons 컬렉션 전체 로드
-      const rawPersons = personsSnap.docs.map(d => ({ id: d.id, _source: 'persons', ...d.data() }));
-
-      // 같은 구글 계정(login_google_email)을 기준으로 중복 병합
-      // → 한 사람이 여러 브랜드에 등록돼 있어도 한 행으로 표시
-      const mergedMap = {};
-      rawPersons.forEach(p => {
-        const key = (p.login_google_email || p.contact_email || p.id).toLowerCase();
-        if (!mergedMap[key]) {
-          mergedMap[key] = {
-            ...p,
-            _doc_ids: [p.id],                                    // 실제 persons 문서 ID 목록
-            brand_ids: p.brand_id ? [p.brand_id] : (Array.isArray(p.brand_ids) ? p.brand_ids : [])
-          };
-        } else {
-          const existing = mergedMap[key];
-          existing._doc_ids.push(p.id);
-          // 브랜드 병합
-          const bidsToAdd = p.brand_id ? [p.brand_id] : (Array.isArray(p.brand_ids) ? p.brand_ids : []);
-          bidsToAdd.forEach(bid => { if (bid && !existing.brand_ids.includes(bid)) existing.brand_ids.push(bid); });
-          // 역할: 주관리자가 있으면 우선
-          if (!existing.role || (p.role === '주관리자')) existing.role = p.role || existing.role;
-          // 가장 빠른 created_at 유지
-          if (p.created_at && (!existing.created_at || String(p.created_at) < String(existing.created_at)))
-            existing.created_at = p.created_at;
-        }
-      });
-      const persons = Object.values(mergedMap);
+      // managers 컬렉션: doc ID = 이메일
+      const persons = managersSnap.docs.map(d => ({
+        id: d.id,  // = login_google_email
+        ...d.data(),
+        brand_ids: Array.isArray(d.data().brand_ids) ? d.data().brand_ids : []
+      }));
 
       const toStr = v => (v && typeof v.toDate === 'function') ? v.toDate().toISOString() : (v || '');
       persons.sort((a, b) => toStr(b.created_at).localeCompare(toStr(a.created_at)));
-
-      // id → 실제 삭제해야 할 persons 문서 ID 목록 매핑 (병합된 경우 여러 개)
-      window._personDocIdsMap = {};
-      persons.forEach(p => { window._personDocIdsMap[p.id] = p._doc_ids || [p.id]; });
 
       window._allPersonsData = persons;
       window._allPersonsBrandMap = brandMap;
@@ -2529,7 +2544,7 @@
     if (!ids.length) return;
     let done = 0;
     for (const id of ids) {
-      try { await updateDoc(doc(db, 'persons', id), { active: activate, updated_at: today() }); done++; } catch(e2) {}
+      try { await updateDoc(doc(db, 'managers', id), { active: activate, updated_at: today() }); done++; } catch(e2) {}
     }
     showToast(done + '개 담당자 ' + (activate ? '활성화' : '비활성화') + ' 완료.');
     window._personSelected = new Set();
@@ -2625,18 +2640,14 @@
      담당자 상세 모달
   ──────────────────────────────────── */
   window.openPersonDetail = async function(personId) {
+    // personId = managers doc ID = login_google_email
     showModal('담당자 상세', '<div class="spinner" style="margin:40px auto;"></div>', null, 'md');
     try {
-      const snap = await getDoc(doc(db, 'persons', personId));
+      const snap = await getDoc(doc(db, 'managers', personId));
       if (!snap.exists()) { showToast('담당자를 찾을 수 없습니다.', 'error'); closeModal(); return; }
       const p = { id: snap.id, ...snap.data() };
       const bMap = window._allPersonsBrandMap || {};
-
-      // 병합된 캐시에서 brand_ids 전체를 가져옴 (Firestore 단일 문서에는 하나만 있을 수 있음)
-      const cached = (window._allPersonsData || []).find(x => x.id === personId);
-      const brandIds = cached && Array.isArray(cached.brand_ids) && cached.brand_ids.length
-        ? cached.brand_ids
-        : (Array.isArray(p.brand_ids) ? p.brand_ids : (p.brand_id ? [p.brand_id] : []));
+      const brandIds = Array.isArray(p.brand_ids) ? p.brand_ids : [];
 
       const tsToDate = v => {
         if (!v) return '-';
@@ -2707,7 +2718,7 @@
     const action = newActive ? '활성화' : '비활성화';
     const reason = ((document.getElementById('person-toggle-reason') || {}).value || '').trim();
     try {
-      await updateDoc(doc(db, 'persons', personId), { active: newActive, updated_at: today(), ...(reason ? { deactivate_reason: reason } : {}) });
+      await updateDoc(doc(db, 'managers', personId), { active: newActive, updated_at: today(), ...(reason ? { deactivate_reason: reason } : {}) });
       showToast(action + '했습니다.', 'success');
       closeModal();
       const content = document.getElementById('page-content');
@@ -2716,10 +2727,19 @@
   };
 
   window.deletePersonConfirm = async function(personId, name) {
+    // personId = email = managers doc ID
     if (!confirm('담당자 [' + name + ']을(를) 삭제하시겠습니까?\n삭제 후에는 복구할 수 없습니다.')) return;
     try {
-      const docIds = (window._personDocIdsMap && window._personDocIdsMap[personId]) || [personId];
-      await Promise.all(docIds.map(id => deleteDoc(doc(db, 'persons', id))));
+      const mgrSnap = await getDoc(doc(db, 'managers', personId));
+      const brandIds = mgrSnap.exists() ? (mgrSnap.data().brand_ids || []) : [];
+      // 모든 브랜드 서브컬렉션에서 제거
+      const subDeletes = [];
+      for (const bid of brandIds) {
+        const subSnap = await getDocs(query(collection(db, 'brands', bid, 'managers'), where('login_google_email', '==', personId)));
+        subSnap.docs.forEach(d => subDeletes.push(deleteDoc(d.ref)));
+      }
+      await Promise.all(subDeletes);
+      await deleteDoc(doc(db, 'managers', personId));
       showToast('삭제했습니다.', 'success');
       closeModal();
       const content = document.getElementById('page-content');
@@ -2728,25 +2748,28 @@
   };
 
   window.openPersonBrandLinkModal = async function(personId) {
+    // personId = email = managers doc ID
     showModal('브랜드 연결', '<div class="spinner" style="margin:40px auto;"></div>', null, 'sm');
     try {
       const [pSnap, brandsSnap] = await Promise.all([
-        getDoc(doc(db, 'persons', personId)),
-        getDocs(query(collection(db, 'brands'), where('active', '!=', false)))
+        getDoc(doc(db, 'managers', personId)),
+        getDocs(collection(db, 'brands'))
       ]);
       if (!pSnap.exists()) { closeModal(); return; }
       const p = { id: pSnap.id, ...pSnap.data() };
+      const currentBrandIds = Array.isArray(p.brand_ids) ? p.brand_ids : [];
       const brands = brandsSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.brand_name || '').localeCompare(b.brand_name || '', 'ko'));
 
-      const opts = brands.map(b =>
-        '<option value="' + b.id + '"' + (p.brand_id === b.id ? ' selected' : '') + '>'
-        + esc(b.brand_name || b.id) + ' (' + esc(b.brand_code || '') + ')</option>'
+      const checks = brands.map(b =>
+        '<label style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;cursor:pointer;">'
+        + '<input type="checkbox" value="' + b.id + '"' + (currentBrandIds.includes(b.id) ? ' checked' : '') + ' />'
+        + esc(b.brand_name || b.id) + ' <span style="font-size:11px;color:var(--gray-400);">(' + esc(b.brand_code || '') + ')</span>'
+        + '</label>'
       ).join('');
 
       const body = '<div style="padding:4px 0;">'
-        + '<p style="font-size:13px;color:var(--gray-600);margin-bottom:14px;">담당자 <strong>' + esc(p.name || personId) + '</strong>의 주 소속 브랜드를 변경합니다.</p>'
-        + '<div class="form-group"><label class="form-label">소속 브랜드</label>'
-        + '<select class="form-input" id="plm-brand-select"><option value="">브랜드 없음</option>' + opts + '</select></div>'
+        + '<p style="font-size:13px;color:var(--gray-600);margin-bottom:14px;">담당자 <strong>' + esc(p.name || personId) + '</strong>의 담당 브랜드를 선택합니다.</p>'
+        + '<div class="form-group" id="plm-brand-checks" style="max-height:260px;overflow-y:auto;">' + checks + '</div>'
         + '</div>';
       const footer =
         '<button class="btn btn-secondary" onclick="closeModal()">취소</button>'
@@ -2757,9 +2780,38 @@
   };
 
   window.savePersonBrandLink = async function(personId) {
-    const brandId = (document.getElementById('plm-brand-select') || {}).value || '';
+    // personId = email
     try {
-      await updateDoc(doc(db, 'persons', personId), { brand_id: brandId || null, updated_at: today() });
+      const checks = document.querySelectorAll('#plm-brand-checks input[type=checkbox]');
+      const newBrandIds = [...checks].filter(c => c.checked).map(c => c.value);
+      const mgrSnap = await getDoc(doc(db, 'managers', personId));
+      if (!mgrSnap.exists()) { showToast('담당자를 찾을 수 없습니다.', 'error'); return; }
+      const mgrData = mgrSnap.data();
+      const oldBrandIds = Array.isArray(mgrData.brand_ids) ? mgrData.brand_ids : [];
+      const added = newBrandIds.filter(b => !oldBrandIds.includes(b));
+      const removed = oldBrandIds.filter(b => !newBrandIds.includes(b));
+      // managers 문서 업데이트
+      await updateDoc(doc(db, 'managers', personId), { brand_ids: newBrandIds, updated_at: today() });
+      // 추가된 브랜드에 서브컬렉션 문서 생성
+      for (const bid of added) {
+        const exists = await getDocs(query(collection(db, 'brands', bid, 'managers'), where('login_google_email', '==', personId)));
+        if (exists.empty) {
+          await addDoc(collection(db, 'brands', bid, 'managers'), {
+            login_google_email: personId,
+            name: mgrData.name || '',
+            role: (mgrData.roles && mgrData.roles[bid]) || '',
+            phone: mgrData.phone || '',
+            contact_email: mgrData.contact_email || personId,
+            active: mgrData.active !== false,
+            created_at: today(), updated_at: today()
+          });
+        }
+      }
+      // 제거된 브랜드의 서브컬렉션 문서 삭제
+      for (const bid of removed) {
+        const subSnap = await getDocs(query(collection(db, 'brands', bid, 'managers'), where('login_google_email', '==', personId)));
+        for (const d of subSnap.docs) await deleteDoc(d.ref);
+      }
       showToast('브랜드 연결을 업데이트했습니다.', 'success');
       closeModal();
       const content = document.getElementById('page-content');
@@ -2768,7 +2820,8 @@
   };
 
   window.openPersonEditModal = async function(personId) {
-    const snap = await getDoc(doc(db, 'persons', personId));
+    // personId = email = managers doc ID
+    const snap = await getDoc(doc(db, 'managers', personId));
     if (!snap.exists()) return;
     const p = { id: snap.id, ...snap.data() };
     const roleOpts = ['주관리자','부관리자'];
@@ -2790,45 +2843,34 @@
 
     const footer =
       '<button class="btn btn-secondary" onclick="openPersonDetail(\'' + personId + '\')">취소</button>'
-      + '<button class="btn btn-primary" onclick="savePersonEdit(\'' + personId + '\',\'' + esc(p.brand_id || '') + '\')">저장</button>';
+      + '<button class="btn btn-primary" onclick="savePersonEdit(\'' + personId + '\')">저장</button>';
 
     showModal('담당자 수정', body, footer, 'md');
   };
 
-  window.savePersonEdit = async function(personId, brandId) {
+  window.savePersonEdit = async function(personId) {
+    // personId = email = managers doc ID
     const name = (document.getElementById('ped-name') || {}).value.trim();
     const role = (document.getElementById('ped-role') || {}).value;
     if (!name) { showToast('이름을 입력해주세요.', 'error'); return; }
     if (!role) { showToast('역할을 선택해주세요.', 'error'); return; }
 
-    // 주관리자 1명 제한
-    if (role === '주관리자') {
-      const existingSnap = await getDocs(query(
-        collection(db, 'persons'),
-        where('brand_id', '==', brandId),
-        where('role', '==', '주관리자'),
-        where('active', '!=', false)
-      ));
-      const others = existingSnap.docs.filter(d => d.id !== personId);
-      if (others.length > 0) {
-        showToast('이미 주관리자(' + (others[0].data().name || '') + ')가 있습니다.', 'error');
-        return;
-      }
-    }
-
     try {
       const rawPhone = (document.getElementById('ped-phone') || {}).value.replace(/\D/g, '');
       const data = {
         name,
-        role,
         phone: fmtPhone(rawPhone),
         contact_email: (document.getElementById('ped-contact-email') || {}).value.trim(),
-        login_google_email: ((document.getElementById('ped-login-email') || {}).value.trim()).toLowerCase(),
         updated_at: today()
       };
-      await updateDoc(doc(db, 'persons', personId), data);
-      // brands/{brandId}/persons 서브컬렉션도 동기화
-      if (brandId) await setDoc(doc(db, 'brands', brandId, 'persons', personId), data, { merge: true });
+      await updateDoc(doc(db, 'managers', personId), data);
+      // 모든 브랜드 서브컬렉션도 동기화
+      const mgrSnap = await getDoc(doc(db, 'managers', personId));
+      const brandIds = mgrSnap.exists() ? (mgrSnap.data().brand_ids || []) : [];
+      for (const bid of brandIds) {
+        const subSnap = await getDocs(query(collection(db, 'brands', bid, 'managers'), where('login_google_email', '==', personId)));
+        for (const d of subSnap.docs) await updateDoc(d.ref, { name, phone: data.phone, contact_email: data.contact_email, updated_at: today() });
+      }
       showToast('수정했습니다.', 'success');
       await openPersonDetail(personId);
       const content = document.getElementById('page-content');
@@ -2843,10 +2885,7 @@
     const sec = document.getElementById('brand-persons-section');
     if (!sec) return;
     try {
-      const snap = await getDocs(query(
-        collection(db, 'persons'),
-        where('brand_id', '==', brandId)
-      ));
+      const snap = await getDocs(collection(db, 'brands', brandId, 'managers'));
       const tsStr = v => (v && typeof v.toDate === 'function') ? v.toDate().toISOString() : (v || '');
       const persons = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => tsStr(a.created_at).localeCompare(tsStr(b.created_at)));
@@ -2936,8 +2975,16 @@
   }
 
   window.setPersonActive = async function(brandId, personId, active) {
+    // personId = brands/{brandId}/managers subdoc ID (auto-generated)
     try {
-      await updateDoc(doc(db, 'persons', personId), { active, updated_at: today() });
+      const subDoc = doc(db, 'brands', brandId, 'managers', personId);
+      const subSnap = await getDoc(subDoc);
+      await updateDoc(subDoc, { active, updated_at: today() });
+      // managers 최상위 문서도 동기화 (login_google_email = doc ID)
+      if (subSnap.exists()) {
+        const email = subSnap.data().login_google_email;
+        if (email) await updateDoc(doc(db, 'managers', email), { active, updated_at: today() }).catch(() => {});
+      }
       const sec = document.getElementById('brand-persons-section');
       if (sec) loadBrandPersons(brandId);
     } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
@@ -2967,13 +3014,23 @@
 
   // 인라인 폼 표시 (brand detail 모달 내부에서 동작 — showModal 호출 없음)
   window.showPersonInlineForm = async function(brandId, personId) {
+    // personId = brands/{brandId}/managers subdoc ID (auto-generated)
     const formArea = document.getElementById('person-form-area');
     if (!formArea) return;
     let existing = null;
     if (personId) {
       try {
-        const snap = await getDoc(doc(db, 'persons', personId));
-        if (snap.exists()) existing = { id: snap.id, ...snap.data() };
+        const subSnap = await getDoc(doc(db, 'brands', brandId, 'managers', personId));
+        if (subSnap.exists()) {
+          const subData = subSnap.data();
+          existing = { id: personId, ...subData };
+          // managers 최상위 문서에서 추가 필드 보완
+          const email = subData.login_google_email;
+          if (email) {
+            const mgrSnap = await getDoc(doc(db, 'managers', email));
+            if (mgrSnap.exists()) Object.assign(existing, { login_google_email: email, ...mgrSnap.data(), id: personId });
+          }
+        }
       } catch(e) {}
     }
     formArea.innerHTML = personInlineFormHTML(brandId, existing, !!personId);
@@ -2999,46 +3056,58 @@
     }
     // 주관리자 1명 제한 검사
     if (role === '주관리자') {
-      const existingSnap = await getDocs(query(
-        collection(db, 'persons'),
-        where('brand_id', '==', brandId),
-        where('role', '==', '주관리자'),
-        where('active', '!=', false)
-      ));
-      const others = existingSnap.docs.filter(d => d.id !== personId);
+      const subSnap = await getDocs(collection(db, 'brands', brandId, 'managers'));
+      const others = subSnap.docs.filter(d => d.id !== personId && d.data().role === '주관리자' && d.data().active !== false);
       if (others.length > 0) {
         showToast('이미 주관리자(' + (others[0].data().name || '') + ')가 있습니다. 먼저 해당 담당자의 역할을 부관리자로 변경해주세요.', 'error');
         return;
       }
     }
-    const data = {
-      name,
-      role,
-      phone: getVal('pif-phone').replace(/\D/g, '').replace(/(\d{2,3})(\d{3,4})(\d{4})/, '$1-$2-$3'),
-      contact_email: getVal('pif-contact-email'),
-      login_google_email: loginEmail,
-      active: true,
-      updated_at: today()
-    };
+    const phone = fmtPhone(getVal('pif-phone'));
+    const contactEmail = getVal('pif-contact-email');
     // 저장 버튼 비활성화 (중복 클릭 방지)
     const saveBtn = document.querySelector('#person-form-area .btn-primary');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '저장 중...'; }
     try {
-      let savedPersonId = personId;
       if (isEdit && personId) {
-        await updateDoc(doc(db, 'persons', personId), data);
+        // 수정: 서브컬렉션 subdoc 업데이트 + managers/{email} 업데이트
+        const subSnap = await getDoc(doc(db, 'brands', brandId, 'managers', personId));
+        const subData = subSnap.exists() ? subSnap.data() : {};
+        const email = subData.login_google_email || loginEmail;
+        const subUpdate = { name, role, phone, contact_email: contactEmail, updated_at: today() };
+        await updateDoc(doc(db, 'brands', brandId, 'managers', personId), subUpdate);
+        if (email) {
+          const roles = {};
+          const mgrSnap = await getDoc(doc(db, 'managers', email));
+          if (mgrSnap.exists()) Object.assign(roles, mgrSnap.data().roles || {});
+          roles[brandId] = role;
+          await updateDoc(doc(db, 'managers', email), { name, phone, contact_email: contactEmail, roles, updated_at: today() });
+        }
       } else {
-        data.created_at = today();
-        data.brand_id = brandId;
-        const ref = await addDoc(collection(db, 'persons'), data);
-        savedPersonId = ref.id;
-        await setDoc(doc(db, 'vendor_accounts', loginEmail), {
-          uid: null, brand_id: brandId, person_id: savedPersonId,
-          status: '초대됨', created_at: today()
-        }, { merge: false });
+        // 신규: managers/{email} setDoc (없으면 생성, 있으면 brand 추가)
+        const mgrRef = doc(db, 'managers', loginEmail);
+        const mgrSnap = await getDoc(mgrRef);
+        if (mgrSnap.exists()) {
+          const existing = mgrSnap.data();
+          const roles = { ...(existing.roles || {}), [brandId]: role };
+          await updateDoc(mgrRef, { name, phone, contact_email: contactEmail, brand_ids: arrayUnion(brandId), roles, updated_at: today() });
+        } else {
+          await setDoc(mgrRef, {
+            uid: null, name, phone, contact_email: contactEmail, login_google_email: loginEmail,
+            brand_ids: [brandId], roles: { [brandId]: role },
+            status: '초대됨', active: true, created_at: today(), updated_at: today(), linked_at: null
+          });
+        }
+        // 서브컬렉션에 추가 (중복 방지)
+        const existing = await getDocs(query(collection(db, 'brands', brandId, 'managers'), where('login_google_email', '==', loginEmail)));
+        if (existing.empty) {
+          await addDoc(collection(db, 'brands', brandId, 'managers'), {
+            login_google_email: loginEmail, name, role, phone, contact_email: contactEmail,
+            active: true, created_at: today(), updated_at: today()
+          });
+        }
       }
-      showToast(isEdit ? '담당자를 수정했습니다.' : '담당자를 추가하고 vendor 계정을 초대했습니다.');
-      // 인라인으로 섹션만 갱신 (모달 유지)
+      showToast(isEdit ? '담당자를 수정했습니다.' : '담당자를 추가했습니다.');
       const sec = document.getElementById('brand-persons-section');
       if (sec) await loadBrandPersons(brandId);
     } catch(e) {
@@ -3235,18 +3304,16 @@
     }
     if (!confirm('마지막 확인: [' + brandName + '] 브랜드를 영구 삭제합니다.\n이 작업은 되돌릴 수 없습니다.')) return;
     try {
-      // 담당자: 삭제하지 않고 brand_id를 null로 처리 (계정은 유지)
-      const personsSnap = await getDocs(query(collection(db, 'persons'), where('brand_id', '==', brandId)));
+      // 담당자: managers에서 이 브랜드 제거, 서브컬렉션 삭제
+      const mgrSubSnap = await getDocs(collection(db, 'brands', brandId, 'managers'));
       const personPromises = [];
-      for (const pd of personsSnap.docs) {
-        const loginEmail = pd.data().login_google_email;
-        personPromises.push(updateDoc(doc(db, 'persons', pd.id), { brand_id: null, updated_at: today() }));
-        if (loginEmail) {
-          personPromises.push(updateDoc(doc(db, 'vendor_accounts', loginEmail), { brand_id: null, updated_at: today() }).catch(() => {}));
-        }
-        const uid = pd.data().uid;
-        if (uid) {
-          personPromises.push(updateDoc(doc(db, 'users', uid), { brand_id: null, updated_at: today() }).catch(() => {}));
+      for (const md of mgrSubSnap.docs) {
+        const email = md.data().login_google_email;
+        personPromises.push(deleteDoc(md.ref));
+        if (email) {
+          personPromises.push(
+            updateDoc(doc(db, 'managers', email), { brand_ids: arrayRemove(brandId), updated_at: today() }).catch(() => {})
+          );
         }
       }
       await Promise.all(personPromises);
@@ -3455,7 +3522,7 @@
     try {
       const [brandSnap, personsSnap, templatesSnap] = await Promise.all([
         getDoc(doc(db, 'brands', brandId)),
-        getDocs(query(collection(db, 'persons'), where('brand_id', '==', brandId))),
+        getDocs(collection(db, 'brands', brandId, 'managers')),
         getDocs(collection(db, 'contract_templates')),
       ]);
       if (!brandSnap.exists()) { showToast('브랜드 정보를 찾을 수 없습니다.', 'error'); closeModal(); return; }
@@ -4202,13 +4269,11 @@
     let doneCount = 0, failCount = 0;
     for (const brandId of ids) {
       try {
-        const personsSnap = await getDocs(query(collection(db, 'persons'), where('brand_id', '==', brandId)));
-        for (const pd of personsSnap.docs) {
-          await updateDoc(doc(db, 'persons', pd.id), { brand_id: null, updated_at: today() });
-          const loginEmail = pd.data().login_google_email;
-          if (loginEmail) await updateDoc(doc(db, 'vendor_accounts', loginEmail), { brand_id: null, updated_at: today() }).catch(() => {});
-          const uid = pd.data().uid;
-          if (uid) await updateDoc(doc(db, 'users', uid), { brand_id: null, updated_at: today() }).catch(() => {});
+        const mgrSubSnap = await getDocs(collection(db, 'brands', brandId, 'managers'));
+        for (const md of mgrSubSnap.docs) {
+          const email = md.data().login_google_email;
+          await deleteDoc(md.ref);
+          if (email) await updateDoc(doc(db, 'managers', email), { brand_ids: arrayRemove(brandId), updated_at: today() }).catch(() => {});
         }
         const contractsSnap = await getDocs(collection(db, 'brands', brandId, 'contracts'));
         for (const d of contractsSnap.docs) await deleteDoc(doc(db, 'brands', brandId, 'contracts', d.id));
@@ -6426,8 +6491,9 @@
       const brandsSnap = await getDocs(collection(db, 'brands'));
       for (const bd of brandsSnap.docs) {
         const bdata = bd.data();
-        const personsSnap = await getDocs(query(collection(db, 'persons'), where('brand_id', '==', bd.id), where('active', '==', true)));
+        const personsSnap = await getDocs(collection(db, 'brands', bd.id, 'managers'));
         for (const pd of personsSnap.docs) {
+          if (pd.data().active === false) continue;
           const p = pd.data();
           if (p.contact_email || p.login_google_email) {
             await sendEmailByTrigger('notice_published', {
@@ -6917,8 +6983,16 @@
         const key = i.brand_id + '/' + i.person_id;
         if (personCache[key] !== undefined) return;
         try {
-          const ps = i.person_id ? await getDoc(doc(db, 'persons', i.person_id)) : null;
-          personCache[key] = ps.exists() ? (ps.data().name || '') : '';
+          // person_id가 이메일이면 managers/{email}로 직접 조회, 아니면 legacy persons 시도
+          let name = '';
+          const mgrSnap = await getDoc(doc(db, 'managers', i.person_id)).catch(() => null);
+          if (mgrSnap && mgrSnap.exists()) {
+            name = mgrSnap.data().name || '';
+          } else {
+            const ps = await getDoc(doc(db, 'persons', i.person_id)).catch(() => null);
+            if (ps && ps.exists()) name = ps.data().name || '';
+          }
+          personCache[key] = name;
         } catch(e) { personCache[key] = ''; }
       }));
 
@@ -6972,8 +7046,13 @@
     let personName = '';
     if (i.brand_id && i.person_id) {
       try {
-        const ps = await getDoc(doc(db, 'persons', i.person_id));
-        if (ps.exists()) personName = ps.data().name || '';
+        const mgrSnap = await getDoc(doc(db, 'managers', i.person_id)).catch(() => null);
+        if (mgrSnap && mgrSnap.exists()) {
+          personName = mgrSnap.data().name || '';
+        } else {
+          const ps = await getDoc(doc(db, 'persons', i.person_id)).catch(() => null);
+          if (ps && ps.exists()) personName = ps.data().name || '';
+        }
       } catch(e) {}
     }
     // 브랜드명 조회
@@ -7023,8 +7102,14 @@
           const bs = await getDoc(doc(db, 'brands', inqData.brand_id));
           if (bs.exists()) brandName = bs.data().brand_name || '';
           if (inqData.person_id) {
-            const ps = inqData.person_id ? await getDoc(doc(db, 'persons', inqData.person_id)) : null;
-            if (ps.exists()) { toEmail = ps.data().email || ''; toName = ps.data().name || ''; }
+            const mgrSnap = await getDoc(doc(db, 'managers', inqData.person_id)).catch(() => null);
+            if (mgrSnap && mgrSnap.exists()) {
+              toEmail = mgrSnap.data().contact_email || mgrSnap.data().login_google_email || '';
+              toName = mgrSnap.data().name || '';
+            } else {
+              const ps = await getDoc(doc(db, 'persons', inqData.person_id)).catch(() => null);
+              if (ps && ps.exists()) { toEmail = ps.data().email || ''; toName = ps.data().name || ''; }
+            }
           }
           if (toEmail) {
             await sendEmailByTrigger('inquiry_answered', {
@@ -8127,35 +8212,51 @@
       if (isJoin) {
         // 합류 신청 승인
         const brandId = item.target_brand_id;
-        const joinPersonData = {
-          brand_id: brandId,
-          name: item.applicant_name || '',
-          phone: item.applicant_phone || '',
-          role: item.applicant_role || '',
-          contact_email: item.applicant_contact_email || '',
-          login_google_email: (item.applicant_email || '').toLowerCase(),
-          active: true,
-          created_at: today(), updated_at: today()
-        };
-        const personRef = await addDoc(collection(db, 'persons'), joinPersonData);
-        const personId = personRef.id;
-        // vendor 포털이 읽는 서브컬렉션에도 동일 데이터 기록
-        await setDoc(doc(db, 'brands', brandId, 'persons', personId), joinPersonData);
-
-        await setDoc(doc(db, 'vendor_accounts', item.applicant_email), {
-          uid: item.applicant_uid || null,
-          brand_id: brandId, person_id: personId,
-          status: '연결됨', created_at: today(), linked_at: today()
-        });
-
+        const email = (item.applicant_email || '').toLowerCase();
+        const role = item.applicant_role || '부관리자';
+        // managers/{email} 생성 또는 brand 추가
+        const mgrRef = doc(db, 'managers', email);
+        const mgrSnap = await getDoc(mgrRef);
+        if (mgrSnap.exists()) {
+          const existing = mgrSnap.data();
+          const roles = { ...(existing.roles || {}), [brandId]: role };
+          await updateDoc(mgrRef, {
+            name: item.applicant_name || existing.name || '',
+            phone: item.applicant_phone || existing.phone || '',
+            contact_email: item.applicant_contact_email || existing.contact_email || email,
+            brand_ids: arrayUnion(brandId), roles,
+            status: '연결됨', linked_at: today(), updated_at: today(),
+            ...(item.applicant_uid ? { uid: item.applicant_uid } : {})
+          });
+        } else {
+          await setDoc(mgrRef, {
+            uid: item.applicant_uid || null,
+            name: item.applicant_name || '',
+            phone: item.applicant_phone || '',
+            contact_email: item.applicant_contact_email || email,
+            login_google_email: email,
+            brand_ids: [brandId], roles: { [brandId]: role },
+            status: '연결됨', active: true,
+            created_at: today(), updated_at: today(), linked_at: today()
+          });
+        }
+        // 서브컬렉션에 추가 (중복 방지)
+        const existSub = await getDocs(query(collection(db, 'brands', brandId, 'managers'), where('login_google_email', '==', email)));
+        if (existSub.empty) {
+          await addDoc(collection(db, 'brands', brandId, 'managers'), {
+            login_google_email: email,
+            name: item.applicant_name || '',
+            role,
+            phone: item.applicant_phone || '',
+            contact_email: item.applicant_contact_email || email,
+            active: true, created_at: today(), updated_at: today()
+          });
+        }
         if (item.applicant_uid) {
           await setDoc(doc(db, 'users', item.applicant_uid), {
-            member_status: '브랜드회원',
-            brand_id: brandId, person_id: personId,
-            updated_at: today()
+            member_status: '브랜드회원', brand_id: brandId, updated_at: today()
           }, { merge: true });
         }
-
         await updateDoc(doc(db, 'brand_join_requests', docId), {
           status: '승인', reviewed_at: today(), reviewer_email: reviewerEmail,
           approval_reason: approvalReason
@@ -8193,32 +8294,30 @@
         });
         const brandId = brandRef.id;
 
-        const personData = {
-          brand_id: brandId,
+        const email = (item.applicant_email || '').toLowerCase();
+        // managers/{email} 생성
+        await setDoc(doc(db, 'managers', email), {
+          uid: item.applicant_uid || null,
           name: item.applicant_name || '',
           phone: item.applicant_phone || '',
-          role: '주관리자',  // 최초 담당자는 항상 주관리자
-          contact_email: item.applicant_contact_email || '',
-          login_google_email: (item.applicant_email || '').toLowerCase(),
-          active: true,
-          created_at: today(), updated_at: today()
-        };
-        const personRef = await addDoc(collection(db, 'persons'), personData);
-        const personId = personRef.id;
-        // vendor 포털이 읽는 서브컬렉션에도 동일 데이터 기록
-        await setDoc(doc(db, 'brands', brandId, 'persons', personId), personData);
-
-        await setDoc(doc(db, 'vendor_accounts', item.applicant_email), {
-          uid: item.applicant_uid || null,
-          brand_id: brandId, person_id: personId,
-          status: '연결됨', created_at: today(), linked_at: today()
+          contact_email: item.applicant_contact_email || email,
+          login_google_email: email,
+          brand_ids: [brandId], roles: { [brandId]: '주관리자' },
+          status: '연결됨', active: true,
+          created_at: today(), updated_at: today(), linked_at: today()
         });
-
+        // 서브컬렉션에 추가
+        await addDoc(collection(db, 'brands', brandId, 'managers'), {
+          login_google_email: email,
+          name: item.applicant_name || '',
+          role: '주관리자',
+          phone: item.applicant_phone || '',
+          contact_email: item.applicant_contact_email || email,
+          active: true, created_at: today(), updated_at: today()
+        });
         if (item.applicant_uid) {
           await setDoc(doc(db, 'users', item.applicant_uid), {
-            member_status: '브랜드회원',
-            brand_id: brandId, person_id: personId,
-            updated_at: today()
+            member_status: '브랜드회원', brand_id: brandId, updated_at: today()
           }, { merge: true });
         }
 
