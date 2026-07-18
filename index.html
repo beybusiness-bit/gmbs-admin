@@ -1936,9 +1936,9 @@
       '</div>',
       '</div>',
 
-      /* ── 정산 정보 (위탁/매입만) ── */
+      /* ── 계약 및 정산 정보 (위탁/매입만) ── */
       '<div class="form-section" id="section-settlement" style="' + (showSI ? '' : 'display:none;') + '">',
-      '<div class="form-section-title">정산 정보 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택사항 — 나중에 추가해도 됩니다</span></div>',
+      '<div class="form-section-title">계약 및 정산 정보 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택사항 — 나중에 추가해도 됩니다</span></div>',
 
       /* 위탁판매대행수수료 (위탁만) */
       '<div id="section-commission" style="' + (showCommission ? '' : 'display:none;') + '">',
@@ -2010,6 +2010,10 @@
       '</div>',
       '</div>',
       '</div>',
+
+      /* 주소 */
+      formGroup('주소', 'f-address',
+        '<input class="form-input" id="f-address" type="text" placeholder="사업장 또는 거주지 주소" value="' + esc(si.address || '') + '" />'),
 
       /* 통장 정보 */
       '<div class="form-row">',
@@ -2154,6 +2158,7 @@
 
         data.settlement_info = {
           business_type: bizType,
+          address: ((document.getElementById('f-address') || {}).value || '').trim(),
           resident_number: encResident,
           business_reg_number: encBizReg,
           taxation_type: bizType === 'business' ? ((document.getElementById('f-taxation-type') || {}).value || '') : '',
@@ -2166,14 +2171,20 @@
         };
       }
 
-      if (brandId) {
-        // settlement_info 저장 시: onboarding_status가 '계약 정보 입력 필요'이면 '계약 전'으로 전환
-        if (data.settlement_info && data.settlement_info.bank_name) {
+      // settlement_info.bank_name이 있으면 '계약 정보 입력 필요' → '계약 전' 자동 전환
+      if (data.settlement_info && data.settlement_info.bank_name) {
+        if (brandId) {
           const bSnap = await getDoc(doc(db, 'brands', brandId));
           if (bSnap.exists() && bSnap.data().onboarding_status === '계약 정보 입력 필요') {
             data.onboarding_status = '계약 전';
           }
+        } else {
+          // 신규 등록 시 정산 정보가 함께 입력된 경우 바로 '계약 전'
+          data.onboarding_status = '계약 전';
         }
+      }
+
+      if (brandId) {
         await updateDoc(doc(db, 'brands', brandId), data);
         showToast('브랜드 정보를 수정했습니다.', 'success');
       } else {
@@ -2253,15 +2264,22 @@
         (Array.isArray(b.website_urls) && b.website_urls.length
           ? row('관련 사이트', b.website_urls.map(u => '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer" style="color:var(--blue);font-size:12px;">' + esc(u) + '</a>').join('<br>'))
           : '') +
-        (bizTypeText
-          ? sectionLabel('정산 정보 (브랜드 제출)') +
+        (si.bank_name
+          ? sectionLabel('계약 및 정산 정보') +
             row('사업자 유형', bizTypeText) +
-            row('사업자등록번호', isEncrypted(si.business_reg_number)
-              ? '<div id="bd-biz-reg-wrapper"><button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="revealBrandBizReg(\'' + brandId + '\')">🔓 보기</button></div>'
-              : esc(si.business_reg_number || '')) +
-            row('과세 유형', esc(si.taxation_type || '')) +
-            row('예금주', esc(si.account_holder || '')) +
+            row('주소', esc(si.address || '')) +
+            (si.business_type === 'business'
+              ? row('사업자등록번호', isEncrypted(si.business_reg_number)
+                  ? '<div id="bd-biz-reg-wrapper"><button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="revealBrandBizReg(\'' + brandId + '\')">🔓 보기</button></div>'
+                  : esc(si.business_reg_number || '')) +
+                row('과세 유형', esc(si.taxation_type || ''))
+              : (si.business_type === 'individual'
+                  ? row('주민등록번호', isEncrypted(si.resident_number)
+                      ? '<button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="revealBrandResidentNum(\'' + brandId + '\')">🔓 보기</button>'
+                      : (si.resident_number || ''))
+                  : '')) +
             row('은행', esc(si.bank_name || '')) +
+            row('예금주', esc(si.account_holder || '')) +
             row('계좌번호', isEncrypted(si.account_number)
               ? '<div id="bd-account-number-wrapper"><button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="revealBrandAccountNumber(\'' + brandId + '\')">🔓 보기</button></div>'
               : esc(si.account_number || '')) +
@@ -2270,7 +2288,8 @@
                 row('통장 사본', docFileCell(si.bank_book_url, brandId, 'bank_book_url'))
               : row('신분증 사본', docFileCell(si.id_card_url, brandId, 'id_card_url')) +
                 row('통장 사본', docFileCell(si.bank_book_url, brandId, 'bank_book_url')))
-          : '') +
+          : sectionLabel('계약 및 정산 정보') +
+            '<div style="font-size:12px;color:var(--gray-400);padding:4px 0 8px;">아직 입력된 정보가 없습니다.</div>') +
         '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">변경 이력</div>' +
         '<div id="brand-activity-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
         '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">담당자</div>' +
@@ -7699,9 +7718,10 @@
 
     const settlementSection = (item.settlement_info && !isJoin)
       ? '<div style="border-top:1px solid var(--gray-200);padding-top:14px;margin-top:4px;margin-bottom:14px;">' +
-          '<div class="form-label" style="margin-bottom:8px;font-size:12px;font-weight:700;">정산 정보 (브랜드 제출)</div>' +
+          '<div class="form-label" style="margin-bottom:8px;font-size:12px;font-weight:700;">계약 및 정산 정보 (브랜드 제출)</div>' +
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">' +
             '<div><span style="color:var(--gray-500);font-size:11px;">사업자 구분</span><br>' + esc(si.business_type === 'individual' ? '개인(사업자없음)' : si.business_type === 'business' ? '사업자' : '-') + '</div>' +
+            (si.address ? '<div style="grid-column:1/-1;"><span style="color:var(--gray-500);font-size:11px;">주소</span><br>' + esc(si.address) + '</div>' : '') +
             (si.business_type === 'business' ? '<div><span style="color:var(--gray-500);font-size:11px;">사업자등록번호</span><br>' +
               (si.business_reg_number
                 ? (isEncrypted(si.business_reg_number)
