@@ -7174,22 +7174,27 @@
       let joins = joinsSnap.docs.map(d => ({ id: d.id, _type: 'join', ...d.data() })).filter(d => !d.brand_deleted);
       // 브랜드가 삭제됐지만 brand_deleted 플래그가 없는 구형 신청서/합류신청 자동 정리
       {
-        // apps: brand_id 있는 경우 브랜드 존재 여부, 없으면 brand_code로 확인
+        // apps: brand_id → brand_code → brand_name 순으로 존재 여부 확인
         const appsWithBrandId   = apps.filter(a => a.status === '승인' && a.brand_id);
         const appsWithCodeOnly  = apps.filter(a => a.status === '승인' && !a.brand_id && a.brand_code);
+        const appsWithNameOnly  = apps.filter(a => a.status === '승인' && !a.brand_id && !a.brand_code && a.brand_name);
         // joins: target_brand_id로 브랜드 존재 여부 확인
         const joinsWithTargetId = joins.filter(j => j.target_brand_id);
         const brandIdSet  = new Set([...appsWithBrandId.map(a => a.brand_id), ...joinsWithTargetId.map(j => j.target_brand_id)]);
         const codeSet     = new Set(appsWithCodeOnly.map(a => a.brand_code));
+        const nameSet     = new Set(appsWithNameOnly.map(a => a.brand_name));
         const existingIds  = new Set();
         const existingCodes = new Set();
+        const existingNames = new Set();
         await Promise.all([
           ...[...brandIdSet].map(async id => { const s = await getDoc(doc(db, 'brands', id)); if (s.exists()) existingIds.add(id); }),
-          ...[...codeSet].map(async code => { const s = await getDocs(query(collection(db, 'brands'), where('brand_code', '==', code), limit(1))); if (!s.empty) existingCodes.add(code); })
+          ...[...codeSet].map(async code => { const s = await getDocs(query(collection(db, 'brands'), where('brand_code', '==', code), limit(1))); if (!s.empty) existingCodes.add(code); }),
+          ...[...nameSet].map(async name => { const s = await getDocs(query(collection(db, 'brands'), where('brand_name', '==', name), limit(1))); if (!s.empty) existingNames.add(name); })
         ]);
         const toFlagApps = [
           ...appsWithBrandId.filter(a => !existingIds.has(a.brand_id)),
-          ...appsWithCodeOnly.filter(a => !existingCodes.has(a.brand_code))
+          ...appsWithCodeOnly.filter(a => !existingCodes.has(a.brand_code)),
+          ...appsWithNameOnly.filter(a => !existingNames.has(a.brand_name))
         ];
         const toFlagJoins = joinsWithTargetId.filter(j => !existingIds.has(j.target_brand_id));
         await Promise.all([
@@ -7654,7 +7659,8 @@
         await updateDoc(doc(db, 'brand_applications', docId), {
           status: '승인', reviewed_at: today(), reviewer_email: reviewerEmail,
           approval_reason: approvalReason,
-          brand_id: brandId
+          brand_id: brandId,
+          brand_code: adminBrandCode
         });
 
         await sendEmailByTrigger('brand_approved', {
