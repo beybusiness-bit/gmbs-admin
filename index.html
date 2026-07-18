@@ -7662,6 +7662,23 @@
           joins = joins.filter(j => !fj.has(j.id));
         }
       }
+      // join requests에 브랜드명·이미지 채우기
+      {
+        const joinBrandIds = [...new Set(joins.map(j => j.target_brand_id).filter(Boolean))];
+        const brandDataMap = {};
+        await Promise.all(joinBrandIds.map(async id => {
+          try { const s = await getDoc(doc(db, 'brands', id)); if (s.exists()) brandDataMap[id] = s.data(); } catch(e2) {}
+        }));
+        joins = joins.map(j => {
+          const bd = j.target_brand_id && brandDataMap[j.target_brand_id];
+          return {
+            ...j,
+            _brandNameDisplay: bd ? (bd.brand_name || j.target_brand_id) : (j._brandNameDisplay || j.target_brand_id),
+            brand_photo_url: bd ? (bd.logo_url || bd.brand_photo_url || '') : (j.brand_photo_url || '')
+          };
+        });
+      }
+
       // 상품 승인대기 목록 (approval_status가 '승인대기'인 것만)
       const pendingProducts = productsSnap.docs
         .map(d => ({ id: d.id, ...d.data() }))
