@@ -7172,20 +7172,35 @@
       ]);
       let apps = appsSnap.docs.map(d => ({ id: d.id, _type: 'application', ...d.data() })).filter(d => !d.brand_deleted);
       let joins = joinsSnap.docs.map(d => ({ id: d.id, _type: 'join', ...d.data() })).filter(d => !d.brand_deleted);
-      // 승인됐지만 brand_id 없이 brand_code만 있는 구형 문서 중 브랜드가 삭제된 경우 자동 정리
-      const orphanApps = apps.filter(a => a.status === '승인' && !a.brand_id && a.brand_code);
-      if (orphanApps.length > 0) {
-        const codeSet = [...new Set(orphanApps.map(a => a.brand_code))];
+      // 브랜드가 삭제됐지만 brand_deleted 플래그가 없는 구형 신청서/합류신청 자동 정리
+      {
+        // apps: brand_id 있는 경우 브랜드 존재 여부, 없으면 brand_code로 확인
+        const appsWithBrandId   = apps.filter(a => a.status === '승인' && a.brand_id);
+        const appsWithCodeOnly  = apps.filter(a => a.status === '승인' && !a.brand_id && a.brand_code);
+        // joins: target_brand_id로 브랜드 존재 여부 확인
+        const joinsWithTargetId = joins.filter(j => j.target_brand_id);
+        const brandIdSet  = new Set([...appsWithBrandId.map(a => a.brand_id), ...joinsWithTargetId.map(j => j.target_brand_id)]);
+        const codeSet     = new Set(appsWithCodeOnly.map(a => a.brand_code));
+        const existingIds  = new Set();
         const existingCodes = new Set();
-        await Promise.all(codeSet.map(async code => {
-          const snap = await getDocs(query(collection(db, 'brands'), where('brand_code', '==', code), limit(1)));
-          if (!snap.empty) existingCodes.add(code);
-        }));
-        const toFlag = orphanApps.filter(a => !existingCodes.has(a.brand_code));
-        if (toFlag.length > 0) {
-          await Promise.all(toFlag.map(a => updateDoc(doc(db, 'brand_applications', a.id), { brand_deleted: true })));
-          const flaggedSet = new Set(toFlag.map(a => a.id));
-          apps = apps.filter(a => !flaggedSet.has(a.id));
+        await Promise.all([
+          ...[...brandIdSet].map(async id => { const s = await getDoc(doc(db, 'brands', id)); if (s.exists()) existingIds.add(id); }),
+          ...[...codeSet].map(async code => { const s = await getDocs(query(collection(db, 'brands'), where('brand_code', '==', code), limit(1))); if (!s.empty) existingCodes.add(code); })
+        ]);
+        const toFlagApps = [
+          ...appsWithBrandId.filter(a => !existingIds.has(a.brand_id)),
+          ...appsWithCodeOnly.filter(a => !existingCodes.has(a.brand_code))
+        ];
+        const toFlagJoins = joinsWithTargetId.filter(j => !existingIds.has(j.target_brand_id));
+        await Promise.all([
+          ...toFlagApps.map(a => updateDoc(doc(db, 'brand_applications', a.id), { brand_deleted: true })),
+          ...toFlagJoins.map(j => updateDoc(doc(db, 'brand_join_requests', j.id), { brand_deleted: true }))
+        ]);
+        if (toFlagApps.length || toFlagJoins.length) {
+          const fa = new Set(toFlagApps.map(a => a.id));
+          const fj = new Set(toFlagJoins.map(j => j.id));
+          apps  = apps.filter(a => !fa.has(a.id));
+          joins = joins.filter(j => !fj.has(j.id));
         }
       }
       // 상품 승인대기 목록 (approval_status가 '승인대기'인 것만)
@@ -7222,16 +7237,22 @@
       return String(v).slice(0, 10);
     };
 
+    const bizTypeLabel = si => {
+      if (!si) return '-';
+      if (si.business_type === 'business') return '사업자';
+      if (si.business_type === 'individual') return '개인';
+      return '-';
+    };
     const appRows = (list) => {
-      if (!list.length) return '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--gray-400);">신청 내역이 없습니다.</td></tr>';
+      if (!list.length) return '<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--gray-400);">신청 내역이 없습니다.</td></tr>';
       return list.map(item => {
         const isJoin = item._type === 'join';
+        const brandDisplay = isJoin ? (item._brandNameDisplay || item.target_brand_id || '-') : (item.brand_name || '-');
+        const biz = isJoin ? '-' : bizTypeLabel(item.settlement_info);
         return '<tr style="cursor:pointer;" onclick="openApplicationDetail(\'' + item.id + '\',\'' + item._type + '\')">' +
           '<td>' + statusBadge(item.status) + '</td>' +
-          '<td>' + esc(item.applicant_name || '-') + '</td>' +
-          '<td style="font-size:12px;">' + esc(item.applicant_email || '-') + '</td>' +
-          '<td>' + esc(isJoin ? (item._brandNameDisplay || item.target_brand_id || '-') : (item.brand_name || '-')) + '</td>' +
-          '<td>' + esc(item.applicant_role || '-') + '</td>' +
+          '<td>' + esc(brandDisplay) + '</td>' +
+          '<td>' + esc(biz) + '</td>' +
           '<td>' + fmtDate(item.submitted_at) + '</td>' +
         '</tr>';
       }).join('');
@@ -7263,7 +7284,7 @@
       '<div id="tab-application" style="display:' + (activeTab==='application'?'block':'none') + ';">' +
         '<div class="card" style="overflow-x:auto;">' +
           '<table class="data-table"><thead><tr>' +
-            '<th>상태</th><th>신청자</th><th>이메일</th><th>브랜드명</th><th>역할</th><th>신청일</th>' +
+            '<th>상태</th><th>브랜드명</th><th>사업자 구분</th><th>신청일</th>' +
           '</tr></thead><tbody>' + appRows(apps) + '</tbody></table>' +
         '</div>' +
       '</div>' +
@@ -7279,7 +7300,7 @@
       '<div id="tab-join" style="display:' + (activeTab==='join'?'block':'none') + ';">' +
         '<div class="card" style="overflow-x:auto;">' +
           '<table class="data-table"><thead><tr>' +
-            '<th>상태</th><th>신청자</th><th>이메일</th><th>대상 브랜드</th><th>역할</th><th>신청일</th>' +
+            '<th>상태</th><th>대상 브랜드</th><th>사업자 구분</th><th>신청일</th>' +
           '</tr></thead><tbody>' + appRows(joins) + '</tbody></table>' +
         '</div>' +
       '</div>';
@@ -7365,22 +7386,44 @@
 
     const typeLabel = { PB: '🏷 PB', '위탁': '🤝 위탁', '매입': '📦 매입' };
 
+    const field2 = (label, val) => '<div><div class="form-label" style="margin-bottom:2px;">' + label + '</div><div style="font-size:13px;">' + val + '</div></div>';
     const bodyHTML =
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">' +
-        '<div><div class="form-label" style="margin-bottom:2px;">상태</div><div>' + statusBadge + '</div></div>' +
-        '<div><div class="form-label" style="margin-bottom:2px;">신청일</div><div style="font-size:13px;">' + fmtDate(item.submitted_at) + '</div></div>' +
-        '<div><div class="form-label" style="margin-bottom:2px;">신청자 이름</div><div style="font-size:13px;">' + esc(item.applicant_name || '-') + '</div></div>' +
-        '<div><div class="form-label" style="margin-bottom:2px;">신청자 이메일</div><div style="font-size:13px;">' + esc(item.applicant_email || '-') + '</div></div>' +
-        '<div><div class="form-label" style="margin-bottom:2px;">역할</div><div style="font-size:13px;">' + esc(item.applicant_role || '-') + '</div></div>' +
-        '<div><div class="form-label" style="margin-bottom:2px;">전화번호</div><div style="font-size:13px;">' + esc(item.applicant_phone || '-') + '</div></div>' +
-        '<div><div class="form-label" style="margin-bottom:2px;">연락 이메일</div><div style="font-size:13px;">' + esc(item.applicant_contact_email || '-') + '</div></div>' +
-        '<div><div class="form-label" style="margin-bottom:2px;">' + (isJoin ? '합류 대상 브랜드' : '브랜드명') + '</div><div style="font-size:13px;">' + esc(brandNameDisplay) + '</div></div>' +
-        (!isJoin && item.brand_type ? '<div><div class="form-label" style="margin-bottom:2px;">거래유형 (신청)</div><div style="font-size:13px;">' + esc(typeLabel[item.brand_type] || item.brand_type) + '</div></div>' : '') +
-        (!isJoin && item.requested_commission_rate ? '<div><div class="form-label" style="margin-bottom:2px;">요청 수수료율</div><div style="font-size:13px;">' + esc(String(item.requested_commission_rate)) + '%</div></div>' : '') +
+      // ① 상태 + 신청일
+      '<div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">' +
+        statusBadge +
+        '<span style="font-size:12px;color:var(--gray-400);">신청일 ' + fmtDate(item.submitted_at) + '</span>' +
       '</div>' +
-      (item.brand_description ? '<div style="margin-bottom:10px;"><span style="color:var(--gray-500);font-size:11px;">브랜드 소개</span><p style="font-size:13px;margin-top:2px;">' + esc(item.brand_description) + '</p></div>' : '') +
+
+      // ② 브랜드 정보
+      '<div style="margin-bottom:14px;padding:14px;background:var(--gray-50);border-radius:8px;">' +
+        '<div style="font-size:12px;font-weight:700;color:var(--gray-500);margin-bottom:10px;">브랜드 정보</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+          field2(isJoin ? '합류 대상 브랜드' : '브랜드명', '<strong>' + esc(brandNameDisplay) + '</strong>') +
+          (!isJoin && item.brand_type ? field2('거래유형 (신청)', esc(typeLabel[item.brand_type] || item.brand_type)) : '') +
+          (!isJoin && item.requested_commission_rate ? field2('요청 수수료율', esc(String(item.requested_commission_rate)) + '%') : '') +
+        '</div>' +
+        (item.brand_description ? '<div style="margin-top:8px;"><div class="form-label" style="margin-bottom:2px;">브랜드 소개</div><p style="font-size:13px;margin-top:2px;white-space:pre-wrap;">' + esc(item.brand_description) + '</p></div>' : '') +
+      '</div>' +
+
+      // ③ 관련 사이트
       websiteSection +
+
+      // ④ 신청자 정보
+      '<div style="margin-bottom:14px;padding:14px;background:var(--gray-50);border-radius:8px;">' +
+        '<div style="font-size:12px;font-weight:700;color:var(--gray-500);margin-bottom:10px;">신청자 정보</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+          field2('이름', esc(item.applicant_name || '-')) +
+          field2('역할', esc(item.applicant_role || '-')) +
+          field2('로그인 이메일', esc(item.applicant_email || '-')) +
+          field2('연락 이메일', esc(item.applicant_contact_email || item.applicant_email || '-')) +
+          field2('전화번호', esc(item.applicant_phone || '-')) +
+        '</div>' +
+      '</div>' +
+
+      // ⑤ 정산 정보
       settlementSection +
+
+      // ⑥ 거절 사유 표시
       (item.rejection_reason ? '<div style="padding:10px;background:#fee2e2;border-radius:6px;font-size:12px;color:#991b1b;margin-bottom:12px;">거절 사유: ' + esc(item.rejection_reason) + '</div>' : '') +
       (isPending
         ? '<div id="app-decision-wrap" style="border-top:1px solid var(--gray-200);padding-top:16px;margin-top:8px;">' +
