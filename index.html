@@ -2416,34 +2416,13 @@
         }
       });
       const persons = Object.values(mergedMap);
-      const personEmailSet = new Set(Object.keys(mergedMap));
-      const personIdSet = new Set(rawPersons.map(p => p.id));
-
-      // users 컬렉션에는 있지만 persons 문서가 없는 벤더 회원 → 미등록 담당자로 표시
-      usersSnap.docs.forEach(d => {
-        const u = d.data();
-        const email = (u.email || '').toLowerCase();
-        const alreadyIn = (u.person_id && personIdSet.has(u.person_id)) || personEmailSet.has(email);
-        if (!alreadyIn) {
-          persons.push({
-            id: d.id,
-            _source: 'users',
-            _uid: d.id,
-            _doc_ids: [],
-            name: u.display_name || u.displayName || '',
-            login_google_email: u.email || '',
-            contact_email: u.email || '',
-            role: '',
-            brand_ids: u.brand_id ? [u.brand_id] : [],
-            brand_id: u.brand_id || null,
-            active: u.member_status === '브랜드회원',
-            created_at: u.created_at || ''
-          });
-        }
-      });
 
       const toStr = v => (v && typeof v.toDate === 'function') ? v.toDate().toISOString() : (v || '');
       persons.sort((a, b) => toStr(b.created_at).localeCompare(toStr(a.created_at)));
+
+      // id → 실제 삭제해야 할 persons 문서 ID 목록 매핑 (병합된 경우 여러 개)
+      window._personDocIdsMap = {};
+      persons.forEach(p => { window._personDocIdsMap[p.id] = p._doc_ids || [p.id]; });
 
       window._allPersonsData = persons;
       window._allPersonsBrandMap = brandMap;
@@ -2582,12 +2561,8 @@
           : p.role
             ? '<span style="font-size:12px;color:var(--primary);background:var(--primary-light,#f0eaff);padding:1px 8px;border-radius:10px;">' + esc(p.role) + '</span>'
             : '<span style="color:var(--gray-400);">-</span>';
-        const noteBadge = p._source === 'users'
-          ? '<span class="badge badge-yellow" title="벤더 포털 가입 계정이지만 persons 문서 미생성 상태">미등록</span>'
-          : '';
-        const clickable = p._source !== 'users';
         const checked = (window._personSelected || new Set()).has(p.id) ? ' checked' : '';
-        return '<tr style="cursor:pointer;"' + (clickable ? ' onclick="openPersonDetail(\'' + p.id + '\')"' : '') + '>' +
+        return '<tr style="cursor:pointer;" onclick="openPersonDetail(\'' + p.id + '\')">' +
           '<td style="padding-left:16px;" onclick="event.stopPropagation()"><input type="checkbox" id="pers-chk-' + p.id + '"' + checked + ' onchange="togglePersonSelect(\'' + p.id + '\',this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></td>' +
           '<td style="font-weight:500;">' + esc(p.name || '-') + '</td>' +
           '<td>' + roleBadge + '</td>' +
@@ -2596,7 +2571,7 @@
           '<td>' + brandName + '</td>' +
           '<td>' + statusBadge + '</td>' +
           '<td style="color:var(--gray-500);">' + tsToDate(p.created_at) + '</td>' +
-          '<td>' + noteBadge + '</td>' +
+          '<td></td>' +
           '</tr>';
       }).join('');
     }
@@ -2712,7 +2687,8 @@
   window.deletePersonConfirm = async function(personId, name) {
     if (!confirm('담당자 [' + name + ']을(를) 삭제하시겠습니까?\n삭제 후에는 복구할 수 없습니다.')) return;
     try {
-      await deleteDoc(doc(db, 'persons', personId));
+      const docIds = (window._personDocIdsMap && window._personDocIdsMap[personId]) || [personId];
+      await Promise.all(docIds.map(id => deleteDoc(doc(db, 'persons', id))));
       showToast('삭제했습니다.', 'success');
       closeModal();
       const content = document.getElementById('page-content');
