@@ -7755,7 +7755,7 @@
       return list.map(item => {
         const brandDisplay = item._brandNameDisplay || item.target_brand_id || '-';
         const applicantName = esc(item.applicant_name || item.name || '-');
-        const applicantRole = esc(item.role || item.requested_role || '-');
+        const applicantRole = esc(item.applicant_role || item.role || item.requested_role || '-');
         const applicantEmail = esc(item.applicant_email || item.email || item.contact_email || '-');
         return '<tr style="cursor:pointer;" onclick="openApplicationDetail(\'' + item.id + '\',\'' + item._type + '\')">' +
           '<td>' + statusBadge(item.status) + '</td>' +
