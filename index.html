@@ -182,6 +182,14 @@
     .modal-body { padding: 24px; overflow-y: auto; flex: 1; min-height: 0; }
     /* footer는 항상 하단 고정 — 버튼이 스크롤에 묻히지 않음 */
     .modal-footer { padding: 14px 24px; border-top: 1px solid var(--gray-200); display: flex; gap: 10px; justify-content: flex-end; flex-shrink: 0; background: #fff; border-radius: 0 0 16px 16px; }
+    /* 상세 모달 공통 섹션 스타일 */
+    .detail-section-title { font-size: 13px; font-weight: 700; color: var(--gray-700); margin-top: 24px; margin-bottom: 8px; letter-spacing: 0.02em; padding-bottom: 6px; border-bottom: 1.5px solid var(--gray-200); }
+    .detail-section-title:first-child { margin-top: 0; }
+    .detail-section { border: 1px solid var(--gray-200); border-radius: 10px; overflow: hidden; margin-bottom: 4px; }
+    .detail-section .detail-row { border-bottom: 1px solid var(--gray-100); padding: 9px 14px; display: flex; align-items: flex-start; gap: 8px; font-size: 13px; }
+    .detail-section .detail-row:last-child { border-bottom: none; }
+    .detail-section .detail-row-label { min-width: 110px; color: var(--gray-500); font-size: 12px; flex-shrink: 0; padding-top: 1px; }
+    .detail-section .detail-row-val { flex: 1; word-break: break-all; }
 
     /* ── 빈 상태 / 준비중 ── */
     .empty-state { text-align: center; padding: 60px 20px; color: var(--gray-400); }
@@ -2228,65 +2236,79 @@
         '계약기간 만료': '<span class="badge badge-gray">계약기간 만료</span>'
       }[s] || '<span class="badge badge-gray">미계약</span>');
 
-      const adminConfirmed = b.onboarding_status === '승인' && b.brand_code;
-      const sectionLabel = (text, hint) =>
-        '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:16px;margin-bottom:8px;">' + text +
-        (hint ? ' <span style="font-weight:400;color:var(--gray-300);">· ' + hint + '</span>' : '') + '</div>';
+      const sectionTitle = text => '<div class="detail-section-title">' + text + '</div>';
+      // 섹션 박스 안에 들어가는 행 (detail-section 안에서 사용)
+      const drow = (label, val) => val
+        ? '<div class="detail-row"><span class="detail-row-label">' + label + '</span><span class="detail-row-val">' + val + '</span></div>'
+        : '';
+
+      const brandCodeVal = b.brand_code
+        ? '<code style="background:var(--blue-light);color:var(--blue);padding:2px 8px;border-radius:4px;font-weight:700;">' + esc(b.brand_code) + '</code>'
+        : '<span style="color:var(--gray-400);">-</span>';
+      const brandTypeVal = b.brand_type ? (typeLabel[b.brand_type] || esc(b.brand_type)) : '<span style="color:var(--gray-400);">-</span>';
+      const commissionVal = (fi.commission_rate !== undefined && b.brand_type === '위탁') ? fi.commission_rate + '%' : '';
 
       const body = '<div>' +
         logoSection +
 
-        sectionLabel('어드민 확정 정보') +
-        '<div style="background:var(--blue-light);border-radius:8px;padding:10px 14px;margin-bottom:4px;">' +
-        (adminConfirmed
-          ? row('브랜드코드', '<code style="background:#fff;color:var(--blue);padding:2px 7px;border-radius:4px;font-weight:700;">' + esc(b.brand_code) + '</code>') +
-            row('거래 유형', typeLabel[b.brand_type] || esc(b.brand_type || '')) +
-            (fi.commission_rate !== undefined && b.brand_type === '위탁' ? row('위탁판매대행수수료', fi.commission_rate + '%') : '')
-          : '<div style="font-size:12px;color:var(--gray-500);padding:4px 0;">입점 승인 시 브랜드코드·거래유형·수수료가 확정됩니다.</div>') +
+        // ① 브랜드 정보
+        sectionTitle('브랜드 정보') +
+        '<div class="detail-section">' +
+          drow('입점 상태', onboardingBadge(b.onboarding_status) +
+            (b.onboarding_status_reason ? ' <span style="font-size:12px;color:var(--gray-500);">— ' + esc(b.onboarding_status_reason) + '</span>' : '') +
+            ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openOnboardingModal(\'' + brandId + '\',\'' + esc(b.onboarding_status || '') + '\')">상태 변경</button>') +
+          drow('브랜드명', '<strong>' + esc(b.brand_name) + '</strong>') +
+          drow('브랜드코드', brandCodeVal) +
+          drow('거래 유형', brandTypeVal) +
+          drow('브랜드 소개', b.brand_desc ? '<span style="white-space:pre-wrap;">' + esc(b.brand_desc) + '</span>' : '') +
+          (Array.isArray(b.website_urls) && b.website_urls.length
+            ? drow('관련 사이트', b.website_urls.map(u => '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer" style="color:var(--blue);">' + esc(u) + '</a>').join('<br>'))
+            : '') +
         '</div>' +
-        row('입점 상태', onboardingBadge(b.onboarding_status) +
-          (b.onboarding_status_reason ? ' <span style="font-size:12px;color:var(--gray-500);">— ' + esc(b.onboarding_status_reason) + '</span>' : '') +
-          ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openOnboardingModal(\'' + brandId + '\',\'' + esc(b.onboarding_status || '') + '\')">상태 변경</button>') +
 
-        sectionLabel('브랜드 제출 정보') +
-        row('브랜드명', '<strong>' + esc(b.brand_name) + '</strong>') +
-        row('브랜드 소개', esc(b.brand_desc || '')) +
-        (Array.isArray(b.website_urls) && b.website_urls.length
-          ? row('관련 사이트', b.website_urls.map(u => '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer" style="color:var(--blue);font-size:12px;">' + esc(u) + '</a>').join('<br>'))
-          : '') +
+        // ② 계약 및 정산 정보
+        sectionTitle('계약 및 정산 정보') +
+        '<div class="detail-section">' +
         (si.bank_name
-          ? sectionLabel('계약 및 정산 정보') +
-            row('사업자 유형', bizTypeText) +
-            row('주소', esc(si.address || '')) +
+          ? (commissionVal ? drow('위탁판매대행수수료', commissionVal) : '') +
+            drow('사업자 유형', bizTypeText) +
+            drow('주소', esc(si.address || '')) +
             (si.business_type === 'business'
-              ? row('사업자등록번호', isEncrypted(si.business_reg_number)
+              ? drow('사업자등록번호', isEncrypted(si.business_reg_number)
                   ? '<div id="bd-biz-reg-wrapper"><button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="revealBrandBizReg(\'' + brandId + '\')">🔓 보기</button></div>'
                   : esc(si.business_reg_number || '')) +
-                row('과세 유형', esc(si.taxation_type || ''))
+                drow('과세 유형', esc(si.taxation_type || ''))
               : (si.business_type === 'individual'
-                  ? row('주민등록번호', isEncrypted(si.resident_number)
+                  ? drow('주민등록번호', isEncrypted(si.resident_number)
                       ? '<button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="revealBrandResidentNum(\'' + brandId + '\')">🔓 보기</button>'
-                      : (si.resident_number || ''))
+                      : esc(si.resident_number || ''))
                   : '')) +
-            row('은행', esc(si.bank_name || '')) +
-            row('예금주', esc(si.account_holder || '')) +
-            row('계좌번호', isEncrypted(si.account_number)
+            drow('은행', esc(si.bank_name || '')) +
+            drow('예금주', esc(si.account_holder || '')) +
+            drow('계좌번호', isEncrypted(si.account_number)
               ? '<div id="bd-account-number-wrapper"><button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="revealBrandAccountNumber(\'' + brandId + '\')">🔓 보기</button></div>'
               : esc(si.account_number || '')) +
             (si.business_type === 'business'
-              ? row('사업자등록증', docFileCell(si.biz_reg_url, brandId, 'biz_reg_url')) +
-                row('통장 사본', docFileCell(si.bank_book_url, brandId, 'bank_book_url'))
-              : row('신분증 사본', docFileCell(si.id_card_url, brandId, 'id_card_url')) +
-                row('통장 사본', docFileCell(si.bank_book_url, brandId, 'bank_book_url')))
-          : sectionLabel('계약 및 정산 정보') +
-            '<div style="font-size:12px;color:var(--gray-400);padding:4px 0 8px;">아직 입력된 정보가 없습니다.</div>') +
-        '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">변경 이력</div>' +
-        '<div id="brand-activity-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
-        '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">담당자</div>' +
+              ? drow('사업자등록증', docFileCell(si.biz_reg_url, brandId, 'biz_reg_url')) +
+                drow('통장 사본', docFileCell(si.bank_book_url, brandId, 'bank_book_url'))
+              : drow('신분증 사본', docFileCell(si.id_card_url, brandId, 'id_card_url')) +
+                drow('통장 사본', docFileCell(si.bank_book_url, brandId, 'bank_book_url')))
+          : '<div class="detail-row" style="color:var(--gray-400);font-size:13px;">아직 입력된 정보가 없습니다.</div>') +
+        '</div>' +
+
+        // ③ 담당자
+        sectionTitle('담당자') +
         '<div id="brand-persons-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
-        '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:0.05em;margin-top:24px;margin-bottom:8px;">계약</div>' +
+
+        // ④ 계약
+        sectionTitle('계약') +
         '<div id="brand-contracts-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
-        '<div style="margin-top:24px;padding-top:12px;border-top:1px solid var(--gray-100);display:flex;align-items:center;gap:16px;">' +
+
+        // ⑤ 변경 이력
+        sectionTitle('변경 이력') +
+        '<div id="brand-activity-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
+
+        '<div style="margin-top:20px;padding-top:12px;border-top:1px solid var(--gray-100);display:flex;align-items:center;gap:16px;">' +
         renderDocId(brandId, '브랜드') +
         '<span style="font-size:11px;color:var(--gray-300);">등록일 ' + esc(b.created_at || '-') + '</span>' +
         '</div>' +
@@ -5685,25 +5707,25 @@
       const periodLabel = s.period_start ? s.period_start.slice(0,7) + (s.period_end ? ' ~ ' + s.period_end.slice(0,7) : '') : esc(s.period || '');
 
       const body =
-        '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:.05em;margin-bottom:8px;">기본 정보</div>' +
+        '<div class="detail-section-title" style="margin-top:0;">기본 정보</div>' +
         drow('정산 기간', periodLabel) +
         drow('브랜드', esc(s.brand_id || '')) +
         drow('정산 상태', statusBadge(currentStatus) +
           (currentStatus !== '확정' && currentStatus !== '지급완료' ? ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="closeModal();confirmSettlement(\'' + settlementId + '\')">확정 처리</button>' : '')) +
 
-        '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:.05em;margin-top:16px;margin-bottom:8px;">지급 관리</div>' +
+        '<div class="detail-section-title">지급 관리</div>' +
         drow('지급 상태', statusBadge(payStatus) +
           ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openSettlementStatusModal(\'' + settlementId + '\',\'' + esc(payStatus) + '\')">상태 변경</button>' +
           (payStatus !== '지급완료' ? ' <button class="btn btn-primary" style="font-size:11px;padding:3px 10px;margin-left:4px;" onclick="markSettlementPaid(\'' + settlementId + '\')">지급 완료 처리</button>' : '')) +
         drow('지급 예정일', esc(s.pay_date || '-')) +
         (s.paid_at ? drow('실제 지급일', esc(s.paid_at)) : '') +
 
-        '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:.05em;margin-top:16px;margin-bottom:8px;">금액</div>' +
+        '<div class="detail-section-title">금액</div>' +
         drow('판매 건수', s.sale_count != null ? s.sale_count + '건' : '-') +
         drow('총 판매액', s.total_sales_amount != null ? s.total_sales_amount.toLocaleString() + '원' : (s.supply_total ? s.supply_total.toLocaleString() + '원' : '-')) +
         drow('정산 금액(공급가 합계)', s.total_supply_amount != null ? '<strong>' + s.total_supply_amount.toLocaleString() + '원</strong>' : (s.settlement_amount ? '<strong>' + s.settlement_amount.toLocaleString() + '원</strong>' : '-')) +
 
-        '<div style="font-size:11px;font-weight:700;color:var(--gray-400);letter-spacing:.05em;margin-top:16px;margin-bottom:8px;">세무 / 증빙</div>' +
+        '<div class="detail-section-title">세무 / 증빙</div>' +
         drow('사업자 유형', esc(s.biz_type || '-')) +
         drow('증빙 유형', esc(s.receipt_type || '-')) +
         drow('증빙 상태',
@@ -6931,7 +6953,7 @@
       esc(fmtTs(i.created_at)) + ' · ' + esc(brandName) + (personName ? ' · ' + esc(personName) : '') +
       '</div>' +
       '<div style="font-size:14px;line-height:1.7;white-space:pre-wrap;color:var(--gray-800);background:var(--gray-50);border-radius:8px;padding:14px;margin-bottom:20px;">' + esc(i.content || '') + '</div>' +
-      '<div style="font-size:12px;font-weight:700;color:var(--gray-400);margin-bottom:8px;">답변</div>' +
+      '<div class="detail-section-title">답변</div>' +
       (i.answer
         ? '<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--gray-800);background:var(--blue-light);border-radius:8px;padding:14px;">' + esc(i.answer) + '</div>' +
           '<div style="font-size:11px;color:var(--gray-400);margin-top:6px;">' + esc(i.answered_by || '') + ' · ' + esc(fmtTs(i.answered_at)) + '</div>'
@@ -7871,7 +7893,7 @@
 
     const settlementSection = (item.settlement_info && !isJoin)
       ? '<div style="border-top:1px solid var(--gray-200);padding-top:14px;margin-top:4px;margin-bottom:14px;">' +
-          '<div class="form-label" style="margin-bottom:8px;font-size:12px;font-weight:700;">계약 및 정산 정보 (브랜드 제출)</div>' +
+          '<div class="detail-section-title" style="margin-top:0;">계약 및 정산 정보 (브랜드 제출)</div>' +
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">' +
             '<div><span style="color:var(--gray-500);font-size:11px;">사업자 구분</span><br>' + esc(si.business_type === 'individual' ? '개인(사업자없음)' : si.business_type === 'business' ? '사업자' : '-') + '</div>' +
             (si.address ? '<div style="grid-column:1/-1;"><span style="color:var(--gray-500);font-size:11px;">주소</span><br>' + esc(si.address) + '</div>' : '') +
@@ -7908,7 +7930,7 @@
 
       // ② 브랜드 정보
       '<div style="margin-bottom:14px;padding:14px;background:var(--gray-50);border-radius:8px;">' +
-        '<div style="font-size:12px;font-weight:700;color:var(--gray-500);margin-bottom:10px;">브랜드 정보</div>' +
+        '<div class="detail-section-title" style="margin-top:0;">브랜드 정보</div>' +
         (item.brand_photo_url
           ? '<div style="margin-bottom:12px;"><img src="' + esc(item.brand_photo_url) + '" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);" onerror="this.style.display=\'none\'"></div>'
           : '') +
@@ -7925,7 +7947,7 @@
 
       // ④ 신청자 정보
       '<div style="margin-bottom:14px;padding:14px;background:var(--gray-50);border-radius:8px;">' +
-        '<div style="font-size:12px;font-weight:700;color:var(--gray-500);margin-bottom:10px;">신청자 정보</div>' +
+        '<div class="detail-section-title">신청자 정보</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
           field2('이름', esc(item.applicant_name || '-')) +
           field2('역할', esc(item.applicant_role || '-')) +
