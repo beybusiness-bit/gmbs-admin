@@ -3397,6 +3397,7 @@
             await updateDoc(doc(db, 'brands', brandId), {
               onboarding_status: '계약완료',
               onboarding_status_changed_at: today(),
+              contract_completed_at: today(),
               updated_at: today()
             });
           }
@@ -3584,6 +3585,10 @@
       updateData.brand_code = brandCode;
       updateData.brand_type = brandType;
       updateData.fee_info = brandType === '위탁' ? { commission_rate: commissionRate } : {};
+      updateData.approved_at = today();
+    }
+    if (status === '계약완료') {
+      updateData.contract_completed_at = today();
     }
 
     try {
@@ -7425,17 +7430,20 @@
       if (isJoin) {
         // 합류 신청 승인
         const brandId = item.target_brand_id;
-        const personRef = await addDoc(collection(db, 'persons'), {
+        const joinPersonData = {
           brand_id: brandId,
           name: item.applicant_name || '',
           phone: item.applicant_phone || '',
           role: item.applicant_role || '',
           contact_email: item.applicant_contact_email || '',
-          login_google_email: item.applicant_email || '',
+          login_google_email: (item.applicant_email || '').toLowerCase(),
           active: true,
           created_at: today(), updated_at: today()
-        });
+        };
+        const personRef = await addDoc(collection(db, 'persons'), joinPersonData);
         const personId = personRef.id;
+        // vendor 포털이 읽는 서브컬렉션에도 동일 데이터 기록
+        await setDoc(doc(db, 'brands', brandId, 'persons', personId), joinPersonData);
 
         await setDoc(doc(db, 'vendor_accounts', item.applicant_email), {
           uid: item.applicant_uid || null,
@@ -7483,21 +7491,25 @@
           settlement_info: item.settlement_info || {},
           fee_info: adminBrandType === '위탁' ? { commission_rate: adminCommission } : {},
           onboarding_status: '심사중',
+          ...(item.brand_photo_url ? { brand_photo_url: item.brand_photo_url } : {}),
           created_at: today(), updated_at: today()
         });
         const brandId = brandRef.id;
 
-        const personRef = await addDoc(collection(db, 'persons'), {
+        const personData = {
           brand_id: brandId,
           name: item.applicant_name || '',
           phone: item.applicant_phone || '',
           role: item.applicant_role || '',
           contact_email: item.applicant_contact_email || '',
-          login_google_email: item.applicant_email || '',
+          login_google_email: (item.applicant_email || '').toLowerCase(),
           active: true,
           created_at: today(), updated_at: today()
-        });
+        };
+        const personRef = await addDoc(collection(db, 'persons'), personData);
         const personId = personRef.id;
+        // vendor 포털이 읽는 서브컬렉션에도 동일 데이터 기록
+        await setDoc(doc(db, 'brands', brandId, 'persons', personId), personData);
 
         await setDoc(doc(db, 'vendor_accounts', item.applicant_email), {
           uid: item.applicant_uid || null,
