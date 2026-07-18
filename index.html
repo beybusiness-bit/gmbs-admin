@@ -1579,7 +1579,15 @@
       const _blContent = document.getElementById('brand-list-content');
 
       if (snap.empty) {
-        _blContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🏬</div><div class="empty-state-text">등록된 브랜드가 없습니다.<br>새 브랜드를 등록해보세요.</div></div>';
+        _blContent.innerHTML =
+          '<div style="display:flex;justify-content:flex-end;margin-bottom:16px;">' +
+          '<div data-register-wrap="1" style="position:relative;display:inline-block;">' +
+          '<button class="btn btn-primary" onclick="toggleRegisterMenu(\'new-brand-menu\',this)">➕ 새 브랜드 등록 ▾</button>' +
+          '<div id="new-brand-menu" class="register-dropdown" style="display:none;">' +
+          '<div class="reg-menu-item" onclick="closeRegisterMenus();openBrandModal(null)">📝 일반 등록</div>' +
+          '<div class="reg-menu-item" onclick="closeRegisterMenus();openBulkBrandModal()">📤 대량 등록</div>' +
+          '</div></div></div>' +
+          '<div class="empty-state"><div class="empty-state-icon">🏬</div><div class="empty-state-text">등록된 브랜드가 없습니다.<br>새 브랜드를 등록해보세요.</div></div>';
         return;
       }
 
@@ -2397,8 +2405,8 @@
       persons.sort((a, b) => toStr(b.created_at).localeCompare(toStr(a.created_at)));
 
       let html = '<div style="padding:16px 0;">';
-      html += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">';
-      html += '<input id="pl-search" type="text" class="form-input" placeholder="이름·이메일·역할 검색" style="max-width:260px;" oninput="filterPersonsList()" />';
+      html += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">';
+      html += '<input id="pl-search" type="text" class="form-input" placeholder="이름·이메일·역할·브랜드 검색" style="max-width:300px;" oninput="filterPersonsList()" />';
       html += '<select id="pl-filter-active" class="form-input" style="max-width:140px;" onchange="filterPersonsList()">';
       html += '<option value="all">전체</option><option value="active">활성</option><option value="inactive">비활성</option>';
       html += '</select>';
@@ -2419,6 +2427,11 @@
 
   function buildPersonsTable(persons, brandMap) {
     if (!persons.length) return '<div style="padding:40px;text-align:center;color:var(--gray-400);">담당자가 없습니다.</div>';
+    const tsToDate = v => {
+      if (!v) return '-';
+      if (typeof v.toDate === 'function') return v.toDate().toISOString().slice(0, 10);
+      return String(v).slice(0, 10);
+    };
     let t = '<div style="overflow-x:auto;">';
     t += '<table style="width:100%;border-collapse:collapse;font-size:14px;">';
     t += '<thead><tr style="background:var(--gray-50);border-bottom:2px solid var(--gray-200);">';
@@ -2431,17 +2444,24 @@
       const statusBadge = p.active !== false
         ? '<span class="badge badge-green">활성</span>'
         : '<span class="badge badge-gray">비활성</span>';
-      t += '<tr style="border-bottom:1px solid var(--gray-100);">';
-      t += '<td style="padding:10px 12px;font-weight:500;">' + esc(p.name || '-') + '</td>';
-      t += '<td style="padding:10px 12px;color:var(--gray-600);">' + esc(p.role || '-') + '</td>';
-      t += '<td style="padding:10px 12px;">' + esc(p.contact_email || '-') + '</td>';
-      t += '<td style="padding:10px 12px;">' + esc(p.login_google_email || '-') + '</td>';
-      t += '<td style="padding:10px 12px;">' + brandName + '</td>';
-      t += '<td style="padding:10px 12px;">' + statusBadge + '</td>';
-      t += '<td style="padding:10px 12px;color:var(--gray-500);">' + esc(p.created_at || '-') + '</td>';
+      const roleBadge = p.role === '주관리자'
+        ? '<span style="font-size:12px;color:#fff;background:var(--primary);padding:1px 8px;border-radius:10px;font-weight:600;">' + esc(p.role) + '</span>'
+        : p.role
+          ? '<span style="font-size:12px;color:var(--primary);background:var(--primary-light,#f0eaff);padding:1px 8px;border-radius:10px;">' + esc(p.role) + '</span>'
+          : '<span style="color:var(--gray-400);">-</span>';
       const noteBadge = p._source === 'users'
         ? '<span class="badge badge-yellow" title="벤더 포털 가입 계정이지만 persons 문서 미생성 상태">미등록</span>'
         : '';
+      const clickable = p._source !== 'users';
+      t += '<tr style="border-bottom:1px solid var(--gray-100);' + (clickable ? 'cursor:pointer;' : '') + '" '
+        + (clickable ? 'onclick="openPersonDetail(\'' + p.id + '\')" onmouseenter="this.style.background=\'var(--gray-50)\'" onmouseleave="this.style.background=\'\'"' : '') + '>';
+      t += '<td style="padding:10px 12px;font-weight:500;">' + esc(p.name || '-') + '</td>';
+      t += '<td style="padding:10px 12px;">' + roleBadge + '</td>';
+      t += '<td style="padding:10px 12px;">' + esc(p.contact_email || '-') + '</td>';
+      t += '<td style="padding:10px 12px;color:var(--gray-500);font-size:12px;">' + esc(p.login_google_email || '-') + '</td>';
+      t += '<td style="padding:10px 12px;">' + brandName + '</td>';
+      t += '<td style="padding:10px 12px;">' + statusBadge + '</td>';
+      t += '<td style="padding:10px 12px;color:var(--gray-500);">' + tsToDate(p.created_at) + '</td>';
       t += '<td style="padding:10px 12px;">' + noteBadge + '</td>';
       t += '</tr>';
     });
@@ -2450,15 +2470,210 @@
   }
 
   window.filterPersonsList = function() {
-    const q = (document.getElementById('pl-search') || {}).value || '';
+    const q = ((document.getElementById('pl-search') || {}).value || '').toLowerCase();
     const activeFilter = (document.getElementById('pl-filter-active') || {}).value || 'all';
+    const bMap = window._allPersonsBrandMap || {};
     const persons = (window._allPersonsData || []).filter(p => {
-      const matchQ = !q || [p.name, p.contact_email, p.login_google_email, p.role].some(v => v && v.toLowerCase().includes(q.toLowerCase()));
+      const brandName = p.brand_id ? (bMap[p.brand_id] || '') : '';
+      const matchQ = !q || [p.name, p.contact_email, p.login_google_email, p.role, brandName].some(v => v && v.toLowerCase().includes(q));
       const matchActive = activeFilter === 'all' || (activeFilter === 'active' ? p.active !== false : p.active === false);
       return matchQ && matchActive;
     });
     const wrap = document.getElementById('pl-table-wrap');
-    if (wrap) wrap.innerHTML = buildPersonsTable(persons, window._allPersonsBrandMap || {});
+    if (wrap) wrap.innerHTML = buildPersonsTable(persons, bMap);
+  };
+
+  /* ────────────────────────────────────
+     담당자 상세 모달
+  ──────────────────────────────────── */
+  window.openPersonDetail = async function(personId) {
+    showModal('담당자 상세', '<div class="spinner" style="margin:40px auto;"></div>', null, 'md');
+    try {
+      const snap = await getDoc(doc(db, 'persons', personId));
+      if (!snap.exists()) { showToast('담당자를 찾을 수 없습니다.', 'error'); closeModal(); return; }
+      const p = { id: snap.id, ...snap.data() };
+      const bMap = window._allPersonsBrandMap || {};
+
+      // 이 담당자가 속한 모든 브랜드 조회 (brand_ids 배열 or 단일 brand_id)
+      const brandIds = Array.isArray(p.brand_ids) ? p.brand_ids : (p.brand_id ? [p.brand_id] : []);
+
+      const tsToDate = v => {
+        if (!v) return '-';
+        if (typeof v.toDate === 'function') return v.toDate().toISOString().slice(0, 10);
+        return String(v).slice(0, 10);
+      };
+
+      function row(label, val) {
+        return '<div style="display:flex;gap:12px;padding:9px 0;border-bottom:1px solid var(--gray-100);">'
+          + '<div style="min-width:110px;font-size:12px;color:var(--gray-500);padding-top:2px;">' + label + '</div>'
+          + '<div style="flex:1;font-size:13px;">' + val + '</div></div>';
+      }
+
+      const roleBadge = p.role === '주관리자'
+        ? '<span style="font-size:12px;color:#fff;background:var(--primary);padding:2px 10px;border-radius:10px;font-weight:600;">주관리자</span>'
+        : p.role
+          ? '<span style="font-size:12px;color:var(--primary);background:var(--primary-light,#f0eaff);padding:2px 10px;border-radius:10px;">' + esc(p.role) + '</span>'
+          : '-';
+      const statusBadge = p.active !== false
+        ? '<span class="badge badge-green">활성</span>'
+        : '<span class="badge badge-gray">비활성</span>';
+      const brandsHtml = brandIds.length
+        ? brandIds.map(bid => '<span style="display:inline-block;background:var(--gray-100);border-radius:6px;padding:2px 9px;font-size:12px;margin:2px 4px 2px 0;">' + esc(bMap[bid] || bid) + '</span>').join('')
+        : '<span style="color:var(--gray-400);">없음</span>';
+
+      const body = '<div style="padding:4px 0;">'
+        + row('이름', '<strong>' + esc(p.name || '-') + '</strong>')
+        + row('역할', roleBadge)
+        + row('상태', statusBadge)
+        + row('연락처 이메일', esc(p.contact_email || '-'))
+        + row('구글 로그인', '<span style="font-size:12px;color:var(--gray-500);">' + esc(p.login_google_email || '-') + '</span>')
+        + row('전화번호', esc(p.phone || '-'))
+        + row('소속 브랜드', brandsHtml)
+        + row('등록일', tsToDate(p.created_at))
+        + '</div>'
+        + '<div style="display:flex;gap:8px;margin-top:20px;flex-wrap:wrap;">'
+        + '<button class="btn btn-primary" onclick="openPersonEditModal(\'' + personId + '\')">✏️ 수정</button>'
+        + '<button class="btn btn-secondary" onclick="togglePersonActive(\'' + personId + '\',' + (p.active !== false ? 'true' : 'false') + ')">'
+          + (p.active !== false ? '🔒 비활성화' : '✅ 활성화') + '</button>'
+        + '<button class="btn btn-secondary" onclick="openPersonBrandLinkModal(\'' + personId + '\')">🔗 브랜드 연결</button>'
+        + '<button class="btn" style="color:var(--red);border-color:var(--red);background:transparent;" onclick="deletePersonConfirm(\'' + personId + '\',\'' + esc(p.name || '') + '\')">🗑 삭제</button>'
+        + '</div>';
+
+      showModal('담당자 상세 — ' + esc(p.name || personId), body, null, 'md');
+    } catch(e) {
+      showToast('불러오기 실패: ' + e.message, 'error'); closeModal();
+    }
+  };
+
+  window.togglePersonActive = async function(personId, currentActive) {
+    const newActive = !currentActive;
+    try {
+      await updateDoc(doc(db, 'persons', personId), { active: newActive, updated_at: today() });
+      showToast(newActive ? '활성화했습니다.' : '비활성화했습니다.', 'success');
+      closeModal();
+      // 목록 새로고침
+      const content = document.getElementById('page-content');
+      if (content) await renderPersonsList(content);
+    } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
+  };
+
+  window.deletePersonConfirm = async function(personId, name) {
+    if (!confirm('담당자 [' + name + ']을(를) 삭제하시겠습니까?\n삭제 후에는 복구할 수 없습니다.')) return;
+    try {
+      await deleteDoc(doc(db, 'persons', personId));
+      showToast('삭제했습니다.', 'success');
+      closeModal();
+      const content = document.getElementById('page-content');
+      if (content) await renderPersonsList(content);
+    } catch(e) { showToast('삭제 실패: ' + e.message, 'error'); }
+  };
+
+  window.openPersonBrandLinkModal = async function(personId) {
+    showModal('브랜드 연결', '<div class="spinner" style="margin:40px auto;"></div>', null, 'sm');
+    try {
+      const [pSnap, brandsSnap] = await Promise.all([
+        getDoc(doc(db, 'persons', personId)),
+        getDocs(query(collection(db, 'brands'), where('active', '!=', false)))
+      ]);
+      if (!pSnap.exists()) { closeModal(); return; }
+      const p = { id: pSnap.id, ...pSnap.data() };
+      const brands = brandsSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.brand_name || '').localeCompare(b.brand_name || '', 'ko'));
+
+      const opts = brands.map(b =>
+        '<option value="' + b.id + '"' + (p.brand_id === b.id ? ' selected' : '') + '>'
+        + esc(b.brand_name || b.id) + ' (' + esc(b.brand_code || '') + ')</option>'
+      ).join('');
+
+      const body = '<div style="padding:4px 0;">'
+        + '<p style="font-size:13px;color:var(--gray-600);margin-bottom:14px;">담당자 <strong>' + esc(p.name || personId) + '</strong>의 주 소속 브랜드를 변경합니다.</p>'
+        + '<div class="form-group"><label class="form-label">소속 브랜드</label>'
+        + '<select class="form-input" id="plm-brand-select"><option value="">브랜드 없음</option>' + opts + '</select></div>'
+        + '<div style="display:flex;gap:8px;margin-top:16px;">'
+        + '<button class="btn btn-primary" onclick="savePersonBrandLink(\'' + personId + '\')">저장</button>'
+        + '<button class="btn btn-secondary" onclick="closeModal()">취소</button>'
+        + '</div></div>';
+
+      showModal('브랜드 연결 — ' + esc(p.name || ''), body, null, 'sm');
+    } catch(e) { showToast('불러오기 실패: ' + e.message, 'error'); closeModal(); }
+  };
+
+  window.savePersonBrandLink = async function(personId) {
+    const brandId = (document.getElementById('plm-brand-select') || {}).value || '';
+    try {
+      await updateDoc(doc(db, 'persons', personId), { brand_id: brandId || null, updated_at: today() });
+      showToast('브랜드 연결을 업데이트했습니다.', 'success');
+      closeModal();
+      const content = document.getElementById('page-content');
+      if (content) await renderPersonsList(content);
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  window.openPersonEditModal = async function(personId) {
+    const snap = await getDoc(doc(db, 'persons', personId));
+    if (!snap.exists()) return;
+    const p = { id: snap.id, ...snap.data() };
+    const roleOpts = ['주관리자','부관리자'];
+    const roleSelects = roleOpts.map(r =>
+      '<option value="' + r + '"' + (p.role === r ? ' selected' : '') + '>' + r + '</option>'
+    ).join('');
+
+    const body = '<div style="padding:4px 0;">'
+      + '<div class="form-row">'
+      + '<div class="form-group"><label class="form-label">이름 *</label><input class="form-input" id="ped-name" value="' + esc(p.name || '') + '" /></div>'
+      + '<div class="form-group"><label class="form-label">역할 *</label><select class="form-input" id="ped-role">' + roleSelects + '</select></div>'
+      + '</div>'
+      + '<div class="form-row">'
+      + '<div class="form-group"><label class="form-label">전화번호</label><input class="form-input" id="ped-phone" value="' + esc(fmtPhone(p.phone || '')) + '" oninput="onPersonPhoneInput(this)" inputmode="numeric" /></div>'
+      + '<div class="form-group"><label class="form-label">연락처 이메일</label><input class="form-input" id="ped-contact-email" value="' + esc(p.contact_email || '') + '" /></div>'
+      + '</div>'
+      + '<div class="form-group"><label class="form-label">구글 로그인 이메일</label><input class="form-input" id="ped-login-email" value="' + esc(p.login_google_email || '') + '" /></div>'
+      + '<div style="display:flex;gap:8px;margin-top:16px;">'
+      + '<button class="btn btn-primary" onclick="savePersonEdit(\'' + personId + '\',\'' + esc(p.brand_id || '') + '\')">저장</button>'
+      + '<button class="btn btn-secondary" onclick="openPersonDetail(\'' + personId + '\')">취소</button>'
+      + '</div></div>';
+
+    showModal('담당자 수정', body, null, 'md');
+  };
+
+  window.savePersonEdit = async function(personId, brandId) {
+    const name = (document.getElementById('ped-name') || {}).value.trim();
+    const role = (document.getElementById('ped-role') || {}).value;
+    if (!name) { showToast('이름을 입력해주세요.', 'error'); return; }
+    if (!role) { showToast('역할을 선택해주세요.', 'error'); return; }
+
+    // 주관리자 1명 제한
+    if (role === '주관리자') {
+      const existingSnap = await getDocs(query(
+        collection(db, 'persons'),
+        where('brand_id', '==', brandId),
+        where('role', '==', '주관리자'),
+        where('active', '!=', false)
+      ));
+      const others = existingSnap.docs.filter(d => d.id !== personId);
+      if (others.length > 0) {
+        showToast('이미 주관리자(' + (others[0].data().name || '') + ')가 있습니다.', 'error');
+        return;
+      }
+    }
+
+    try {
+      const rawPhone = (document.getElementById('ped-phone') || {}).value.replace(/\D/g, '');
+      const data = {
+        name,
+        role,
+        phone: fmtPhone(rawPhone),
+        contact_email: (document.getElementById('ped-contact-email') || {}).value.trim(),
+        login_google_email: ((document.getElementById('ped-login-email') || {}).value.trim()).toLowerCase(),
+        updated_at: today()
+      };
+      await updateDoc(doc(db, 'persons', personId), data);
+      // brands/{brandId}/persons 서브컬렉션도 동기화
+      if (brandId) await setDoc(doc(db, 'brands', brandId, 'persons', personId), data, { merge: true });
+      showToast('수정했습니다.', 'success');
+      await openPersonDetail(personId);
+      const content = document.getElementById('page-content');
+      if (content && content.dataset.page === 'persons') await renderPersonsList(content);
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
 
   /* ════════════════════════════════
