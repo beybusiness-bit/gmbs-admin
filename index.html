@@ -2332,20 +2332,21 @@
         (si.bank_name
           ? (commissionVal ? drow('위탁판매대행수수료', commissionVal) : '') +
             drow('사업자 유형', bizTypeText) +
-            drow('주소', esc(si.address || '')) +
             (si.business_type === 'business'
-              ? drow('상호', esc(si.corp_name || '')) +
-                drow('대표자명', esc(si.representative_name || '')) +
-                drow('사업자등록일', esc(si.business_start_date || '')) +
-                drow('사업자등록번호', isEncrypted(si.business_reg_number)
+              ? drow('사업자등록번호', isEncrypted(si.business_reg_number)
                   ? '<div id="bd-biz-reg-wrapper"><button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="revealBrandBizReg(\'' + brandId + '\')">🔓 보기</button></div>'
                   : esc(si.business_reg_number || '')) +
-                drow('과세 유형', esc(si.taxation_type || ''))
+                drow('과세 유형', esc(si.taxation_type || '')) +
+                drow('상호', esc(si.corp_name || '')) +
+                drow('대표자명', esc(si.representative_name || '')) +
+                drow('사업자등록일', esc(si.business_start_date || '')) +
+                drow('사업장 주소', esc(si.address || ''))
               : (si.business_type === 'individual'
                   ? drow('주민등록번호', isEncrypted(si.resident_number)
                       ? '<button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="revealBrandResidentNum(\'' + brandId + '\')">🔓 보기</button>'
-                      : esc(si.resident_number || ''))
-                  : '')) +
+                      : esc(si.resident_number || '')) +
+                    drow('주소', esc(si.address || ''))
+                  : drow('주소', esc(si.address || '')))) +
             drow('은행', esc(si.bank_name || '')) +
             drow('예금주', esc(si.account_holder || '')) +
             drow('계좌번호', isEncrypted(si.account_number)
