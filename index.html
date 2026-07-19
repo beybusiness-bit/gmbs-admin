@@ -2604,19 +2604,21 @@
   }
 
   async function migrateOnboardingStatus() {
-    const migKey = 'onboarding_status_migrated_v1';
+    const migKey = 'onboarding_status_migrated_v2';
     if (localStorage.getItem(migKey)) return;
+    // 관리자가 직접 '승인'으로 확정한 브랜드 ID 목록
+    const forcedApprovedIds = new Set(['1EqwOoIG7L7PGvkeV9Cg', 'XZlcwvm6NsbdRVsgQm2m']);
     const brandsSnap = await getDocs(collection(db, 'brands'));
     const writes = [];
     for (const bd of brandsSnap.docs) {
-      const data = bd.data();
-      if (data.onboarding_status === '승인됨') {
+      const s = bd.data().onboarding_status;
+      if (s !== '승인' && (s === '승인됨' || forcedApprovedIds.has(bd.id))) {
         writes.push(updateDoc(doc(db, 'brands', bd.id), { onboarding_status: '승인', updated_at: today() }));
       }
     }
     await Promise.all(writes);
     localStorage.setItem(migKey, '1');
-    if (writes.length > 0) console.log('[migration] onboarding_status 마이그레이션 완료:', writes.length, '건');
+    if (writes.length > 0) console.log('[migration] onboarding_status v2 마이그레이션 완료:', writes.length, '건');
   }
 
   /* ════════════════════════════════
@@ -4310,6 +4312,21 @@
     if (!contractType) { showToast('입점 유형을 선택하세요.', 'error'); return; }
     if (!startDate || !endDate) { showToast('계약 기간을 입력하세요.', 'error'); return; }
     if (endDate < startDate) { showToast('종료일은 시작일 이후여야 합니다.', 'error'); return; }
+
+    // 주관리자 확인: 모든 계약에서 필수
+    const personsSnap = await getDocs(collection(db, 'brands', brandId, 'persons'));
+    const primaryManager = personsSnap.docs.map(d => d.data()).find(p => p.role === '주관리자' && p.active !== false);
+    if (!primaryManager) {
+      showToast('주관리자가 등록되어 있지 않습니다. 담당자 섹션에서 주관리자를 먼저 등록해주세요.', 'error'); return;
+    }
+    const missingFields = [];
+    if (!primaryManager.name) missingFields.push('이름');
+    if (!primaryManager.phone) missingFields.push('전화번호');
+    if (!primaryManager.contact_email && !primaryManager.email) missingFields.push('이메일');
+    if (missingFields.length > 0) {
+      showToast('주관리자 정보가 불완전합니다. 누락 항목: ' + missingFields.join(', '), 'error'); return;
+    }
+
     const contractStatus = immediate ? '계약완료' : '계약정보입력';
     try {
       const newRef = await addDoc(collection(db, 'brands', brandId, 'contracts'), {
