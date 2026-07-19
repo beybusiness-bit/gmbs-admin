@@ -2176,13 +2176,13 @@
         // data-has-enc="1" + 빈 값: 사용자가 변경하지 않음 → 기존 암호화 값 유지
         const keepResident = bizType === 'individual' && !rawResident && (residentEl || {}).dataset?.hasEnc === '1';
         const keepAccount = !rawAccount && (accountEl || {}).dataset?.hasEnc === '1';
-        const encResident = keepResident ? (si.resident_number || '') : (rawResident ? await encryptField(rawResident) : '');
-        const encAccount = keepAccount ? (si.account_number || '') : (rawAccount ? await encryptField(rawAccount) : '');
+        const encResident = keepResident ? (si_existing.resident_number || '') : (rawResident ? await encryptField(rawResident) : '');
+        const encAccount = keepAccount ? (si_existing.account_number || '') : (rawAccount ? await encryptField(rawAccount) : '');
 
         const rawBizReg = bizType === 'business' ? ((document.getElementById('f-biz-reg-num') || {}).value || '').trim() : '';
         const bizRegEl = document.getElementById('f-biz-reg-num');
         const keepBizReg = bizType === 'business' && !rawBizReg && (bizRegEl || {}).dataset?.hasEnc === '1';
-        const encBizReg = keepBizReg ? (si.business_reg_number || '') : (rawBizReg ? await encryptField(rawBizReg) : '');
+        const encBizReg = keepBizReg ? (si_existing.business_reg_number || '') : (rawBizReg ? await encryptField(rawBizReg) : '');
 
         const corpName = bizType === 'business' ? ((document.getElementById('f-corp-name') || {}).value || '').trim() : '';
         const representativeName = bizType === 'business' ? ((document.getElementById('f-representative-name') || {}).value || '').trim() : '';
