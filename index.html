@@ -66,7 +66,7 @@
     .sidebar-collapse-btn:hover { background: #475569; color: #e2e8f0; }
     #sidebar.collapsed .sidebar-collapse-btn { margin: 0 auto; }
     .sidebar-nav { flex: 1; padding: 8px 0; overflow-y: auto; overflow-x: hidden; }
-    .nav-section-label { font-size: 10px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; padding: 12px 16px 4px; white-space: nowrap; transition: opacity 0.15s; }
+    .nav-section-label { font-size: 10px; font-weight: 700; color: #9dff20; text-transform: uppercase; letter-spacing: 1px; padding: 14px 16px 5px; white-space: nowrap; transition: opacity 0.15s; }
     #sidebar.collapsed .nav-section-label { opacity: 0; height: 0; padding: 0; overflow: hidden; }
     .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px 9px 16px; color: #94a3b8; cursor: pointer; transition: all 0.12s; font-size: 13.5px; font-weight: 500; border-left: 3px solid transparent; margin: 1px 0; white-space: nowrap; position: relative; }
     .nav-item:hover { color: #e2e8f0; background: #334155; }
@@ -306,17 +306,20 @@
       <div class="nav-item" data-page="brand-list" onclick="navigate('brand-list')">
         <span class="icon">🏬</span><span class="nav-label"> 브랜드</span>
       </div>
-      <div class="nav-item" data-page="product-list" onclick="navigate('product-list')">
-        <span class="icon">📦</span><span class="nav-label"> 상품</span>
-      </div>
       <div class="nav-item" data-page="persons-list" onclick="navigate('persons-list')">
         <span class="icon">👤</span><span class="nav-label"> 담당자</span>
       </div>
       <div class="nav-item" data-page="application-review" onclick="navigate('application-review')">
         <span class="icon">✅</span><span class="nav-label"> 승인</span>
       </div>
+      <div class="nav-item" data-page="contract-management" onclick="navigate('contract-management')">
+        <span class="icon">📝</span><span class="nav-label"> 입점 계약 관리</span>
+      </div>
 
-      <div class="nav-section-label">판매 및 정산</div>
+      <div class="nav-section-label">상품·정산</div>
+      <div class="nav-item" data-page="product-list" onclick="navigate('product-list')">
+        <span class="icon">📦</span><span class="nav-label"> 상품</span>
+      </div>
       <div class="nav-item" data-page="settlement-list" onclick="navigate('settlement-list')">
         <span class="icon">💰</span><span class="nav-label"> 정산</span>
       </div>
@@ -369,7 +372,7 @@
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
   import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-  import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, runTransaction, writeBatch, arrayUnion, arrayRemove } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+  import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, collectionGroup, getDocs, query, where, orderBy, limit, runTransaction, writeBatch, arrayUnion, arrayRemove } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
   import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
   import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 
@@ -750,7 +753,8 @@
     'customer-cs': '고객 CS',
     settings: '설정',
     'email-settings': '이메일 알림',
-    'persons-list': '담당자 목록'
+    'persons-list': '담당자 목록',
+    'contract-management': '입점 계약 관리'
   };
 
   window.navigate = async (page, params) => {
@@ -778,6 +782,7 @@
     else if (page === 'settings') await renderSettings(content);
     else if (page === 'email-settings') await renderEmailSettings(content);
     else if (page === 'persons-list') await renderPersonsList(content);
+    else if (page === 'contract-management') await renderContractManagement(content);
     else renderComingSoon(content, PAGE_TITLES[page] || page);
     refreshSidebarBadges();
   };
@@ -7498,83 +7503,269 @@
      설정 페이지
   ════════════════════════════════ */
   async function renderSettings(container) {
+    const tabStyle = (active) =>
+      'padding:8px 18px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.12s;' +
+      (active ? 'background:var(--blue);color:#fff;' : 'background:var(--gray-100);color:var(--gray-600);');
+
     container.innerHTML =
-      '<div style="max-width:660px;">' +
-
-      /* ── 앱 설치 ── */
-      '<div class="card" style="padding:24px;margin-bottom:20px;">' +
-      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">홈 화면에 앱 설치</div>' +
-      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">이 관리 도구를 스마트폰 또는 컴퓨터의 홈 화면에 앱처럼 설치할 수 있습니다.</div>' +
-      '<div id="pwa-install-area">' +
-      '<div style="background:var(--blue-light);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.7;color:var(--gray-700);">' +
-      '<b>📱 iOS(아이폰/아이패드)</b><br>' +
-      'Safari에서 열기 → 하단 공유 버튼(□↑) → "홈 화면에 추가" 선택<br><br>' +
-      '<b>🤖 Android / 💻 Chrome(PC)</b><br>' +
-      '아래 버튼을 누르거나, 주소창 오른쪽 설치 아이콘을 클릭하세요.' +
-      '</div>' +
-      '<div style="margin-top:12px;">' +
-      '<button id="btn-pwa-install" onclick="triggerPwaInstall()" class="btn btn-primary" style="display:none;">📲 홈 화면에 설치</button>' +
-      '<span id="pwa-already-installed" style="display:none;color:var(--green);font-weight:600;">✅ 이미 설치된 상태입니다.</span>' +
-      '</div>' +
-      '</div>' +
+      '<div style="max-width:680px;">' +
+      '<div style="display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap;">' +
+        '<button id="stab-general" style="' + tabStyle(true) + '" onclick="switchSettingsTab(\'general\')">일반</button>' +
+        '<button id="stab-api" style="' + tabStyle(false) + '" onclick="switchSettingsTab(\'api\')">API 및 웹훅</button>' +
       '</div>' +
 
-      /* ── 암호화 키 관리 ── */
-      '<div class="card" style="padding:24px;margin-bottom:20px;">' +
-      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">암호화 키 관리</div>' +
-      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">주민등록번호·계좌번호 암호화에 사용되는 AES-256 키입니다. Admin과 Vendor가 동일한 키를 공유해야 서로 복호화가 가능합니다.</div>' +
-      '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">⚠️ 키를 새로 생성하면 기존에 암호화된 데이터를 읽을 수 없게 됩니다. 기존 암호화 데이터가 없을 때만 생성하세요.</div>' +
-      '<div id="enc-key-status" style="font-size:13px;margin-bottom:12px;color:var(--gray-400);">확인 중...</div>' +
-      '<button class="btn btn-secondary" onclick="generateEncryptionKey()">🔑 새 암호화 키 생성 및 저장</button>' +
+      /* ── 탭: 일반 ── */
+      '<div id="stab-content-general">' +
+
+        '<div class="card" style="padding:24px;margin-bottom:20px;">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">홈 화면에 앱 설치</div>' +
+        '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">이 관리 도구를 스마트폰 또는 컴퓨터의 홈 화면에 앱처럼 설치할 수 있습니다.</div>' +
+        '<div id="pwa-install-area">' +
+          '<div style="background:var(--blue-light);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.7;color:var(--gray-700);">' +
+          '<b>📱 iOS(아이폰/아이패드)</b><br>Safari에서 열기 → 하단 공유 버튼(□↑) → "홈 화면에 추가" 선택<br><br>' +
+          '<b>🤖 Android / 💻 Chrome(PC)</b><br>아래 버튼을 누르거나, 주소창 오른쪽 설치 아이콘을 클릭하세요.' +
+          '</div>' +
+          '<div style="margin-top:12px;">' +
+            '<button id="btn-pwa-install" onclick="triggerPwaInstall()" class="btn btn-primary" style="display:none;">📲 홈 화면에 설치</button>' +
+            '<span id="pwa-already-installed" style="display:none;color:var(--green);font-weight:600;">✅ 이미 설치된 상태입니다.</span>' +
+          '</div>' +
+        '</div>' +
+        '</div>' +
+
+        '<div class="card" style="padding:24px;margin-bottom:20px;">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">암호화 키 관리</div>' +
+        '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">주민등록번호·계좌번호 암호화에 사용되는 AES-256 키입니다. Admin과 Vendor가 동일한 키를 공유해야 서로 복호화가 가능합니다.</div>' +
+        '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">⚠️ 키를 새로 생성하면 기존에 암호화된 데이터를 읽을 수 없게 됩니다. 기존 암호화 데이터가 없을 때만 생성하세요.</div>' +
+        '<div id="enc-key-status" style="font-size:13px;margin-bottom:12px;color:var(--gray-400);">확인 중...</div>' +
+        '<button class="btn btn-secondary" onclick="generateEncryptionKey()">🔑 새 암호화 키 생성 및 저장</button>' +
+        '</div>' +
+
+        '<div class="card" style="padding:24px;">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:16px;">Firebase 연결 상태</div>' +
+        '<div id="firebase-status-area"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
+        '</div>' +
+
       '</div>' +
 
-      /* ── 국세청 사업자 조회 API 키 ── */
-      '<div class="card" style="padding:24px;margin-bottom:20px;">' +
-      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">국세청 사업자 조회 API 키</div>' +
-      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">브랜드 정산 정보 입력 시 사업자등록번호 실시간 조회에 사용됩니다.</div>' +
-      '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;"><a href="https://www.data.go.kr/data/15081808/openapi.do" target="_blank" rel="noopener noreferrer" style="color:var(--blue);">공공데이터포털(data.go.kr)</a>에서 "국세청_사업자등록정보 진위확인 및 상태조회 서비스" 신청 → 일반 인증키(Encoding)를 붙여넣으세요.</div>' +
-      '<div style="display:flex;gap:8px;align-items:center;">' +
-      '<input class="form-input" id="nts-api-key-input" type="password" placeholder="국세청 오픈API 서비스키" style="flex:1;font-family:monospace;font-size:13px;" />' +
-      '<button class="btn btn-primary" style="white-space:nowrap;" onclick="saveNtsApiKey()">저장</button>' +
+      /* ── 탭: API 및 웹훅 ── */
+      '<div id="stab-content-api" style="display:none;">' +
+
+        '<div class="card" style="padding:24px;margin-bottom:20px;">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">국세청 사업자 조회 API</div>' +
+        '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">브랜드 정산 정보 입력 시 사업자등록번호 실시간 조회에 사용됩니다.</div>' +
+        '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;"><a href="https://www.data.go.kr/data/15081808/openapi.do" target="_blank" rel="noopener noreferrer" style="color:var(--blue);">공공데이터포털(data.go.kr)</a>에서 "국세청_사업자등록정보 진위확인 및 상태조회 서비스" 신청 → 일반 인증키(Encoding)를 붙여넣으세요.</div>' +
+        '<div style="display:flex;gap:8px;align-items:center;">' +
+          '<input class="form-input" id="nts-api-key-input" type="password" placeholder="국세청 오픈API 서비스키" style="flex:1;font-family:monospace;font-size:13px;" />' +
+          '<button class="btn btn-primary" style="white-space:nowrap;" onclick="saveNtsApiKey()">저장</button>' +
+        '</div>' +
+        '<div id="nts-key-status" style="font-size:12px;margin-top:8px;color:var(--gray-400);">로딩 중...</div>' +
+        '</div>' +
+
+        '<div class="card" style="padding:24px;margin-bottom:20px;">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">유캔사인 API 키</div>' +
+        '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">전자계약 템플릿 조회 및 계약 발송에 사용됩니다. 계약서 템플릿 설정은 <a href="#contract-management" onclick="navigate(\'contract-management\')" style="color:var(--blue);">입점 계약 관리</a> 페이지에서 합니다.</div>' +
+        '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">유캔사인 로그인 → 우측 상단 프로필 → <strong>개발자</strong> → <strong>API KEY</strong> 탭에서 발급받은 키를 붙여넣으세요.</div>' +
+        '<div style="display:flex;gap:8px;align-items:center;">' +
+          '<input class="form-input" id="ucansign-api-key-input" type="password" placeholder="유캔사인 API KEY (영구 발급된 키)" style="flex:1;font-family:monospace;font-size:13px;" />' +
+          '<button class="btn btn-primary" style="white-space:nowrap;" onclick="saveUcansignApiKey()">저장</button>' +
+        '</div>' +
+        '<div id="ucansign-key-status" style="font-size:12px;margin-top:8px;color:var(--gray-400);">로딩 중...</div>' +
+        '</div>' +
+
+        '<div class="card" style="padding:24px;">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">EmailJS 연동</div>' +
+        '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">이메일 알림 발송에 사용됩니다. 트리거별 템플릿 설정은 <a href="#email-settings" onclick="navigate(\'email-settings\')" style="color:var(--blue);">이메일 알림</a> 페이지에서 합니다.</div>' +
+        '<div id="emailjs-api-status-area"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
+        '</div>' +
+
       '</div>' +
-      '<div id="nts-key-status" style="font-size:12px;margin-top:8px;color:var(--gray-400);">로딩 중...</div>' +
+      '</div>';
+
+    checkFirebaseStatus();
+    loadEncKeyStatus();
+    loadSettingsTabState();
+  }
+
+  window.switchSettingsTab = function(tab) {
+    ['general','api'].forEach(t => {
+      const btn = document.getElementById('stab-' + t);
+      const content = document.getElementById('stab-content-' + t);
+      const isActive = t === tab;
+      if (btn) btn.style.cssText = 'padding:8px 18px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.12s;' + (isActive ? 'background:var(--blue);color:#fff;' : 'background:var(--gray-100);color:var(--gray-600);');
+      if (content) content.style.display = isActive ? '' : 'none';
+    });
+    if (tab === 'api') {
+      loadUcansignApiKeyStatus();
+      loadNtsApiKeyStatus();
+      loadEmailJsApiStatus();
+    }
+  };
+
+  async function loadEmailJsApiStatus() {
+    const area = document.getElementById('emailjs-api-status-area');
+    if (!area) return;
+    try {
+      const snap = await getDoc(doc(db, 'email_configs', 'settings'));
+      const s = snap.exists() ? snap.data() : {};
+      const hasKeys = !!(s.public_key && s.service_id);
+      area.innerHTML =
+        '<div style="margin-bottom:12px;font-size:13px;">' +
+          (hasKeys
+            ? '✅ 연동 완료 <span style="color:var(--gray-400);font-weight:400;">(Service ID: ' + esc(s.service_id || '') + ')</span>'
+            : '⚠️ 연동 미설정') +
+        '</div>' +
+        '<button class="btn btn-secondary" style="font-size:13px;" onclick="openEmailJsSettingsModal()">⚙️ EmailJS 연동 설정</button>' +
+        ' <a href="https://www.emailjs.com/" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:var(--blue);text-decoration:none;margin-left:8px;">EmailJS 대시보드 →</a>';
+    } catch(e) { if (area) area.innerHTML = '<span style="color:var(--red);">로딩 실패</span>'; }
+  }
+
+  function loadSettingsTabState() {
+    loadEncKeyStatus();
+  }
+
+  /* ════════════════════════════════
+     입점 계약 관리
+  ════════════════════════════════ */
+  async function renderContractManagement(container) {
+    const tabStyle = (active) =>
+      'padding:8px 18px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.12s;' +
+      (active ? 'background:var(--blue);color:#fff;' : 'background:var(--gray-100);color:var(--gray-600);');
+
+    container.innerHTML =
+      '<div style="max-width:760px;">' +
+      '<div style="display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap;">' +
+        '<button id="ctab-send" style="' + tabStyle(true) + '" onclick="switchContractTab(\'send\')">📤 전자계약 발송</button>' +
+        '<button id="ctab-status" style="' + tabStyle(false) + '" onclick="switchContractTab(\'status\')">📋 진행 현황</button>' +
+        '<button id="ctab-archive" style="' + tabStyle(false) + '" onclick="switchContractTab(\'archive\')">🗂 체결 완료 아카이브</button>' +
+        '<button id="ctab-template" style="' + tabStyle(false) + '" onclick="switchContractTab(\'template\')">📄 템플릿 관리</button>' +
       '</div>' +
 
-      /* ── 유캔사인 API 키 ── */
-      '<div class="card" style="padding:24px;margin-bottom:20px;">' +
-      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">유캔사인 API 키</div>' +
-      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">템플릿 필드 자동 가져오기 및 전자계약 발송에 사용됩니다.</div>' +
-      '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">유캔사인 로그인 → 우측 상단 프로필 → <strong>개발자</strong> → <strong>API KEY</strong> 탭에서 발급받은 키를 붙여넣으세요. (accessToken이 아닌 API KEY 원본값)</div>' +
-      '<div style="display:flex;gap:8px;align-items:center;">' +
-      '<input class="form-input" id="ucansign-api-key-input" type="password" placeholder="유캔사인 API KEY (영구 발급된 키)" style="flex:1;font-family:monospace;font-size:13px;" />' +
-      '<button class="btn btn-primary" style="white-space:nowrap;" onclick="saveUcansignApiKey()">저장</button>' +
-      '</div>' +
-      '<div id="ucansign-key-status" style="font-size:12px;margin-top:8px;color:var(--gray-400);">로딩 중...</div>' +
+      /* ── 탭: 전자계약 발송 ── */
+      '<div id="ctab-content-send">' +
+        '<div class="card" style="padding:24px;margin-bottom:20px;">' +
+          '<div style="font-size:15px;font-weight:700;color:var(--gray-900);margin-bottom:12px;">전자계약 발송</div>' +
+          '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">브랜드 상세 팝업 → 계약 섹션 → "전자계약 발송" 버튼을 통해 브랜드별로 발송합니다. 이 탭에서는 최근 발송된 계약을 확인할 수 있습니다.</div>' +
+          '<div id="cm-recent-sent"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
+        '</div>' +
       '</div>' +
 
-      /* ── 계약서 템플릿 관리 ── */
-      '<div class="card" style="padding:24px;margin-bottom:20px;">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
-      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);">계약서 템플릿 관리</div>' +
-      '<button class="btn btn-primary" style="font-size:12px;padding:5px 12px;" onclick="openContractTemplateModal(null)">+ 템플릿 추가</button>' +
-      '</div>' +
-      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">유캔사인 템플릿 ID와 연결합니다. 전자계약 발송 시 이 목록에서 계약서 종류를 선택합니다.</div>' +
-      '<div id="contract-templates-list"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
+      /* ── 탭: 진행 현황 ── */
+      '<div id="ctab-content-status" style="display:none;">' +
+        '<div class="card" style="padding:24px;margin-bottom:20px;">' +
+          '<div style="font-size:15px;font-weight:700;color:var(--gray-900);margin-bottom:12px;">계약 진행 현황</div>' +
+          '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">서명 진행 중·발송됨 상태의 계약 목록입니다.</div>' +
+          '<div id="cm-in-progress-list"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
+        '</div>' +
       '</div>' +
 
-      /* ── Firebase 연결 상태 ── */
-      '<div class="card" style="padding:24px;">' +
-      '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:16px;">Firebase 연결 상태</div>' +
-      '<div id="firebase-status-area"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
+      /* ── 탭: 체결 완료 아카이브 ── */
+      '<div id="ctab-content-archive" style="display:none;">' +
+        '<div class="card" style="padding:24px;margin-bottom:20px;">' +
+          '<div style="font-size:15px;font-weight:700;color:var(--gray-900);margin-bottom:12px;">체결 완료 계약 아카이브</div>' +
+          '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">체결 완료된 계약 목록입니다. 만료 임박 계약은 별도 표시됩니다.</div>' +
+          '<div id="cm-archive-list"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
+        '</div>' +
+      '</div>' +
+
+      /* ── 탭: 템플릿 관리 ── */
+      '<div id="ctab-content-template" style="display:none;">' +
+        '<div class="card" style="padding:24px;">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
+            '<div style="font-size:15px;font-weight:700;color:var(--gray-900);">계약서 템플릿</div>' +
+            '<button class="btn btn-primary" style="font-size:12px;padding:5px 12px;" onclick="openContractTemplateModal(null)">+ 템플릿 추가</button>' +
+          '</div>' +
+          '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">유캔사인 템플릿 ID와 연결합니다. 전자계약 발송 시 계약서 종류를 선택할 수 있습니다.</div>' +
+          '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">유캔사인 API 키 설정은 <a href="#settings" onclick="navigate(\'settings\')" style="color:var(--blue);">설정 → API 및 웹훅</a> 탭에서 합니다.</div>' +
+          '<div id="contract-templates-list"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
+        '</div>' +
       '</div>' +
 
       '</div>';
 
-    checkFirebaseStatus();
-    loadContractTemplatesList();
-    loadUcansignApiKeyStatus();
-    loadNtsApiKeyStatus();
-    loadEncKeyStatus();
+    switchContractTab('send');
+  }
+
+  window.switchContractTab = function(tab) {
+    const tabs = ['send','status','archive','template'];
+    tabs.forEach(t => {
+      const btn = document.getElementById('ctab-' + t);
+      const content = document.getElementById('ctab-content-' + t);
+      const isActive = t === tab;
+      if (btn) btn.style.cssText = 'padding:8px 18px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.12s;' + (isActive ? 'background:var(--blue);color:#fff;' : 'background:var(--gray-100);color:var(--gray-600);');
+      if (content) content.style.display = isActive ? '' : 'none';
+    });
+    if (tab === 'template') loadContractTemplatesList();
+    if (tab === 'send') loadCmRecentSent();
+    if (tab === 'status') loadCmInProgress();
+    if (tab === 'archive') loadCmArchive();
+  };
+
+  async function loadCmRecentSent() {
+    const el = document.getElementById('cm-recent-sent');
+    if (!el) return;
+    try {
+      const q = query(collectionGroup(db, 'contracts'), orderBy('sent_at', 'desc'), limit(20));
+      const snap = await getDocs(q);
+      if (snap.empty) { el.innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:16px 0;">발송된 계약이 없습니다.</div>'; return; }
+      el.innerHTML = contractListTable(snap.docs, ['발송대기','발송됨','서명진행중']);
+    } catch(e) { el.innerHTML = '<span style="color:var(--red);">로딩 실패: ' + esc(e.message) + '</span>'; }
+  }
+
+  async function loadCmInProgress() {
+    const el = document.getElementById('cm-in-progress-list');
+    if (!el) return;
+    try {
+      const q = query(collectionGroup(db, 'contracts'), where('status', 'in', ['발송됨','서명진행중']), orderBy('sent_at', 'desc'));
+      const snap = await getDocs(q);
+      if (snap.empty) { el.innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:16px 0;">진행 중인 계약이 없습니다.</div>'; return; }
+      el.innerHTML = contractListTable(snap.docs, null);
+    } catch(e) { el.innerHTML = '<span style="color:var(--red);">로딩 실패: ' + esc(e.message) + '</span>'; }
+  }
+
+  async function loadCmArchive() {
+    const el = document.getElementById('cm-archive-list');
+    if (!el) return;
+    try {
+      const q = query(collectionGroup(db, 'contracts'), where('status', '==', '체결완료'), orderBy('completed_at', 'desc'));
+      const snap = await getDocs(q);
+      if (snap.empty) { el.innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:16px 0;">체결 완료된 계약이 없습니다.</div>'; return; }
+      el.innerHTML = contractListTable(snap.docs, null);
+    } catch(e) { el.innerHTML = '<span style="color:var(--red);">로딩 실패: ' + esc(e.message) + '</span>'; }
+  }
+
+  function contractListTable(docs, statusFilter) {
+    const statusBadge = {
+      '발송대기': '<span class="badge badge-gray">발송대기</span>',
+      '발송됨':   '<span class="badge badge-blue">발송됨</span>',
+      '서명진행중': '<span class="badge badge-yellow">서명진행중</span>',
+      '체결완료': '<span class="badge badge-green">체결완료</span>',
+      '취소됨':   '<span class="badge badge-red">취소됨</span>'
+    };
+    const rows = docs.map(d => {
+      const c = d.data();
+      if (statusFilter && !statusFilter.includes(c.status)) return '';
+      const brandId = d.ref.parent.parent ? d.ref.parent.parent.id : '';
+      return '<tr>' +
+        '<td style="font-size:12px;">' + esc(brandId) + '</td>' +
+        '<td style="font-size:12px;">' + esc(c.version || '-') + '</td>' +
+        '<td>' + (statusBadge[c.status] || esc(c.status || '-')) + '</td>' +
+        '<td style="font-size:12px;">' + esc(c.sent_at || '-') + '</td>' +
+        '<td style="font-size:12px;">' + esc(c.completed_at || c.end_at || '-') + '</td>' +
+        '<td>' + (c.signed_pdf_url || c.file_url
+          ? '<a href="' + esc(c.signed_pdf_url || c.file_url) + '" target="_blank" rel="noopener noreferrer" style="font-size:12px;color:var(--blue);">📄 보기</a>'
+          : '') + '</td>' +
+        '</tr>';
+    }).join('');
+    if (!rows.replace(/<\/?tr>/g,'').trim()) return '<div style="color:var(--gray-400);font-size:13px;padding:16px 0;">해당하는 계약이 없습니다.</div>';
+    return '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+      '<thead><tr style="border-bottom:2px solid var(--gray-200);">' +
+        '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">브랜드 ID</th>' +
+        '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">버전</th>' +
+        '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">상태</th>' +
+        '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">발송일</th>' +
+        '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">완료/만료일</th>' +
+        '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">파일</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
   /* ── 암호화 키 로드·생성 ── */
