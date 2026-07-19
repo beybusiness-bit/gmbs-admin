@@ -3462,6 +3462,7 @@
       .replace(/\{\{representative_name\}\}/g, sinfo ? (sinfo.representative_name || '') : '')
       .replace(/\{\{business_reg_number\}\}/g, sinfo ? (sinfo.business_reg_number || '') : '')
       .replace(/\{\{resident_number\}\}/g, sinfo ? (sinfo.resident_number || '') : '')
+      .replace(/\{\{address\}\}/g, sinfo ? (sinfo.address || '') : '')
       .replace(/\{\{yyyymmdd\}\}/g, y + mo + dy)
       .replace(/\{\{yyyy-mm-dd\}\}/g, y + '-' + mo + '-' + dy)
       .replace(/\{\{yyyy년mm월dd일\}\}/g, y + '년' + mo + '월' + dy + '일');
@@ -4006,6 +4007,7 @@
         resident_number: isEncrypted(rawSinfo.resident_number)
           ? await decryptField(rawSinfo.resident_number).catch(() => '')
           : (rawSinfo.resident_number || ''),
+        address: rawSinfo.address || '',
       };
 
       if (templates.length === 0) {
@@ -8878,6 +8880,7 @@
       ctVarChip('{{representative_name}}', '대표자명', '예: 홍길동') +
       ctVarChip('{{business_reg_number}}', '사업자등록번호', '예: 123-45-67890') +
       ctVarChip('{{resident_number}}', '주민등록번호', '예: 000000-0000000') +
+      ctVarChip('{{address}}', '사업장 주소', 'settlement_info.address') +
       '</div>' +
       '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">👤 담당자 정보 (주관리자 기준)</div>' +
       '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">' +
