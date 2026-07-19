@@ -3037,6 +3037,33 @@
     if (active.length === 0 && inactive.length === 0) {
       html += '<div style="font-size:13px;color:var(--gray-400);padding:12px 0;">등록된 담당자가 없습니다.</div>';
     } else {
+      const PERM_KEYS = [
+        { key: 'brand-info.view',            label: '브랜드 정보 조회' },
+        { key: 'brand-info.edit',            label: '브랜드 정보 수정' },
+        { key: 'settlement-info.view',       label: '정산/계약 정보 조회' },
+        { key: 'settlement-info.edit',       label: '정산/계약 정보 수정' },
+        { key: 'products.view',              label: '상품 조회' },
+        { key: 'products.edit',              label: '상품 등록/수정' },
+        { key: 'inventory.view',             label: '재고 조회' },
+        { key: 'inventory.edit',             label: '재고 수정' },
+        { key: 'settlements.view',           label: '정산 내역 조회' },
+        { key: 'contracts.view',             label: '계약서 조회' },
+        { key: 'customer-inquiries.view',    label: '고객 문의 조회' },
+        { key: 'customer-inquiries.edit',    label: '고객 문의 처리' },
+        { key: 'inquiries.view',             label: '1:1 문의 조회' },
+        { key: 'inquiries.edit',             label: '1:1 문의 작성' },
+      ];
+      const permSummary = (p) => {
+        if (p.role !== '부관리자') return '';
+        const perms = p.permissions;
+        if (!perms || Object.keys(perms).length === 0) return '<div style="font-size:11px;color:var(--gray-400);margin-top:3px;">권한: 미설정 (기본 허용)</div>';
+        const allowed = PERM_KEYS.filter(k => perms[k.key] !== false).map(k => k.label);
+        const blocked = PERM_KEYS.filter(k => perms[k.key] === false).map(k => k.label);
+        if (blocked.length === 0) return '<div style="font-size:11px;color:var(--gray-400);margin-top:3px;">권한: 전체 허용</div>';
+        return '<div style="font-size:11px;color:var(--gray-400);margin-top:3px;">권한: ' + (PERM_KEYS.length - blocked.length) + '/' + PERM_KEYS.length + '개 허용 · ' +
+          blocked.slice(0,2).map(l => '<span style="color:var(--red);text-decoration:line-through;">' + esc(l) + '</span>').join(', ') +
+          (blocked.length > 2 ? ' 외 ' + (blocked.length-2) + '개 차단' : '') + '</div>';
+      };
       const personRow = (p, dim) => {
         const dimStyle = dim ? 'opacity:0.45;' : '';
         return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--gray-100);' + dimStyle + '">' +
@@ -3049,15 +3076,21 @@
               : p.role ? ' <span style="font-size:11px;color:var(--gray-500);background:var(--gray-100);padding:1px 7px;border-radius:10px;">' + esc(p.role) + '</span>' : '') +
           (dim ? ' <span style="font-size:11px;color:var(--gray-400);">(비활성)</span>' : '') +
           '</div>' +
+          permSummary(p) +
           (p.phone ? '<div style="font-size:12px;color:var(--gray-500);margin-top:2px;">📞 ' + esc(p.phone) + '</div>' : '') +
           (p.contact_email || p.email ? '<div style="font-size:12px;color:var(--gray-500);">✉️ ' + esc(p.contact_email || p.email || '') + '</div>' : '') +
           (p.login_google_email ? '<div style="font-size:11px;color:var(--gray-400);">🔐 ' + esc(p.login_google_email) + '</div>' : '') +
           '</div>' +
+          '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">' +
           '<div style="display:flex;gap:6px;">' +
           '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="showPersonInlineForm(\'' + brandId + '\',\'' + p.id + '\')">수정</button>' +
           (dim
             ? '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="setPersonActive(\'' + brandId + '\',\'' + p.id + '\',true)">활성화</button>'
             : '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--gray-400);" onclick="setPersonActive(\'' + brandId + '\',\'' + p.id + '\',false)">비활성</button>') +
+          '</div>' +
+          (p.role === '부관리자' && !dim
+            ? '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--blue);" onclick="showPermissionsForm(\'' + brandId + '\',\'' + p.id + '\')">🔐 권한 설정</button>'
+            : '') +
           '</div>' +
           '</div>';
       };
@@ -3084,6 +3117,103 @@
       const sec = document.getElementById('brand-persons-section');
       if (sec) loadBrandPersons(brandId);
     } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
+  };
+
+  const PERM_KEYS_DEF = [
+    { key: 'brand-info.view',         label: '브랜드 정보 조회',  group: '브랜드 정보' },
+    { key: 'brand-info.edit',         label: '브랜드 정보 수정',  group: '브랜드 정보' },
+    { key: 'settlement-info.view',    label: '정산/계약 정보 조회', group: '정산/계약' },
+    { key: 'settlement-info.edit',    label: '정산/계약 정보 수정', group: '정산/계약' },
+    { key: 'products.view',           label: '상품 조회',         group: '상품' },
+    { key: 'products.edit',           label: '상품 등록/수정',    group: '상품' },
+    { key: 'inventory.view',          label: '재고 조회',         group: '재고' },
+    { key: 'inventory.edit',          label: '재고 수정',         group: '재고' },
+    { key: 'settlements.view',        label: '정산 내역 조회',    group: '정산' },
+    { key: 'contracts.view',          label: '계약서 조회',       group: '계약' },
+    { key: 'customer-inquiries.view', label: '고객 문의 조회',    group: '고객 문의' },
+    { key: 'customer-inquiries.edit', label: '고객 문의 처리',    group: '고객 문의' },
+    { key: 'inquiries.view',          label: '1:1 문의 조회',     group: '1:1 문의' },
+    { key: 'inquiries.edit',          label: '1:1 문의 작성',     group: '1:1 문의' },
+  ];
+
+  window.showPermissionsForm = async function(brandId, personId) {
+    const formArea = document.getElementById('person-form-area');
+    if (!formArea) return;
+    let perms = {};
+    let personName = '';
+    try {
+      const snap = await getDoc(doc(db, 'brands', brandId, 'managers', personId));
+      if (snap.exists()) {
+        perms = snap.data().permissions || {};
+        personName = snap.data().name || '';
+      }
+    } catch(e) {}
+
+    // group checkboxes
+    const groups = [...new Set(PERM_KEYS_DEF.map(k => k.group))];
+    let rows = '';
+    for (const g of groups) {
+      const keys = PERM_KEYS_DEF.filter(k => k.group === g);
+      rows += '<div style="display:flex;flex-wrap:wrap;gap:0;margin-bottom:2px;">' +
+        '<div style="width:80px;font-size:12px;color:var(--gray-500);padding-top:5px;font-weight:600;">' + esc(g) + '</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
+        keys.map(k => {
+          const allowed = perms[k.key] !== false;
+          return '<label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;background:' + (allowed ? 'var(--green-light, #e6f7ee)' : 'var(--gray-100)') + ';border-radius:6px;padding:3px 8px;">' +
+            '<input type="checkbox" data-perm="' + k.key + '" ' + (allowed ? 'checked' : '') + ' onchange="onPermCheckChange(this)" style="accent-color:var(--blue);" />' +
+            esc(k.label) +
+            '</label>';
+        }).join('') +
+        '</div></div>';
+    }
+
+    formArea.innerHTML =
+      '<div id="person-perm-form" style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:10px;padding:16px;margin-bottom:12px;">' +
+        '<div style="font-size:13px;font-weight:600;color:var(--gray-700);margin-bottom:4px;">🔐 권한 설정 — ' + esc(personName) + ' (부관리자)</div>' +
+        '<div style="font-size:12px;color:var(--gray-400);margin-bottom:12px;">체크 = 허용, 해제 = 차단. 주관리자는 항상 전체 허용이므로 여기서 설정하지 않습니다.</div>' +
+        '<div style="display:flex;justify-content:flex-end;margin-bottom:8px;gap:6px;">' +
+          '<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="setAllPerms(true)">전체 허용</button>' +
+          '<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="setAllPerms(false)">전체 차단</button>' +
+        '</div>' +
+        '<div style="margin-bottom:14px;">' + rows + '</div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+          '<button class="btn btn-secondary" style="font-size:12px;" onclick="cancelPersonInlineForm(\'' + brandId + '\')">취소</button>' +
+          '<button class="btn btn-primary" style="font-size:12px;" onclick="savePermissions(\'' + brandId + '\',\'' + personId + '\')">저장</button>' +
+        '</div>' +
+      '</div>';
+    formArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+
+  window.onPermCheckChange = function(el) {
+    const lbl = el.closest('label');
+    if (!lbl) return;
+    lbl.style.background = el.checked ? 'var(--green-light, #e6f7ee)' : 'var(--gray-100)';
+  };
+
+  window.setAllPerms = function(allow) {
+    const form = document.getElementById('person-perm-form');
+    if (!form) return;
+    form.querySelectorAll('input[data-perm]').forEach(cb => {
+      cb.checked = allow;
+      const lbl = cb.closest('label');
+      if (lbl) lbl.style.background = allow ? 'var(--green-light, #e6f7ee)' : 'var(--gray-100)';
+    });
+  };
+
+  window.savePermissions = async function(brandId, personId) {
+    const form = document.getElementById('person-perm-form');
+    if (!form) return;
+    const perms = {};
+    form.querySelectorAll('input[data-perm]').forEach(cb => {
+      perms[cb.dataset.perm] = cb.checked;
+    });
+    try {
+      await updateDoc(doc(db, 'brands', brandId, 'managers', personId), { permissions: perms, updated_at: today() });
+      showToast('권한이 저장되었습니다.', 'success');
+      const formArea = document.getElementById('person-form-area');
+      if (formArea) formArea.innerHTML = '';
+      loadBrandPersons(brandId);
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
 
   function fmtPhone(raw) {
