@@ -3445,11 +3445,14 @@
     const sec = document.getElementById('brand-contracts-section');
     if (!sec) return;
     try {
-      // orderBy 제거 → 복합 인덱스 불필요, 클라이언트 정렬
-      const snap = await getDocs(collection(db, 'brands', brandId, 'contracts'));
+      const [snap, personsSnap] = await Promise.all([
+        getDocs(collection(db, 'brands', brandId, 'contracts')),
+        getDocs(collection(db, 'brands', brandId, 'persons'))
+      ]);
       const contracts = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-      renderContractsSection(brandId, contracts, sec);
+      const primaryManager = personsSnap.docs.map(d => d.data()).find(p => p.role === '주관리자' && p.active !== false) || null;
+      renderContractsSection(brandId, contracts, sec, primaryManager);
     } catch(e) {
       if (sec) sec.innerHTML = '<div style="font-size:12px;color:var(--gray-400);">계약 로드 실패: ' + esc(e.message) + '</div>';
     }
@@ -3838,7 +3841,7 @@
     }
   };
 
-  function renderContractsSection(brandId, contracts, sec) {
+  function renderContractsSection(brandId, contracts, sec, primaryManager) {
     const eSignBadge = s => ({
       '발송대기': '<span class="badge badge-gray">📄 발송대기</span>',
       '발송됨':   '<span class="badge badge-blue">✉️ 발송됨</span>',
@@ -3867,6 +3870,27 @@
           '계약해지':     '<span class="badge badge-red" style="font-size:10px;">계약해지</span>',
         }[cStatus] || '<span class="badge badge-gray" style="font-size:10px;">' + esc(cStatus) + '</span>';
 
+        // 계약정보입력 단계 — 주관리자 체크리스트
+        let infoChecklist = '';
+        if (cStatus === '계약정보입력') {
+          const chk = (ok, label) => (ok ? '✅' : '⬜') + ' ' + label;
+          const pm = primaryManager;
+          const pmOk = !!(pm);
+          const pmNameOk = !!(pm && pm.name);
+          const pmPhoneOk = !!(pm && pm.phone);
+          const pmEmailOk = !!(pm && (pm.contact_email || pm.email));
+          const allOk = pmOk && pmNameOk && pmPhoneOk && pmEmailOk;
+          infoChecklist =
+            '<div style="background:#f9fafb;border:1px solid var(--gray-200);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:11.5px;line-height:2;">' +
+            '<div style="font-weight:600;color:var(--gray-600);margin-bottom:4px;">계약 진행 필요 정보</div>' +
+            '<div>' + chk(pmOk, '주관리자 연결') + '</div>' +
+            '<div>' + chk(pmNameOk, '주관리자 이름') + (pmOk && !pmNameOk ? ' <span style="color:var(--orange);font-size:11px;">— 담당자 정보에서 입력</span>' : '') + '</div>' +
+            '<div>' + chk(pmPhoneOk, '주관리자 전화번호') + (pmOk && !pmPhoneOk ? ' <span style="color:var(--orange);font-size:11px;">— 담당자 정보에서 입력</span>' : '') + '</div>' +
+            '<div>' + chk(pmEmailOk, '주관리자 이메일') + (pmOk && !pmEmailOk ? ' <span style="color:var(--orange);font-size:11px;">— 담당자 정보에서 입력</span>' : '') + '</div>' +
+            (allOk ? '<div style="margin-top:6px;color:#166534;font-weight:600;font-size:11px;">모든 정보 확인 완료 → 계약 진행 가능</div>' : '') +
+            '</div>';
+        }
+
         // 상태별 액션 버튼
         let actionBtns = '';
         if (cStatus === '계약발송전') {
@@ -3893,6 +3917,7 @@
           (c.start_date ? '기간 ' + esc(c.start_date) + ' ~ ' + esc(c.end_date || '') + (c.auto_renew ? ' (자동연장)' : '') + '&nbsp;&nbsp;' : '') +
           (c.sent_at ? '발송 ' + esc(fmtDate(c.sent_at)) + '&nbsp;&nbsp;' : '') +
           (c.completed_at ? '체결 ' + esc(fmtDate(c.completed_at)) : '') +
+          infoChecklist +
           '</div>' +
           '</div>';
       });
@@ -4312,20 +4337,6 @@
     if (!contractType) { showToast('입점 유형을 선택하세요.', 'error'); return; }
     if (!startDate || !endDate) { showToast('계약 기간을 입력하세요.', 'error'); return; }
     if (endDate < startDate) { showToast('종료일은 시작일 이후여야 합니다.', 'error'); return; }
-
-    // 주관리자 확인: 모든 계약에서 필수
-    const personsSnap = await getDocs(collection(db, 'brands', brandId, 'persons'));
-    const primaryManager = personsSnap.docs.map(d => d.data()).find(p => p.role === '주관리자' && p.active !== false);
-    if (!primaryManager) {
-      showToast('주관리자가 등록되어 있지 않습니다. 담당자 섹션에서 주관리자를 먼저 등록해주세요.', 'error'); return;
-    }
-    const missingFields = [];
-    if (!primaryManager.name) missingFields.push('이름');
-    if (!primaryManager.phone) missingFields.push('전화번호');
-    if (!primaryManager.contact_email && !primaryManager.email) missingFields.push('이메일');
-    if (missingFields.length > 0) {
-      showToast('주관리자 정보가 불완전합니다. 누락 항목: ' + missingFields.join(', '), 'error'); return;
-    }
 
     const contractStatus = immediate ? '계약완료' : '계약정보입력';
     try {
@@ -4773,15 +4784,20 @@
         updated_at: today()
       };
 
+      let contractType = null;
       if (contractId) {
-        await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), terminationData);
+        const cSnap = await getDoc(doc(db, 'brands', brandId, 'contracts', contractId));
+        contractType = cSnap.exists() ? cSnap.data().contract_type : null;
+        await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), {
+          ...terminationData,
+          contract_status: '계약해지',
+        });
+        await removeContractTypeFromBrand(brandId, contractType);
       }
-      // 브랜드 contract_state를 해지진행중으로 업데이트
-      await updateDoc(doc(db, 'brands', brandId), { contract_state: '해지진행중', updated_at: today() });
       await writeActivityLog(brandId, 'contract', contractId || 'n/a', 'status_changed', null,
-        { contract_state: '해지진행중', requester, reason, scheduled_date: scheduledDate });
+        { contract_status: '계약해지', requester, reason, scheduled_date: scheduledDate });
 
-      showToast('해지 요청이 등록되었습니다.');
+      showToast('계약이 해지 처리되었습니다.');
       closeModal();
       openBrandDetail(brandId);
     } catch(e) { showToast('저장 실패: ' + esc(e.message), 'error'); }
@@ -8880,13 +8896,11 @@
       ctVarChip('{{yyyy-mm-dd}}', '날짜(하이픈)', '예: 2026-07-17') +
       ctVarChip('{{yyyy년mm월dd일}}', '날짜(한글)', '예: 2026년07월17일') +
       '</div>' +
-      '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">✍️ 서명 참여자 (유캔사인 발송 시 자동 입력)</div>' +
-      '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
-      ctVarChip('{{sender_name}}', '발신인 이름', '예: GMBS 담당자명') +
-      ctVarChip('{{sender_email}}', '발신인 이메일', '예: gmbs@example.com') +
-      ctVarChip('{{receiver_name}}', '수신인 이름', '예: 브랜드 담당자명') +
-      ctVarChip('{{receiver_email}}', '수신인 이메일', '예: brand@example.com') +
-      ctVarChip('{{receiver_kakao}}', '수신인 카카오번호', '예: 010-1234-5678') +
+      '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:7px;padding:10px 12px;font-size:11px;color:#78350f;line-height:1.7;">' +
+      '<strong>✍️ 발신인 / 수신인 정보</strong>는 변수가 아닙니다.<br>' +
+      '유캔사인 발송 시 API 파라미터로 자동 전달되므로 계약서 본문에 넣을 필요가 없습니다.<br>' +
+      '· <strong>발신인</strong>: 이메일 설정 페이지의 GMBS 발신 계정 정보<br>' +
+      '· <strong>수신인</strong>: 해당 브랜드의 <strong>주관리자</strong> 이름 · 이메일 · 전화번호(카카오 인증용)' +
       '</div>' +
       '</div>' +
       '<div id="ct-fields-rows" style="display:flex;flex-direction:column;gap:6px;"></div>' +
