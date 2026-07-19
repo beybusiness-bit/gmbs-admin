@@ -3902,7 +3902,10 @@
         // 상태별 액션 버튼
         const bdOnComplete = 'function(){loadBrandContracts(\'' + brandId + '\')}';
         let actionBtns = '';
-        if (cStatus === '계약정보입력') {
+        // no_contract:true — 계약서 없이 추가된 유형, 유형 제거만 가능
+        if (c.no_contract) {
+          actionBtns = '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:var(--red);" onclick="removeOrphanBrandType(\'' + brandId + '\',\'' + esc(c.contract_type || '') + '\',\'' + c.id + '\')">🗑 유형 제거</button>';
+        } else if (cStatus === '계약정보입력') {
           actionBtns = '<span style="font-size:11px;color:var(--orange);">⚠️ 담당자·계약기간·템플릿 확인 후 자동 전환됩니다</span>';
         } else if (cStatus === '계약발송전') {
           actionBtns = '<button class="btn btn-primary" style="font-size:11px;padding:4px 10px;" onclick="openSendContractModal(\'' + brandId + '\',\'' + c.id + '\',' + bdOnComplete + ')">📨 전자계약 발송</button>';
@@ -3941,21 +3944,17 @@
           '</div>';
       });
     }
-    // brand_types 중 활성 계약이 없는 유형 → 계약 목록에 가상 아이템으로 추가
-    const activeContractTypes = new Set(
-      contracts
-        .filter(c => !['계약기간만료','계약해지','계약취소'].includes(c.contract_status || '계약정보입력'))
-        .map(c => c.contract_type)
-        .filter(Boolean)
-    );
-    const orphanedTypes = (Array.isArray(brandTypes) ? brandTypes : []).filter(t => !activeContractTypes.has(t));
-    orphanedTypes.forEach(t => {
+    // no_contract:true 플래그가 있는 계약건 → 계약서 없이 추가된 유형, 유형 제거 버튼 표시
+    // (레거시: brand_types에는 있으나 어떤 계약건에도 속하지 않는 유형도 동일 처리)
+    const contractDocTypes = new Set(contracts.map(c => c.contract_type).filter(Boolean));
+    const legacyOrphanTypes = (Array.isArray(brandTypes) ? brandTypes : []).filter(t => !contractDocTypes.has(t));
+    legacyOrphanTypes.forEach(t => {
       html +=
         '<div style="padding:14px 0;border-bottom:1px solid var(--gray-100);">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">' +
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
         '<span class="badge badge-yellow" style="font-size:10px;">' + esc(t) + '</span>' +
-        '<span style="font-size:11px;color:var(--gray-400);">계약서 없는 유형</span>' +
+        '<span style="font-size:11px;color:var(--gray-400);">계약서 없는 유형 (레거시)</span>' +
         '</div>' +
         '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:var(--red);" ' +
         'onclick="removeOrphanBrandType(\'' + brandId + '\',\'' + esc(t) + '\')">🗑 유형 제거</button>' +
@@ -3966,10 +3965,14 @@
     sec.innerHTML = html;
   }
 
-  window.removeOrphanBrandType = async function(brandId, contractType) {
-    if (!confirm('"' + contractType + '" 입점 유형을 브랜드에서 제거하시겠습니까?\n관련 계약서가 없는 유형만 제거됩니다.')) return;
+  window.removeOrphanBrandType = async function(brandId, contractType, contractId) {
+    if (!confirm('"' + contractType + '" 입점 유형을 제거하시겠습니까?')) return;
     try {
       await removeContractTypeFromBrand(brandId, contractType);
+      // no_contract 계약 문서도 삭제
+      if (contractId) {
+        await deleteDoc(doc(db, 'brands', brandId, 'contracts', contractId));
+      }
       // 레거시 단일 brand_type 필드도 같은 값이면 함께 제거
       const brandSnap = await getDoc(doc(db, 'brands', brandId));
       if (brandSnap.exists() && brandSnap.data().brand_type === contractType) {
@@ -4401,6 +4404,7 @@
         end_date: endDate,
         auto_renew: autoRenew,
         contract_status: contractStatus,
+        ...(immediate ? { no_contract: true } : {}),
         created_at: today(),
         updated_at: today(),
       });
