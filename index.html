@@ -8059,12 +8059,28 @@
     };
 
     const joinRows = (list) => {
-      if (!list.length) return '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--gray-400);">신청 내역이 없습니다.</td></tr>';
+      if (!list.length) return '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--gray-400);">신청 내역이 없습니다.</td></tr>';
       return list.map(item => {
         const brandDisplay = item._brandNameDisplay || item.target_brand_id || '-';
         const applicantName = esc(item.applicant_name || item.name || '-');
         const applicantRole = esc(item.applicant_role || item.role || item.requested_role || '-');
         const applicantEmail = esc(item.applicant_email || item.email || item.contact_email || '-');
+        let processorCell = '<td style="font-size:11px;color:var(--gray-400);">-</td>';
+        if (item.status === '승인') {
+          const byType = item.approved_by_type;
+          const byName = esc(item.approved_by || '-');
+          const byEmail = item.approved_by_email ? ' (' + esc(item.approved_by_email) + ')' : '';
+          if (byType === 'vendor') processorCell = '<td style="font-size:11px;"><span style="color:#7c3aed;">브랜드 승인</span> · ' + byName + byEmail + '</td>';
+          else if (byType === 'admin') processorCell = '<td style="font-size:11px;"><span style="color:var(--blue);">어드민 승인</span> · ' + byName + '</td>';
+          else processorCell = '<td style="font-size:11px;color:var(--gray-500);">승인 · ' + byName + '</td>';
+        } else if (item.status === '거절') {
+          const byType = item.rejected_by_type;
+          const byName = esc(item.rejected_by || item.reviewer_email || '-');
+          const byEmail = item.rejected_by_email ? ' (' + esc(item.rejected_by_email) + ')' : '';
+          if (byType === 'vendor') processorCell = '<td style="font-size:11px;"><span style="color:#dc2626;">브랜드 거절</span> · ' + byName + byEmail + '</td>';
+          else if (byType === 'admin') processorCell = '<td style="font-size:11px;"><span style="color:#dc2626;">어드민 거절</span> · ' + byName + '</td>';
+          else processorCell = '<td style="font-size:11px;color:var(--gray-500);">거절 · ' + byName + '</td>';
+        }
         return '<tr style="cursor:pointer;" onclick="openApplicationDetail(\'' + item.id + '\',\'' + item._type + '\')">' +
           '<td>' + statusBadge(item.status) + '</td>' +
           thumbCell(item.brand_photo_url) +
@@ -8072,6 +8088,7 @@
           '<td>' + applicantName + '</td>' +
           '<td>' + applicantRole + '</td>' +
           '<td>' + applicantEmail + '</td>' +
+          processorCell +
           '<td>' + fmtDate(item.submitted_at) + '</td>' +
         '</tr>';
       }).join('');
@@ -8119,7 +8136,7 @@
       '<div id="tab-join" style="display:' + (activeTab==='join'?'block':'none') + ';">' +
         '<div class="card" style="overflow-x:auto;">' +
           '<table class="data-table"><thead><tr>' +
-            '<th>상태</th><th style="width:44px;"></th><th>대상 브랜드</th><th>신청자명</th><th>역할</th><th>이메일</th><th>신청일</th>' +
+            '<th>상태</th><th style="width:44px;"></th><th>대상 브랜드</th><th>신청자명</th><th>역할</th><th>이메일</th><th>처리자</th><th>신청일</th>' +
           '</tr></thead><tbody>' + joinRows(joins) + '</tbody></table>' +
         '</div>' +
       '</div>';
@@ -8259,8 +8276,23 @@
             '</div>' +
             '<div id="app-decision-fields"></div>' +
           '</div>'
-        : '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">처리자: ' + esc(item.reviewer_email || '-') + ' · ' + fmtDate(item.reviewed_at) + '</div>' +
-          (item.rejection_reason || item.approval_reason ? '<div style="font-size:12px;color:var(--gray-500);margin-top:4px;">사유: ' + esc(item.rejection_reason || item.approval_reason || '') + '</div>' : ''));
+        : (function() {
+            const processorName = item.approved_by || item.rejected_by || item.reviewer_email || '-';
+            const processorEmail = item.approved_by_email || item.rejected_by_email || '';
+            const byType = item.approved_by_type || item.rejected_by_type || 'admin';
+            const byTypeLabel = byType === 'vendor' ? '브랜드' : '어드민';
+            const byTypeColor = byType === 'vendor' ? '#7c3aed' : 'var(--blue)';
+            const processedAt = fmtDate(item.approved_at || item.rejected_at || item.reviewed_at);
+            return '<div style="margin-top:8px;padding:12px;background:var(--gray-50);border-radius:8px;font-size:13px;">' +
+              '<div style="font-weight:600;margin-bottom:6px;">처리 완료</div>' +
+              '<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12px;">' +
+                '<span style="color:var(--gray-500);">처리 주체</span><span style="color:' + byTypeColor + ';font-weight:600;">' + byTypeLabel + '</span>' +
+                '<span style="color:var(--gray-500);">처리자</span><span>' + esc(processorName) + (processorEmail ? ' <span style="color:var(--gray-400);">(' + esc(processorEmail) + ')</span>' : '') + '</span>' +
+                '<span style="color:var(--gray-500);">처리일시</span><span>' + processedAt + '</span>' +
+              '</div>' +
+              (item.rejection_reason || item.approval_reason ? '<div style="margin-top:8px;font-size:12px;color:var(--gray-600);">사유: ' + esc(item.rejection_reason || item.approval_reason || '') + '</div>' : '') +
+            '</div>';
+          })());
 
     const footerHTML = isPending
       ? '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>' +
@@ -8335,6 +8367,26 @@
     const reason = ((document.getElementById('app-reason') || {}).value || '').trim();
     const item = window._pendingAppItem;
     if (!item || item.id !== docId) { showToast('데이터 오류', 'error'); return; }
+
+    /* 중복 처리 방지 — 제출 직전 Firestore에서 최신 상태 확인 */
+    const colName = type === 'application' ? 'brand_applications' : 'brand_join_requests';
+    try {
+      const latestSnap = await getDoc(doc(db, colName, docId));
+      if (latestSnap.exists()) {
+        const latest = latestSnap.data();
+        if (latest.status !== '제출됨') {
+          const processor = latest.approved_by || latest.rejected_by || latest.reviewer_email || '-';
+          const byType = latest.approved_by_type || latest.rejected_by_type;
+          const byTypeLabel = byType === 'vendor' ? '브랜드' : '어드민';
+          showToast('이미 처리된 신청입니다. (처리자: ' + processor + ' / ' + byTypeLabel + ')', 'error');
+          closeModal();
+          const content = document.getElementById('page-content');
+          if (content) await renderApplicationReview(content);
+          return;
+        }
+      }
+    } catch(e) { /* 확인 실패 시 그냥 진행 */ }
+
     if (decision === '승인') {
       await window.approveApplication(docId, type, reason);
     } else {
@@ -8426,7 +8478,9 @@
         }
         await updateDoc(doc(db, 'brand_join_requests', docId), {
           status: '승인', reviewed_at: today(), reviewer_email: reviewerEmail,
-          approval_reason: approvalReason
+          approved_by: reviewerEmail, approved_by_email: reviewerEmail,
+          approved_by_type: 'admin', approved_at: today(),
+          approval_reason: approvalReason, updated_at: today()
         });
 
         let brandName = item._brandNameDisplay || brandId;
@@ -8518,12 +8572,20 @@
     const reviewerEmail = auth.currentUser ? auth.currentUser.email : '';
     const colName = type === 'application' ? 'brand_applications' : 'brand_join_requests';
     try {
-      await updateDoc(doc(db, colName, docId), {
+      const rejectFields = {
         status: '거절',
         rejection_reason: reason,
         reviewed_at: today(),
         reviewer_email: reviewerEmail
-      });
+      };
+      if (type === 'join') {
+        rejectFields.rejected_by = reviewerEmail;
+        rejectFields.rejected_by_email = reviewerEmail;
+        rejectFields.rejected_by_type = 'admin';
+        rejectFields.rejected_at = today();
+        rejectFields.updated_at = today();
+      }
+      await updateDoc(doc(db, colName, docId), rejectFields);
       await sendEmailByTrigger('brand_rejected', {
         toEmail: contactEmail || applicantEmail,
         toName: applicantName,
