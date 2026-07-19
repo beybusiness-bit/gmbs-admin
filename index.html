@@ -64,37 +64,37 @@
 
     /* ── 사이드바 ── */
     :root { --sidebar-w: 220px; --sidebar-collapsed-w: 60px; }
-    #sidebar { width: var(--sidebar-w); min-height: 100vh; background: #eaffe0; display: flex; flex-direction: column; flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; transition: width 0.2s ease; overflow: hidden; border-right: 1px solid #c8f5a0; }
+    #sidebar { width: var(--sidebar-w); min-height: 100vh; background: #fff; display: flex; flex-direction: column; flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; transition: width 0.2s ease; overflow: hidden; border-right: 1px solid #e5e7eb; }
     #sidebar.collapsed { width: var(--sidebar-collapsed-w); }
-    .sidebar-header { padding: 14px 12px 12px; border-bottom: 1px solid #c8f5a0; display: flex; align-items: center; justify-content: space-between; min-height: 56px; }
+    .sidebar-header { padding: 14px 12px 12px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; min-height: 56px; }
     .sidebar-brand-wrap { display: flex; flex-direction: column; overflow: hidden; }
-    .sidebar-brand { font-size: 15px; font-weight: 800; color: #1a3310; letter-spacing: -0.3px; white-space: nowrap; }
+    .sidebar-brand { font-size: 15px; font-weight: 800; color: #8c52ff; letter-spacing: -0.3px; white-space: nowrap; }
     #sidebar.collapsed .sidebar-brand-wrap { display: none; }
-    .sidebar-collapse-btn { width: 28px; height: 28px; border: none; background: rgba(0,0,0,0.08); border-radius: 7px; color: #4a6b2a; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; transition: all 0.12s; }
-    .sidebar-collapse-btn:hover { background: rgba(0,0,0,0.15); color: #1a3310; }
+    .sidebar-collapse-btn { width: 28px; height: 28px; border: none; background: rgba(0,0,0,0.06); border-radius: 7px; color: #6b7280; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; transition: all 0.12s; }
+    .sidebar-collapse-btn:hover { background: rgba(0,0,0,0.12); color: #374151; }
     #sidebar.collapsed .sidebar-collapse-btn { margin: 0 auto; }
     .sidebar-nav { flex: 1; padding: 8px 0; overflow-y: auto; overflow-x: hidden; }
     .nav-section-label { font-size: 10px; font-weight: 700; color: #8c52ff; text-transform: uppercase; letter-spacing: 1px; padding: 20px 16px 6px; white-space: nowrap; transition: opacity 0.15s; }
     #sidebar.collapsed .nav-section-label { opacity: 0; height: 0; padding: 0; overflow: hidden; }
-    .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px 9px 16px; color: #2d4a1e; cursor: pointer; transition: all 0.12s; font-size: 13.5px; font-weight: 500; border-left: 3px solid transparent; margin: 1px 0; white-space: nowrap; position: relative; }
-    .nav-item:hover { color: #1a3310; background: rgba(0,0,0,0.07); }
-    .nav-item.active { color: #8c52ff; background: rgba(140,82,255,0.1); border-left-color: #8c52ff; font-weight: 600; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px 9px 16px; color: #374151; cursor: pointer; transition: all 0.12s; font-size: 13.5px; font-weight: 500; border-left: 3px solid transparent; margin: 1px 0; white-space: nowrap; position: relative; }
+    .nav-item:hover { color: #111827; background: rgba(0,0,0,0.05); }
+    .nav-item.active { color: #8c52ff; background: rgba(157,255,32,0.18); border-left-color: #9dff20; font-weight: 600; }
     .nav-item .icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
     .nav-item .nav-label { transition: opacity 0.15s; }
     #sidebar.collapsed .nav-item .nav-label { opacity: 0; width: 0; overflow: hidden; }
     #sidebar.collapsed .nav-item { justify-content: center; padding: 9px 0; border-left-color: transparent !important; }
-    #sidebar.collapsed .nav-item.active { border-left: none; background: rgba(140,82,255,0.15); border-radius: 8px; margin: 1px 8px; }
+    #sidebar.collapsed .nav-item.active { border-left: none; background: rgba(157,255,32,0.22); border-radius: 8px; margin: 1px 8px; }
     .nav-badge { position: absolute; top: 6px; right: 8px; min-width: 18px; height: 18px; border-radius: 9px; background: #ef4444; color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
     #sidebar.collapsed .nav-badge { top: 2px; right: 2px; min-width: 14px; height: 14px; font-size: 8px; }
-    .sidebar-footer { padding: 10px 12px; border-top: 1px solid #c8f5a0; }
+    .sidebar-footer { padding: 10px 12px; border-top: 1px solid #e5e7eb; }
     .user-info { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; cursor: pointer; transition: background 0.12s; overflow: hidden; }
-    .user-info:hover { background: rgba(0,0,0,0.07); }
+    .user-info:hover { background: rgba(0,0,0,0.05); }
     #sidebar.collapsed .user-info { justify-content: center; }
     #sidebar.collapsed .user-text { display: none; }
     .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--blue); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0; overflow: hidden; }
     .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
-    .user-name { font-size: 12px; color: #2d4a1e; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .user-email { font-size: 11px; color: #4a6b2a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .user-name { font-size: 12px; color: #374151; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .user-email { font-size: 11px; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sidebar-footer-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
     #sidebar.collapsed .sidebar-footer-actions { flex-direction: column; gap: 6px; }
     .btn-logout { width: 100%; padding: 7px; border: 1px solid #334155; border-radius: 7px; background: transparent; color: #94a3b8; font-size: 12px; cursor: pointer; transition: all 0.12s; white-space: nowrap; }
@@ -327,16 +327,16 @@
 
       <div class="nav-section-label">상품·정산</div>
       <div class="nav-item" data-page="product-list" onclick="navigate('product-list')">
-        <span class="icon">📦</span><span class="nav-label"> 상품 전체</span>
+        <span class="icon">📦</span><span class="nav-label"> 상품</span>
       </div>
       <div class="nav-item" data-page="product-consignment" onclick="navigate('product-consignment')" style="padding-left:28px;">
-        <span class="icon" style="font-size:12px;">↳</span><span class="nav-label" style="font-size:12.5px;"> 위탁판매</span>
-      </div>
-      <div class="nav-item" data-page="product-purchase" onclick="navigate('product-purchase')" style="padding-left:28px;">
-        <span class="icon" style="font-size:12px;">↳</span><span class="nav-label" style="font-size:12.5px;"> 매입</span>
+        <span class="icon" style="font-size:12px;">↳</span><span class="nav-label" style="font-size:12.5px;"> 위탁판매 상품</span>
       </div>
       <div class="nav-item" data-page="product-pb" onclick="navigate('product-pb')" style="padding-left:28px;">
-        <span class="icon" style="font-size:12px;">↳</span><span class="nav-label" style="font-size:12.5px;"> PB</span>
+        <span class="icon" style="font-size:12px;">↳</span><span class="nav-label" style="font-size:12.5px;"> PB 상품</span>
+      </div>
+      <div class="nav-item" data-page="product-purchase" onclick="navigate('product-purchase')" style="padding-left:28px;">
+        <span class="icon" style="font-size:12px;">↳</span><span class="nav-label" style="font-size:12.5px;"> 매입 상품</span>
       </div>
       <div class="nav-item" data-page="settlement-list" onclick="navigate('settlement-list')">
         <span class="icon">💰</span><span class="nav-label"> 정산</span>
@@ -694,6 +694,7 @@
       refreshSidebarBadges();
       migrateToManagersCollection().catch(() => {});
       migrateBrandTypesToArray().catch(() => {});
+      migrateOnboardingStatus().catch(() => {});
     } else {
       window._currentUser = null;
       loading.style.display = 'none';
@@ -1844,8 +1845,9 @@
     const si = existing && existing.settlement_info ? existing.settlement_info : {};
     const fi = existing && existing.fee_info ? existing.fee_info : {};
 
+    const cancelAction = isEdit ? 'openBrandDetail(\'' + brandId + '\')' : 'closeModal()';
     const footerHTML =
-      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      '<button class="btn btn-secondary" onclick="' + cancelAction + '">취소</button>' +
       '<button class="btn btn-primary" id="btn-save-brand">' + (isEdit ? '저장하기' : '브랜드 등록') + '</button>';
 
     showModal(isEdit ? '브랜드 수정' : '새 브랜드 등록', buildBrandFormHTML(existing, si, fi), footerHTML);
@@ -2261,14 +2263,14 @@
       if (brandId) {
         await updateDoc(doc(db, 'brands', brandId), data);
         showToast('브랜드 정보를 수정했습니다.', 'success');
+        openBrandDetail(brandId);
       } else {
         await addDoc(collection(db, 'brands'), data);
         showToast('브랜드를 등록했습니다.', 'success');
+        closeModal();
+        const content = document.getElementById('page-content');
+        if (content) await renderBrandList(content);
       }
-
-      closeModal();
-      const content = document.getElementById('page-content');
-      if (content) await renderBrandList(content);
     } catch (e) {
       showToast('저장 중 오류: ' + e.message, 'error');
       btn.disabled = false;
@@ -2330,9 +2332,7 @@
         logoSection +
 
         // ① 브랜드 정보
-        sectionTitle('브랜드 정보',
-          '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openBrandModal(\'' + brandId + '\')">✏️ 수정</button>' +
-          '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openOnboardingModal(\'' + brandId + '\',\'' + esc(b.onboarding_status) + '\')">🔄 입점 상태 변경</button>') +
+        sectionTitle('브랜드 정보', '') +
         '<div class="detail-section">' +
           drow('입점 상태', onboardingBadge(b.onboarding_status) +
             (b.onboarding_status_reason ? ' <span style="font-size:12px;color:var(--gray-500);">— ' + esc(b.onboarding_status_reason) + '</span>' : '')) +
@@ -2601,6 +2601,22 @@
     await Promise.all(writes);
     localStorage.setItem(migKey, '1');
     if (writes.length > 0) console.log('[migration] brand_types 배열 마이그레이션 완료:', writes.length, '건');
+  }
+
+  async function migrateOnboardingStatus() {
+    const migKey = 'onboarding_status_migrated_v1';
+    if (localStorage.getItem(migKey)) return;
+    const brandsSnap = await getDocs(collection(db, 'brands'));
+    const writes = [];
+    for (const bd of brandsSnap.docs) {
+      const data = bd.data();
+      if (data.onboarding_status === '승인됨') {
+        writes.push(updateDoc(doc(db, 'brands', bd.id), { onboarding_status: '승인', updated_at: today() }));
+      }
+    }
+    await Promise.all(writes);
+    localStorage.setItem(migKey, '1');
+    if (writes.length > 0) console.log('[migration] onboarding_status 마이그레이션 완료:', writes.length, '건');
   }
 
   /* ════════════════════════════════
@@ -3095,10 +3111,7 @@
     const active = persons.filter(p => p.active !== false);
     const inactive = persons.filter(p => p.active === false);
 
-    let html = '<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">' +
-      '<button class="btn btn-secondary" style="font-size:12px;padding:5px 12px;" onclick="showPersonInlineForm(\'' + brandId + '\')">+ 담당자 추가</button>' +
-      '</div>' +
-      '<div id="person-form-area"></div>';
+    let html = '<div id="person-form-area"></div>';
 
     if (active.length === 0 && inactive.length === 0) {
       html += '<div style="font-size:13px;color:var(--gray-400);padding:12px 0;">등록된 담당자가 없습니다.</div>';
