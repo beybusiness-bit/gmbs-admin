@@ -3468,7 +3468,7 @@
       .replace(/\{\{yyyy년mm월dd일\}\}/g, y + '년' + mo + '월' + dy + '일');
   }
 
-  async function loadBrandContracts(brandId) {
+  window.loadBrandContracts = async function loadBrandContracts(brandId) {
     const sec = document.getElementById('brand-contracts-section');
     if (!sec) return;
     try {
@@ -3941,7 +3941,7 @@
           '</div>';
       });
     }
-    // brand_types 중 활성 계약이 없는 유형 — 해지/제거 버튼 표시
+    // brand_types 중 활성 계약이 없는 유형 → 계약 목록에 가상 아이템으로 추가
     const activeContractTypes = new Set(
       contracts
         .filter(c => !['계약기간만료','계약해지','계약취소'].includes(c.contract_status || '계약정보입력'))
@@ -3949,19 +3949,19 @@
         .filter(Boolean)
     );
     const orphanedTypes = (Array.isArray(brandTypes) ? brandTypes : []).filter(t => !activeContractTypes.has(t));
-    if (orphanedTypes.length > 0) {
+    orphanedTypes.forEach(t => {
       html +=
-        '<div style="margin-top:14px;padding:12px 14px;background:#fff7ed;border-radius:8px;border:1px solid #f97316;">' +
-        '<div style="font-size:12px;font-weight:600;color:#ea580c;margin-bottom:8px;">⚠️ 계약서 없이 등록된 입점 유형</div>' +
-        orphanedTypes.map(t =>
-          '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;">' +
-          '<span class="badge badge-yellow">' + esc(t) + '</span>' +
-          '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;color:var(--red);border-color:var(--red);" ' +
-          'onclick="removeOrphanBrandType(\'' + brandId + '\',\'' + esc(t) + '\')">🗑 유형 제거</button>' +
-          '</div>'
-        ).join('') +
+        '<div style="padding:14px 0;border-bottom:1px solid var(--gray-100);">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+        '<span class="badge badge-yellow" style="font-size:10px;">' + esc(t) + '</span>' +
+        '<span style="font-size:11px;color:var(--gray-400);">계약서 없는 유형</span>' +
+        '</div>' +
+        '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:var(--red);" ' +
+        'onclick="removeOrphanBrandType(\'' + brandId + '\',\'' + esc(t) + '\')">🗑 유형 제거</button>' +
+        '</div>' +
         '</div>';
-    }
+    });
 
     sec.innerHTML = html;
   }
@@ -4041,7 +4041,7 @@
     if (!pm) issues.push('주관리자 미등록');
     else {
       if (!pm.name) issues.push('주관리자 이름 미입력');
-      if (!pm.phone && !pm.contact_email) issues.push('주관리자 전화번호/이메일 미입력');
+      if (!pm.phone && !pm.email) issues.push('주관리자 전화번호/이메일 미입력');
     }
     if (activeTemplates.length === 0) issues.push('활성화된 계약서 템플릿 없음');
 
