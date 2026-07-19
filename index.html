@@ -35,6 +35,8 @@
       --green-light: #f0fdf4;
       --yellow: #d97706;
       --yellow-light: #fffbeb;
+      --orange: #ea580c;
+      --orange-light: #fff7ed;
       --sidebar-w: 220px;
     }
 
@@ -142,6 +144,7 @@
     .badge-gray { background: var(--gray-100); color: var(--gray-500); }
     .badge-yellow { background: #fef9c3; color: #854d0e; }
     .badge-red { background: #fee2e2; color: #b91c1c; }
+    .badge-orange { background: #fff7ed; color: #ea580c; }
 
     /* ── 브랜드 목록 테이블 ── */
     .table-wrap { overflow-x: auto; }
@@ -402,6 +405,22 @@
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
+
+  /* ── 사업자등록일 형식 변환 헬퍼 ── */
+  function formatBizDate(val) {
+    if (!val) return '';
+    const s = String(val).replace(/-/g, '');
+    if (s.length === 8 && /^\d{8}$/.test(s)) {
+      return s.slice(0,4) + '-' + s.slice(4,6) + '-' + s.slice(6,8);
+    }
+    return val;
+  }
+  window.autoHyphenBizDate = function(input) {
+    let v = input.value.replace(/[^0-9]/g, '').slice(0, 8);
+    if (v.length > 6) v = v.slice(0,4) + '-' + v.slice(4,6) + '-' + v.slice(6);
+    else if (v.length > 4) v = v.slice(0,4) + '-' + v.slice(4);
+    input.value = v;
+  };
 
   /* ── 민감정보 암호화 (AES-GCM, 공유 키 방식) ── */
   // app_configs/encryption.aes_key_b64 에 저장된 키를 admin·vendor가 공유
@@ -2028,8 +2047,8 @@
       '</div>',
       /* 사업자등록일 */
       formGroup('사업자등록일', 'f-business-start-date',
-        '<input class="form-input" id="f-business-start-date" type="text" inputmode="numeric" placeholder="YYYYMMDD (예: 20200115)" maxlength="8" value="' + esc(si.business_start_date || '') + '" />' +
-        '<div class="form-hint">사업자등록증에 기재된 개업 연월일 8자리</div>', true),
+        '<input class="form-input" id="f-business-start-date" type="text" inputmode="numeric" placeholder="YYYY-MM-DD (예: 2020-01-15)" maxlength="10" value="' + esc(formatBizDate(si.business_start_date || '')) + '" oninput="autoHyphenBizDate(this)" />' +
+        '<div class="form-hint">사업자등록증에 기재된 개업 연월일 (숫자 입력 시 자동 변환)</div>', true),
       /* 사업장 주소 (사업자 섹션 안으로 이동) */
       formGroup('사업장 주소', 'f-address-biz',
         '<input class="form-input" id="f-address-biz" type="text" placeholder="사업장 주소" value="' + esc(si.address || '') + '" />', true),
@@ -2191,7 +2210,7 @@
 
         const corpName = bizType === 'business' ? ((document.getElementById('f-corp-name') || {}).value || '').trim() : '';
         const representativeName = bizType === 'business' ? ((document.getElementById('f-representative-name') || {}).value || '').trim() : '';
-        const businessStartDate = bizType === 'business' ? ((document.getElementById('f-business-start-date') || {}).value || '').trim() : '';
+        const businessStartDate = bizType === 'business' ? formatBizDate(((document.getElementById('f-business-start-date') || {}).value || '').trim()) : '';
         const addressBiz = bizType === 'business' ? ((document.getElementById('f-address-biz') || {}).value || '').trim() : '';
         const addressInd = bizType === 'individual' ? ((document.getElementById('f-address') || {}).value || '').trim() : '';
         const address = bizType === 'business' ? addressBiz : addressInd;
@@ -2344,7 +2363,7 @@
                 drow('과세 유형', esc(si.taxation_type || '')) +
                 drow('상호', esc(si.corp_name || '')) +
                 drow('대표자명', esc(si.representative_name || '')) +
-                drow('사업자등록일', esc(si.business_start_date || '')) +
+                drow('사업자등록일', esc(formatBizDate(si.business_start_date || ''))) +
                 drow('사업장 주소', esc(si.address || ''))
               : (si.business_type === 'individual'
                   ? drow('주민등록번호', isEncrypted(si.resident_number)
@@ -2391,6 +2410,9 @@
         '<div style="margin-top:28px;padding-top:16px;border-top:1px dashed var(--gray-200);">' +
         '<div style="font-size:11px;color:var(--gray-400);font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-bottom:10px;">위험 구역</div>' +
         '<div style="display:flex;flex-wrap:wrap;gap:8px;">' +
+        (!isTerminated
+          ? '<button class="btn btn-secondary" style="font-size:13px;color:var(--orange);border-color:var(--orange);" onclick="showTerminationRequestModal(\'' + brandId + '\',null,\'' + esc(b.brand_name) + '\')">📋 계약 해지 요청</button>'
+          : '') +
         (!isTerminated
           ? '<button class="btn btn-secondary" style="font-size:13px;color:var(--red);border-color:var(--red);" onclick="openTerminateBrandModal(\'' + brandId + '\',\'' + esc(b.brand_name) + '\')">🚪 입점 종료</button>'
           : '') +
@@ -3101,7 +3123,12 @@
       };
       const personRow = (p, dim) => {
         const dimStyle = dim ? 'opacity:0.45;' : '';
+        const avatarSrc = p.photo_url || '';
+        const avatar = avatarSrc
+          ? '<img src="' + esc(avatarSrc) + '" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:1px solid var(--gray-200);flex-shrink:0;" onerror="this.outerHTML=\'<div style=&quot;width:36px;height:36px;border-radius:50%;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;&quot;>👤</div>\'" />'
+          : '<div style="width:36px;height:36px;border-radius:50%;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">👤</div>';
         return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--gray-100);' + dimStyle + '">' +
+          avatar +
           '<div style="flex:1;">' +
           '<div style="font-size:13px;font-weight:600;color:var(--gray-800);">' + esc(p.name || '') +
           (p.role === '주관리자'
@@ -4473,6 +4500,105 @@
       showToast('입점 종료 처리되었습니다.');
       openBrandDetail(brandId);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  /* ── 계약 해지 요청 모달 ── */
+  window.showTerminationRequestModal = async function(brandId, contractId, brandName) {
+    // contractId가 없으면 현재 진행중인 계약을 찾아서 사용
+    let resolvedContractId = contractId;
+    let resolvedBrandName = brandName || brandId;
+    if (!resolvedContractId) {
+      try {
+        const q = query(collection(db, 'brands', brandId, 'contracts'), where('status', '==', '진행중'));
+        const snap = await getDocs(q);
+        if (!snap.empty) resolvedContractId = snap.docs[0].id;
+      } catch(e) {}
+    }
+    if (!brandName) {
+      try {
+        const bSnap = await getDoc(doc(db, 'brands', brandId));
+        if (bSnap.exists()) resolvedBrandName = bSnap.data().brand_name || brandId;
+      } catch(e) {}
+    }
+
+    const TERMINATION_REASONS = [
+      '계약 기간 만료',
+      '브랜드 측 요청 (사업 축소/폐업)',
+      '브랜드 측 요청 (타 채널 이전)',
+      '관리자 측 요청 (운영 방향 변경)',
+      '관리자 측 요청 (계약 조건 불이행)',
+      '상호 합의 해지',
+      '기타',
+    ];
+
+    const formHTML =
+      '<div style="background:#fff8f0;border:1px solid #f59e0b;border-radius:10px;padding:14px 16px;margin-bottom:20px;font-size:13px;color:#92400e;">' +
+        '⚠️ 해지 요청을 등록합니다. 설정한 해지예정일이 계약만료일보다 우선 적용됩니다.' +
+      '</div>' +
+      '<div class="form-group"><label class="form-label">해지 요청자 <span style="color:var(--red);">*</span></label>' +
+        '<div style="display:flex;gap:10px;margin-top:6px;">' +
+          '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">' +
+            '<input type="radio" name="term-requester" value="관리자" checked /> 관리자 (GMBS)' +
+          '</label>' +
+          '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">' +
+            '<input type="radio" name="term-requester" value="브랜드" /> 브랜드' +
+          '</label>' +
+        '</div>' +
+      '</div>' +
+      '<div class="form-group"><label class="form-label">해지 사유 <span style="color:var(--red);">*</span></label>' +
+        '<select class="form-input" id="term-reason">' +
+          '<option value="">— 선택 —</option>' +
+          TERMINATION_REASONS.map(r => '<option value="' + esc(r) + '">' + esc(r) + '</option>').join('') +
+        '</select>' +
+      '</div>' +
+      '<div class="form-group"><label class="form-label">해지 예정일 <span style="color:var(--red);">*</span></label>' +
+        '<input class="form-input" id="term-scheduled-date" type="date" min="' + today() + '" />' +
+      '</div>' +
+      '<div class="form-group"><label class="form-label">비고 <span style="font-size:11px;color:var(--gray-400);">(선택)</span></label>' +
+        '<input class="form-input" id="term-memo" placeholder="추가 메모" />' +
+      '</div>';
+
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal();openBrandDetail(\'' + brandId + '\')">취소</button>' +
+      '<button class="btn btn-primary" style="background:var(--red);border-color:var(--red);" onclick="saveTerminationRequest(\'' + brandId + '\',\'' + (resolvedContractId || '') + '\')">해지 요청 등록</button>';
+
+    showModal(esc(resolvedBrandName) + ' — 계약 해지 요청', formHTML, footerHTML, 'sm');
+  };
+
+  window.saveTerminationRequest = async function(brandId, contractId) {
+    const requesterEl = document.querySelector('input[name="term-requester"]:checked');
+    const requester = requesterEl ? requesterEl.value : '관리자';
+    const reason = ((document.getElementById('term-reason') || {}).value || '').trim();
+    const scheduledDate = ((document.getElementById('term-scheduled-date') || {}).value || '').trim();
+    const memo = ((document.getElementById('term-memo') || {}).value || '').trim();
+
+    if (!reason) { showToast('해지 사유를 선택해주세요.', 'error'); return; }
+    if (!scheduledDate) { showToast('해지 예정일을 선택해주세요.', 'error'); return; }
+
+    try {
+      const terminationData = {
+        termination_request: {
+          requester,
+          reason,
+          scheduled_date: scheduledDate,
+          memo,
+          requested_at: today(),
+        },
+        updated_at: today()
+      };
+
+      if (contractId) {
+        await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), terminationData);
+      }
+      // 브랜드 contract_state를 해지진행중으로 업데이트
+      await updateDoc(doc(db, 'brands', brandId), { contract_state: '해지진행중', updated_at: today() });
+      await writeActivityLog(brandId, 'contract', contractId || 'n/a', 'status_changed', null,
+        { contract_state: '해지진행중', requester, reason, scheduled_date: scheduledDate });
+
+      showToast('해지 요청이 등록되었습니다.');
+      closeModal();
+      openBrandDetail(brandId);
+    } catch(e) { showToast('저장 실패: ' + esc(e.message), 'error'); }
   };
 
   /* ── 일괄 변경 (브랜드) ── */
@@ -7626,45 +7752,42 @@
   /* ════════════════════════════════
      입점 계약 관리
   ════════════════════════════════ */
+  /* ══════════════════════════════════════════════════════════
+     입점 계약 관리 페이지
+  ══════════════════════════════════════════════════════════ */
+
+  // 계약 상태값 정의 (brand.contract_state)
+  const CM_STATES = [
+    { key: '계약전',    label: '계약 전',    badge: 'badge-gray'   },
+    { key: '발송됨',    label: '발송됨',      badge: 'badge-blue'   },
+    { key: '서명진행중', label: '서명진행중', badge: 'badge-yellow' },
+    { key: '체결완료',  label: '체결완료',    badge: 'badge-green'  },
+    { key: '해지진행중', label: '해지진행중', badge: 'badge-orange' },
+    { key: '해지됨',    label: '해지됨',      badge: 'badge-red'    },
+    { key: '계약만료',  label: '계약만료',    badge: 'badge-gray'   },
+  ];
+
   async function renderContractManagement(container) {
     const tabStyle = (active) =>
       'padding:8px 18px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.12s;' +
       (active ? 'background:var(--blue);color:#fff;' : 'background:var(--gray-100);color:var(--gray-600);');
 
     container.innerHTML =
-      '<div style="max-width:760px;">' +
+      '<div>' +
       '<div style="display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap;">' +
-        '<button id="ctab-send" style="' + tabStyle(true) + '" onclick="switchContractTab(\'send\')">📤 전자계약 발송</button>' +
-        '<button id="ctab-status" style="' + tabStyle(false) + '" onclick="switchContractTab(\'status\')">📋 진행 현황</button>' +
-        '<button id="ctab-archive" style="' + tabStyle(false) + '" onclick="switchContractTab(\'archive\')">🗂 체결 완료 아카이브</button>' +
+        '<button id="ctab-brands" style="' + tabStyle(true) + '" onclick="switchContractTab(\'brands\')">🏬 입점 계약 관리</button>' +
+        '<button id="ctab-expiry" style="' + tabStyle(false) + '" onclick="switchContractTab(\'expiry\')">⏰ 계약만료 관리</button>' +
         '<button id="ctab-template" style="' + tabStyle(false) + '" onclick="switchContractTab(\'template\')">📄 템플릿 관리</button>' +
       '</div>' +
 
-      /* ── 탭: 전자계약 발송 ── */
-      '<div id="ctab-content-send">' +
-        '<div class="card" style="padding:24px;margin-bottom:20px;">' +
-          '<div style="font-size:15px;font-weight:700;color:var(--gray-900);margin-bottom:12px;">전자계약 발송</div>' +
-          '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">브랜드 상세 팝업 → 계약 섹션 → "전자계약 발송" 버튼을 통해 브랜드별로 발송합니다. 이 탭에서는 최근 발송된 계약을 확인할 수 있습니다.</div>' +
-          '<div id="cm-recent-sent"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
-        '</div>' +
+      /* ── 탭: 입점 계약 관리 (브랜드 목록) ── */
+      '<div id="ctab-content-brands">' +
+        '<div id="cm-brands-content"><div class="spinner" style="margin:60px auto;"></div></div>' +
       '</div>' +
 
-      /* ── 탭: 진행 현황 ── */
-      '<div id="ctab-content-status" style="display:none;">' +
-        '<div class="card" style="padding:24px;margin-bottom:20px;">' +
-          '<div style="font-size:15px;font-weight:700;color:var(--gray-900);margin-bottom:12px;">계약 진행 현황</div>' +
-          '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">서명 진행 중·발송됨 상태의 계약 목록입니다.</div>' +
-          '<div id="cm-in-progress-list"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
-        '</div>' +
-      '</div>' +
-
-      /* ── 탭: 체결 완료 아카이브 ── */
-      '<div id="ctab-content-archive" style="display:none;">' +
-        '<div class="card" style="padding:24px;margin-bottom:20px;">' +
-          '<div style="font-size:15px;font-weight:700;color:var(--gray-900);margin-bottom:12px;">체결 완료 계약 아카이브</div>' +
-          '<div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">체결 완료된 계약 목록입니다. 만료 임박 계약은 별도 표시됩니다.</div>' +
-          '<div id="cm-archive-list"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
-        '</div>' +
+      /* ── 탭: 계약만료 관리 ── */
+      '<div id="ctab-content-expiry" style="display:none;">' +
+        '<div id="cm-expiry-content"><div class="spinner" style="margin:60px auto;"></div></div>' +
       '</div>' +
 
       /* ── 탭: 템플릿 관리 ── */
@@ -7682,11 +7805,11 @@
 
       '</div>';
 
-    switchContractTab('send');
+    switchContractTab('brands');
   }
 
   window.switchContractTab = function(tab) {
-    const tabs = ['send','status','archive','template'];
+    const tabs = ['brands','expiry','template'];
     tabs.forEach(t => {
       const btn = document.getElementById('ctab-' + t);
       const content = document.getElementById('ctab-content-' + t);
@@ -7695,78 +7818,385 @@
       if (content) content.style.display = isActive ? '' : 'none';
     });
     if (tab === 'template') loadContractTemplatesList();
-    if (tab === 'send') loadCmRecentSent();
-    if (tab === 'status') loadCmInProgress();
-    if (tab === 'archive') loadCmArchive();
+    if (tab === 'brands') loadCmBrandsList();
+    if (tab === 'expiry') loadCmExpiryList();
   };
 
-  async function loadCmRecentSent() {
-    const el = document.getElementById('cm-recent-sent');
-    if (!el) return;
+  /* ── 입점 계약 관리 탭: 브랜드 목록 ── */
+  async function loadCmBrandsList() {
+    const container = document.getElementById('cm-brands-content');
+    if (!container) return;
+    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
     try {
-      const q = query(collectionGroup(db, 'contracts'), orderBy('sent_at', 'desc'), limit(20));
-      const snap = await getDocs(q);
-      if (snap.empty) { el.innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:16px 0;">발송된 계약이 없습니다.</div>'; return; }
-      el.innerHTML = contractListTable(snap.docs, ['발송대기','발송됨','서명진행중']);
-    } catch(e) { el.innerHTML = '<span style="color:var(--red);">로딩 실패: ' + esc(e.message) + '</span>'; }
+      const snap = await getDocs(query(collection(db, 'brands'), orderBy('created_at', 'desc')));
+      const brands = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // 상태별 카운트 계산 (contract_state 기준, 없으면 '계약전')
+      const stateCounts = {};
+      CM_STATES.forEach(s => { stateCounts[s.key] = 0; });
+      brands.forEach(b => {
+        const st = b.contract_state || '계약전';
+        if (stateCounts[st] !== undefined) stateCounts[st]++;
+        else stateCounts['계약전']++;
+      });
+
+      window._cmBrands = brands;
+      window._cmBrandSelected = window._cmBrandSelected || new Set();
+      window._cmStateFilter = window._cmStateFilter || '계약전';
+
+      container.innerHTML =
+        // 상태 필터 칩
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">' +
+        CM_STATES.map(s =>
+          '<button onclick="window._cmStateFilter=\'' + s.key + '\';filterCmBrandList()" ' +
+          'id="cm-state-chip-' + s.key + '" ' +
+          'style="display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;border:2px solid transparent;font-size:13px;font-weight:600;cursor:pointer;transition:all .12s;' +
+          (window._cmStateFilter === s.key ? 'border-color:var(--blue);background:var(--blue-light);color:var(--blue);' : 'background:var(--gray-100);color:var(--gray-600);border-color:transparent;') + '">' +
+          s.label + ' <span style="font-size:11px;background:var(--gray-200);color:var(--gray-700);border-radius:10px;padding:1px 7px;font-weight:700;">' + (stateCounts[s.key] || 0) + '</span>' +
+          '</button>'
+        ).join('') +
+        '</div>' +
+        // 검색·필터 영역
+        '<div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">' +
+          '<input class="form-input" id="cm-search" placeholder="브랜드명, 브랜드코드 검색..." style="flex:1;min-width:160px;max-width:240px;" oninput="filterCmBrandList()" />' +
+          '<select id="cm-type-filter" onchange="filterCmBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
+            '<option value="">전체 유형</option><option value="PB">PB</option><option value="위탁">위탁</option><option value="매입">매입</option>' +
+          '</select>' +
+          '<div id="cm-bulk-bar" style="display:flex;gap:8px;margin-left:auto;align-items:center;"></div>' +
+        '</div>' +
+        '<div id="cm-brand-count" style="font-size:13px;color:var(--gray-500);margin-bottom:10px;"></div>' +
+        '<div class="card"><div class="table-wrap"><table style="width:100%;border-collapse:collapse;">' +
+          '<thead><tr>' +
+            '<th style="width:36px;padding-left:14px;"><input type="checkbox" id="cm-chk-all" onchange="toggleAllCmBrands(this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></th>' +
+            '<th style="width:56px;"></th>' +
+            '<th>브랜드명</th>' +
+            '<th>사업자구분</th>' +
+            '<th>유형</th>' +
+            '<th>입점신청일</th>' +
+            '<th>승인일</th>' +
+            '<th style="min-width:130px;">액션</th>' +
+          '</tr></thead>' +
+          '<tbody id="cm-brand-tbody"></tbody>' +
+        '</table></div></div>';
+
+      filterCmBrandList();
+    } catch(e) {
+      container.innerHTML = '<div style="color:var(--red);padding:20px;">' + esc(e.message) + '</div>';
+    }
   }
 
-  async function loadCmInProgress() {
-    const el = document.getElementById('cm-in-progress-list');
-    if (!el) return;
-    try {
-      const q = query(collectionGroup(db, 'contracts'), where('status', 'in', ['발송됨','서명진행중']), orderBy('sent_at', 'desc'));
-      const snap = await getDocs(q);
-      if (snap.empty) { el.innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:16px 0;">진행 중인 계약이 없습니다.</div>'; return; }
-      el.innerHTML = contractListTable(snap.docs, null);
-    } catch(e) { el.innerHTML = '<span style="color:var(--red);">로딩 실패: ' + esc(e.message) + '</span>'; }
+  window.filterCmBrandList = function() {
+    const brands = window._cmBrands || [];
+    const stateFilter = window._cmStateFilter || '계약전';
+    const term = ((document.getElementById('cm-search') || {}).value || '').trim().toLowerCase();
+    const typeFilter = ((document.getElementById('cm-type-filter') || {}).value || '');
+
+    // 칩 스타일 갱신
+    CM_STATES.forEach(s => {
+      const chip = document.getElementById('cm-state-chip-' + s.key);
+      if (!chip) return;
+      if (s.key === stateFilter) {
+        chip.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;border:2px solid var(--blue);background:var(--blue-light);color:var(--blue);font-size:13px;font-weight:600;cursor:pointer;transition:all .12s;';
+      } else {
+        chip.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;border:2px solid transparent;background:var(--gray-100);color:var(--gray-600);font-size:13px;font-weight:600;cursor:pointer;transition:all .12s;';
+      }
+    });
+
+    const filtered = brands.filter(b => {
+      const st = b.contract_state || '계약전';
+      const matchState = st === stateFilter;
+      const matchTerm = !term || (b.brand_name||'').toLowerCase().includes(term) || (b.brand_code||'').toLowerCase().includes(term);
+      const matchType = !typeFilter || b.brand_type === typeFilter;
+      return matchState && matchTerm && matchType;
+    });
+
+    const typeLabel = { PB: '<span class="badge badge-blue">PB</span>', '위탁': '<span class="badge badge-yellow">위탁</span>', '매입': '<span class="badge badge-green">매입</span>' };
+    const isPreContract = stateFilter === '계약전' || stateFilter === '발송됨' || stateFilter === '서명진행중';
+    const isPostContract = stateFilter === '체결완료' || stateFilter === '해지진행중' || stateFilter === '해지됨' || stateFilter === '계약만료';
+
+    const tbody = document.getElementById('cm-brand-tbody');
+    if (!tbody) return;
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--gray-400);padding:32px;">해당 상태의 브랜드가 없습니다.</td></tr>';
+    } else {
+      tbody.innerHTML = filtered.map(b => {
+        const logoSrc = b.logo_url || b.brand_photo_url || '';
+        const logoCell = logoSrc
+          ? '<img src="' + esc(logoSrc) + '" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200);" onerror="this.style.display=\'none\'" />'
+          : '<div style="width:44px;height:44px;border-radius:6px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:16px;">🏬</div>';
+        const si = b.settlement_info || {};
+        const bizLabel = si.business_type === 'business' ? '<span class="badge badge-gray" style="font-size:10px;">사업자</span>'
+          : si.business_type === 'individual' ? '<span class="badge badge-gray" style="font-size:10px;">비사업자</span>' : '-';
+        const checked = (window._cmBrandSelected || new Set()).has(b.id) ? ' checked' : '';
+
+        // 액션 버튼 결정
+        let actionCell = '';
+        if (stateFilter === '계약전') {
+          actionCell = '<button class="btn btn-primary" style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="event.stopPropagation();startSendContract(\'' + b.id + '\',\'' + esc(b.brand_name) + '\')">📤 전자계약 발송</button>';
+        } else if (stateFilter === '발송됨' || stateFilter === '서명진행중') {
+          actionCell = '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="event.stopPropagation();openBrandDetail(\'' + b.id + '\')">계약 상세</button>';
+        } else if (isPostContract) {
+          actionCell =
+            '<div style="display:flex;flex-direction:column;gap:4px;">' +
+            '<button class="btn btn-secondary" style="font-size:11px;padding:3px 9px;white-space:nowrap;" onclick="event.stopPropagation();openCmContractDetail(\'' + b.id + '\',\'' + esc(b.brand_name) + '\')">📄 계약건 관리</button>' +
+            '<button class="btn btn-secondary" style="font-size:11px;padding:3px 9px;white-space:nowrap;color:var(--orange);border-color:var(--orange);" onclick="event.stopPropagation();showTerminationRequestModal(\'' + b.id + '\',null,\'' + esc(b.brand_name) + '\')">📋 계약 해지 요청</button>' +
+            '</div>';
+        }
+
+        return '<tr style="cursor:pointer;" onclick="openBrandDetail(\'' + b.id + '\')">' +
+          '<td style="padding-left:14px;" onclick="event.stopPropagation()"><input type="checkbox" id="cm-chk-' + b.id + '"' + checked + ' onchange="toggleCmBrandSelect(\'' + b.id + '\',this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></td>' +
+          '<td style="padding:8px;">' + logoCell + '</td>' +
+          '<td style="font-weight:600;font-size:13px;">' + esc(b.brand_name) + '<div style="font-size:11px;color:var(--gray-400);">' + esc(b.brand_code || '') + '</div></td>' +
+          '<td>' + bizLabel + '</td>' +
+          '<td>' + (typeLabel[b.brand_type] || esc(b.brand_type || '-')) + '</td>' +
+          '<td style="font-size:12px;color:var(--gray-500);">' + esc(b.created_at || '-') + '</td>' +
+          '<td style="font-size:12px;color:var(--gray-500);">' + esc(b.approved_at || '-') + '</td>' +
+          '<td onclick="event.stopPropagation()">' + actionCell + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+
+    const countEl = document.getElementById('cm-brand-count');
+    if (countEl) countEl.innerHTML = '총 <strong>' + filtered.length + '</strong>개 · 선택 <strong>' + (window._cmBrandSelected||new Set()).size + '</strong>개';
+
+    updateCmBulkBar();
+  };
+
+  window.toggleAllCmBrands = function(checked) {
+    const all = window._cmBrands || [];
+    const stateFilter = window._cmStateFilter || '계약전';
+    const filtered = all.filter(b => (b.contract_state || '계약전') === stateFilter);
+    filtered.forEach(b => {
+      if (checked) window._cmBrandSelected.add(b.id);
+      else window._cmBrandSelected.delete(b.id);
+      const cb = document.getElementById('cm-chk-' + b.id);
+      if (cb) cb.checked = checked;
+    });
+    updateCmBulkBar();
+  };
+
+  window.toggleCmBrandSelect = function(id, checked) {
+    if (checked) (window._cmBrandSelected = window._cmBrandSelected || new Set()).add(id);
+    else (window._cmBrandSelected || new Set()).delete(id);
+    updateCmBulkBar();
+  };
+
+  function updateCmBulkBar() {
+    const bar = document.getElementById('cm-bulk-bar');
+    if (!bar) return;
+    const cnt = (window._cmBrandSelected || new Set()).size;
+    if (cnt === 0) { bar.innerHTML = ''; return; }
+    bar.innerHTML =
+      '<button class="btn btn-primary" style="font-size:12px;white-space:nowrap;" onclick="bulkSendContracts()">📤 전자계약 일괄발송 (' + cnt + '개)</button>' +
+      '<button class="btn btn-secondary" style="font-size:12px;white-space:nowrap;color:var(--orange);border-color:var(--orange);" onclick="bulkTerminationRequest()">📋 일괄 해지 요청 (' + cnt + '개)</button>';
   }
 
-  async function loadCmArchive() {
-    const el = document.getElementById('cm-archive-list');
-    if (!el) return;
+  window.bulkSendContracts = function() {
+    const ids = [...(window._cmBrandSelected || new Set())];
+    if (!ids.length) return;
+    showToast('선택한 ' + ids.length + '개 브랜드에 전자계약을 발송합니다. (브랜드 상세에서 개별 발송과 동일한 흐름)', 'info');
+    // 첫 번째 브랜드 상세를 열어줌 (일괄 발송 UX는 추후 확장)
+    openBrandDetail(ids[0]);
+  };
+
+  window.bulkTerminationRequest = function() {
+    const ids = [...(window._cmBrandSelected || new Set())];
+    if (!ids.length) return;
+    showToast('일괄 해지 요청은 브랜드별로 개별 처리해 주세요. (해지예정일이 브랜드마다 다를 수 있어 안전을 위해 개별 처리)', 'info');
+  };
+
+  window.startSendContract = function(brandId, brandName) {
+    openBrandDetail(brandId);
+  };
+
+  // 계약건 관리 모달 (특정 브랜드의 모든 계약 목록)
+  window.openCmContractDetail = async function(brandId, brandName) {
+    const formHTML = '<div id="cm-contract-detail-list"><div class="spinner" style="width:20px;height:20px;"></div></div>';
+    const footerHTML = '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>';
+    showModal('📄 계약건 관리 — ' + esc(brandName), formHTML, footerHTML, 'lg');
     try {
-      const q = query(collectionGroup(db, 'contracts'), where('status', '==', '체결완료'), orderBy('completed_at', 'desc'));
+      const q = query(collection(db, 'brands', brandId, 'contracts'), orderBy('signed_at', 'desc'));
       const snap = await getDocs(q);
-      if (snap.empty) { el.innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:16px 0;">체결 완료된 계약이 없습니다.</div>'; return; }
-      el.innerHTML = contractListTable(snap.docs, null);
-    } catch(e) { el.innerHTML = '<span style="color:var(--red);">로딩 실패: ' + esc(e.message) + '</span>'; }
+      const el = document.getElementById('cm-contract-detail-list');
+      if (!el) return;
+      if (snap.empty) { el.innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:16px 0;">등록된 계약이 없습니다.</div>'; return; }
+      const statusBadge = {
+        '진행중': '<span class="badge badge-green">진행중</span>',
+        '발송대기': '<span class="badge badge-gray">발송대기</span>',
+        '발송됨': '<span class="badge badge-blue">발송됨</span>',
+        '서명진행중': '<span class="badge badge-yellow">서명진행중</span>',
+        '체결완료': '<span class="badge badge-green">체결완료</span>',
+        '만료': '<span class="badge badge-gray">만료</span>',
+        '해지됨': '<span class="badge badge-red">해지됨</span>',
+        '취소됨': '<span class="badge badge-red">취소됨</span>',
+      };
+      el.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+        '<thead><tr style="border-bottom:2px solid var(--gray-200);">' +
+          '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">버전</th>' +
+          '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">상태</th>' +
+          '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">서명일</th>' +
+          '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">만료일</th>' +
+          '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">해지예정일</th>' +
+          '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">파일</th>' +
+          '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">액션</th>' +
+        '</tr></thead><tbody>' +
+        snap.docs.map(d => {
+          const c = d.data();
+          const tr = c.termination_request || {};
+          return '<tr style="border-bottom:1px solid var(--gray-100);">' +
+            '<td style="padding:8px 6px;">' + esc(c.version || '-') + '</td>' +
+            '<td style="padding:8px 6px;">' + (statusBadge[c.status] || esc(c.status || '-')) + '</td>' +
+            '<td style="padding:8px 6px;font-size:12px;">' + esc(c.signed_at || '-') + '</td>' +
+            '<td style="padding:8px 6px;font-size:12px;">' + esc(c.end_at || '-') + '</td>' +
+            '<td style="padding:8px 6px;font-size:12px;">' + (tr.scheduled_date
+              ? '<span style="color:var(--orange);font-weight:600;">' + esc(tr.scheduled_date) + '</span><div style="font-size:10px;color:var(--gray-400);">' + esc(tr.requester || '') + ' · ' + esc(tr.reason || '') + '</div>'
+              : '-') + '</td>' +
+            '<td style="padding:8px 6px;">' + (c.signed_pdf_url || c.file_url
+              ? '<a href="' + esc(c.signed_pdf_url || c.file_url) + '" target="_blank" rel="noopener noreferrer" style="font-size:12px;color:var(--blue);">📄 보기</a>'
+              : '-') + '</td>' +
+            '<td style="padding:8px 6px;">' +
+              (!tr.scheduled_date
+                ? '<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;color:var(--orange);border-color:var(--orange);" onclick="closeModal();showTerminationRequestModal(\'' + brandId + '\',\'' + d.id + '\',\'' + esc(brandName) + '\')">해지 요청</button>'
+                : '<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;color:var(--red);border-color:var(--red);" onclick="cancelTerminationRequest(\'' + brandId + '\',\'' + d.id + '\',\'' + esc(brandName) + '\')">해지 취소</button>') +
+            '</td>' +
+            '</tr>';
+        }).join('') +
+        '</tbody></table></div>';
+    } catch(e) {
+      const el = document.getElementById('cm-contract-detail-list');
+      if (el) el.innerHTML = '<span style="color:var(--red);">로딩 실패: ' + esc(e.message) + '</span>';
+    }
+  };
+
+  window.cancelTerminationRequest = async function(brandId, contractId, brandName) {
+    if (!confirm('해지 요청을 취소하시겠습니까?')) return;
+    try {
+      await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), {
+        termination_request: null,
+        updated_at: today()
+      });
+      await updateDoc(doc(db, 'brands', brandId), { contract_state: '체결완료', updated_at: today() });
+      showToast('해지 요청이 취소되었습니다.');
+      openCmContractDetail(brandId, brandName);
+    } catch(e) { showToast('처리 실패: ' + esc(e.message), 'error'); }
+  };
+
+  /* ── 계약만료 관리 탭 ── */
+  async function loadCmExpiryList() {
+    const container = document.getElementById('cm-expiry-content');
+    if (!container) return;
+    container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+    try {
+      // 체결완료 상태인 계약을 모두 가져와서 클라이언트에서 30일 이내 필터
+      const q = query(collectionGroup(db, 'contracts'), where('status', '==', '체결완료'));
+      const snap = await getDocs(q);
+
+      const todayStr = today();
+      const today30 = new Date(); today30.setDate(today30.getDate() + 30);
+      const today30Str = today30.toISOString().slice(0,10);
+
+      // brand 데이터도 필요하므로 brand IDs 수집 후 조회
+      const brandIds = [...new Set(snap.docs.map(d => d.ref.parent.parent ? d.ref.parent.parent.id : null).filter(Boolean))];
+      const brandMap = {};
+      await Promise.all(brandIds.map(async bid => {
+        const bs = await getDoc(doc(db, 'brands', bid));
+        if (bs.exists()) brandMap[bid] = { id: bid, ...bs.data() };
+      }));
+
+      // 각 계약에서 유효 만료일 계산 (해지예정일 우선)
+      const expiring = [];
+      snap.docs.forEach(d => {
+        const c = d.data();
+        const brandId = d.ref.parent.parent ? d.ref.parent.parent.id : null;
+        if (!brandId) return;
+        const tr = c.termination_request || {};
+        const effectiveEndDate = tr.scheduled_date || c.end_at || '';
+        if (!effectiveEndDate) return;
+        // 30일 이내 만료 or 이미 만료
+        if (effectiveEndDate <= today30Str) {
+          expiring.push({
+            contractId: d.id,
+            brandId,
+            brand: brandMap[brandId] || {},
+            contract: c,
+            effectiveEndDate,
+            isTermReq: !!tr.scheduled_date,
+          });
+        }
+      });
+
+      expiring.sort((a,b) => a.effectiveEndDate.localeCompare(b.effectiveEndDate));
+
+      if (expiring.length === 0) {
+        container.innerHTML = '<div class="card" style="padding:40px;text-align:center;color:var(--gray-400);">30일 이내 만료 예정인 계약이 없습니다.</div>';
+        return;
+      }
+
+      const typeLabel = { PB: '<span class="badge badge-blue">PB</span>', '위탁': '<span class="badge badge-yellow">위탁</span>', '매입': '<span class="badge badge-green">매입</span>' };
+
+      container.innerHTML =
+        '<div style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">계약 만료 30일 이내 브랜드 <strong>' + expiring.length + '</strong>건</div>' +
+        '<div class="card"><div class="table-wrap"><table style="width:100%;border-collapse:collapse;">' +
+          '<thead><tr>' +
+            '<th style="width:56px;"></th>' +
+            '<th>브랜드코드</th>' +
+            '<th>브랜드명</th>' +
+            '<th>유형</th>' +
+            '<th>판매중 상품</th>' +
+            '<th>입점상태</th>' +
+            '<th>계약만료일</th>' +
+            '<th style="min-width:130px;">액션</th>' +
+          '</tr></thead>' +
+          '<tbody>' +
+          expiring.map(item => {
+            const b = item.brand;
+            const logoSrc = b.logo_url || b.brand_photo_url || '';
+            const logoCell = logoSrc
+              ? '<img src="' + esc(logoSrc) + '" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200);" onerror="this.style.display=\'none\'" />'
+              : '<div style="width:40px;height:40px;border-radius:6px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:14px;">🏬</div>';
+            const daysLeft = Math.ceil((new Date(item.effectiveEndDate) - new Date(todayStr)) / 86400000);
+            const daysLabel = daysLeft <= 0
+              ? '<span style="color:var(--red);font-weight:700;">만료됨</span>'
+              : '<span style="color:' + (daysLeft <= 7 ? 'var(--red)' : 'var(--orange)') + ';font-weight:700;">' + daysLeft + '일 전</span>';
+            const st = CM_STATES.find(s => s.key === (b.contract_state || '계약전')) || CM_STATES[0];
+            const statusBadge = '<span class="badge ' + st.badge + '">' + st.label + '</span>';
+            return '<tr style="cursor:pointer;" onclick="openBrandDetail(\'' + item.brandId + '\')">' +
+              '<td style="padding:8px;">' + logoCell + '</td>' +
+              '<td class="td-code" style="font-size:12px;">' + esc(b.brand_code || '') + '</td>' +
+              '<td style="font-weight:600;font-size:13px;">' + esc(b.brand_name || item.brandId) + (item.isTermReq ? ' <span style="font-size:10px;color:var(--orange);">해지요청</span>' : '') + '</td>' +
+              '<td>' + (typeLabel[b.brand_type] || esc(b.brand_type || '-')) + '</td>' +
+              '<td style="font-size:12px;color:var(--gray-500);" id="cm-expiry-prod-' + item.brandId + '">-</td>' +
+              '<td>' + statusBadge + '</td>' +
+              '<td style="font-size:12px;">' + esc(item.effectiveEndDate) + ' <br/>' + daysLabel + '</td>' +
+              '<td onclick="event.stopPropagation()">' +
+                '<div style="display:flex;flex-direction:column;gap:4px;">' +
+                '<button class="btn btn-secondary" style="font-size:11px;padding:3px 9px;white-space:nowrap;" onclick="openCmContractDetail(\'' + item.brandId + '\',\'' + esc(b.brand_name || item.brandId) + '\')">📄 계약건 관리</button>' +
+                (!item.isTermReq
+                  ? '<button class="btn btn-secondary" style="font-size:11px;padding:3px 9px;white-space:nowrap;color:var(--orange);border-color:var(--orange);" onclick="showTerminationRequestModal(\'' + item.brandId + '\',\'' + item.contractId + '\',\'' + esc(b.brand_name || item.brandId) + '\')">📋 계약 해지 요청</button>'
+                  : '') +
+                '</div>' +
+              '</td>' +
+              '</tr>';
+          }).join('') +
+          '</tbody></table></div></div>';
+
+      // 판매중 상품 수 비동기 로드
+      expiring.forEach(async item => {
+        try {
+          const pSnap = await getDocs(query(collection(db, 'products'), where('brand_id', '==', item.brandId), where('status', '==', '판매중')));
+          const el = document.getElementById('cm-expiry-prod-' + item.brandId);
+          if (el) el.textContent = pSnap.size + '개';
+        } catch(e) {}
+      });
+
+    } catch(e) {
+      container.innerHTML = '<div style="color:var(--red);padding:20px;">' + esc(e.message) + '</div>';
+    }
   }
 
-  function contractListTable(docs, statusFilter) {
-    const statusBadge = {
-      '발송대기': '<span class="badge badge-gray">발송대기</span>',
-      '발송됨':   '<span class="badge badge-blue">발송됨</span>',
-      '서명진행중': '<span class="badge badge-yellow">서명진행중</span>',
-      '체결완료': '<span class="badge badge-green">체결완료</span>',
-      '취소됨':   '<span class="badge badge-red">취소됨</span>'
-    };
-    const rows = docs.map(d => {
-      const c = d.data();
-      if (statusFilter && !statusFilter.includes(c.status)) return '';
-      const brandId = d.ref.parent.parent ? d.ref.parent.parent.id : '';
-      return '<tr>' +
-        '<td style="font-size:12px;">' + esc(brandId) + '</td>' +
-        '<td style="font-size:12px;">' + esc(c.version || '-') + '</td>' +
-        '<td>' + (statusBadge[c.status] || esc(c.status || '-')) + '</td>' +
-        '<td style="font-size:12px;">' + esc(c.sent_at || '-') + '</td>' +
-        '<td style="font-size:12px;">' + esc(c.completed_at || c.end_at || '-') + '</td>' +
-        '<td>' + (c.signed_pdf_url || c.file_url
-          ? '<a href="' + esc(c.signed_pdf_url || c.file_url) + '" target="_blank" rel="noopener noreferrer" style="font-size:12px;color:var(--blue);">📄 보기</a>'
-          : '') + '</td>' +
-        '</tr>';
-    }).join('');
-    if (!rows.replace(/<\/?tr>/g,'').trim()) return '<div style="color:var(--gray-400);font-size:13px;padding:16px 0;">해당하는 계약이 없습니다.</div>';
-    return '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">' +
-      '<thead><tr style="border-bottom:2px solid var(--gray-200);">' +
-        '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">브랜드 ID</th>' +
-        '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">버전</th>' +
-        '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">상태</th>' +
-        '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">발송일</th>' +
-        '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">완료/만료일</th>' +
-        '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">파일</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
-  }
+  // (이전 loadCmRecentSent, loadCmInProgress, loadCmArchive, contractListTable 함수들 제거됨)
+
 
   /* ── 암호화 키 로드·생성 ── */
   async function loadEncKeyStatus() {
