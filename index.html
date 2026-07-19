@@ -3472,10 +3472,14 @@
     const sec = document.getElementById('brand-contracts-section');
     if (!sec) return;
     try {
-      const snap = await getDocs(collection(db, 'brands', brandId, 'contracts'));
+      const [brandSnap, snap] = await Promise.all([
+        getDoc(doc(db, 'brands', brandId)),
+        getDocs(collection(db, 'brands', brandId, 'contracts')),
+      ]);
+      const brandTypes = brandSnap.exists() ? (brandSnap.data().brand_types || []) : [];
       const contracts = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-      renderContractsSection(brandId, contracts, sec);
+      renderContractsSection(brandId, contracts, sec, brandTypes);
     } catch(e) {
       if (sec) sec.innerHTML = '<div style="font-size:12px;color:var(--gray-400);">계약 로드 실패: ' + esc(e.message) + '</div>';
     }
@@ -3864,7 +3868,7 @@
     }
   };
 
-  function renderContractsSection(brandId, contracts, sec) {
+  function renderContractsSection(brandId, contracts, sec, brandTypes) {
     const eSignBadge = s => ({
       '발송대기': '<span class="badge badge-gray">📄 발송대기</span>',
       '발송됨':   '<span class="badge badge-blue">✉️ 발송됨</span>',
@@ -3894,19 +3898,23 @@
         }[cStatus] || '<span class="badge badge-gray" style="font-size:10px;">' + esc(cStatus) + '</span>';
 
         // 상태별 액션 버튼
+        const bdOnComplete = 'function(){loadBrandContracts(\'' + brandId + '\')}';
         let actionBtns = '';
         if (cStatus === '계약정보입력') {
-          actionBtns = '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="checkContractReadiness(\'' + brandId + '\',\'' + c.id + '\',\'' + esc(c.contract_type || '') + '\')">📋 발송 준비 확인</button>';
+          actionBtns = '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="checkContractReadiness(\'' + brandId + '\',\'' + c.id + '\',\'' + esc(c.contract_type || '') + '\',' + bdOnComplete + ')">📋 발송 준비 확인</button>';
         } else if (cStatus === '계약발송전') {
-          actionBtns = '<button class="btn btn-primary" style="font-size:11px;padding:4px 10px;" onclick="openSendContractModal(\'' + brandId + '\',\'' + c.id + '\')">📨 전자계약 발송</button>';
+          actionBtns = '<button class="btn btn-primary" style="font-size:11px;padding:4px 10px;" onclick="openSendContractModal(\'' + brandId + '\',\'' + c.id + '\',' + bdOnComplete + ')">📨 전자계약 발송</button>';
         } else if (['서명진행중','계약완료','계약기간만료'].includes(cStatus) || ucStatus === '체결완료') {
           actionBtns = '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openCmContractDetail(\'' + brandId + '\',\'' + esc(c._brandName || '') + '\',\'' + c.id + '\')">📄 계약 상세</button>';
         }
         // 재발송 (취소/실패된 유캔사인 계약)
         const canResend = isUcansignBased && (cStatus === '계약해지' || cStatus === '발송실패' || ucStatus === '취소됨' || ucStatus === '발송실패');
         if (canResend) {
-          actionBtns += ' <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openSendContractModal(\'' + brandId + '\',\'' + c.id + '\')">🔄 재발송</button>';
+          actionBtns += ' <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openSendContractModal(\'' + brandId + '\',\'' + c.id + '\',' + bdOnComplete + ')">🔄 재발송</button>';
         }
+
+        // 전자계약 발송 이후 단계면 계약서 문서 제목 표시
+        const showTemplateName = c.template_name && ['서명진행중','계약완료','계약기간만료','계약해지','발송실패'].includes(cStatus);
 
         html +=
           '<div style="padding:14px 0;border-bottom:1px solid var(--gray-100);">' +
@@ -3918,6 +3926,7 @@
           '<div style="display:flex;gap:6px;">' + actionBtns + '</div>' +
           '</div>' +
           '<div style="font-size:12px;color:var(--gray-500);margin-top:6px;line-height:1.8;">' +
+          (showTemplateName ? '📄 ' + esc(c.template_name) + '&nbsp;&nbsp;' : '') +
           (c.start_date ? '기간 ' + esc(c.start_date) + ' ~ ' + esc(c.end_date || '') + (c.auto_renew ? ' (자동연장)' : '') + '&nbsp;&nbsp;' : '') +
           (c.sent_at ? '발송 ' + esc(fmtDate(c.sent_at)) + '&nbsp;&nbsp;' : '') +
           (c.completed_at ? '체결 ' + esc(fmtDate(c.completed_at)) : '') +
@@ -3925,11 +3934,44 @@
           '</div>';
       });
     }
+    // brand_types 중 활성 계약이 없는 유형 — 해지/제거 버튼 표시
+    const activeContractTypes = new Set(
+      contracts
+        .filter(c => !['계약기간만료','계약해지'].includes(c.contract_status || '계약정보입력'))
+        .map(c => c.contract_type)
+        .filter(Boolean)
+    );
+    const orphanedTypes = (Array.isArray(brandTypes) ? brandTypes : []).filter(t => !activeContractTypes.has(t));
+    if (orphanedTypes.length > 0) {
+      html +=
+        '<div style="margin-top:14px;padding:12px 14px;background:#fff7ed;border-radius:8px;border:1px solid #f97316;">' +
+        '<div style="font-size:12px;font-weight:600;color:#ea580c;margin-bottom:8px;">⚠️ 계약서 없이 등록된 입점 유형</div>' +
+        orphanedTypes.map(t =>
+          '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;">' +
+          '<span class="badge badge-yellow">' + esc(t) + '</span>' +
+          '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;color:var(--red);border-color:var(--red);" ' +
+          'onclick="removeOrphanBrandType(\'' + brandId + '\',\'' + esc(t) + '\')">🗑 유형 제거</button>' +
+          '</div>'
+        ).join('') +
+        '</div>';
+    }
+
     sec.innerHTML = html;
   }
 
+  window.removeOrphanBrandType = async function(brandId, contractType) {
+    if (!confirm('"' + contractType + '" 입점 유형을 브랜드에서 제거하시겠습니까?\n관련 계약서가 없는 유형만 제거됩니다.')) return;
+    try {
+      await removeContractTypeFromBrand(brandId, contractType);
+      showToast('"' + contractType + '" 유형이 제거되었습니다.', 'success');
+      loadBrandContracts(brandId);
+    } catch(e) {
+      showToast('제거 실패: ' + esc(e.message), 'error');
+    }
+  };
+
   // 계약정보입력 → 계약발송전 준비 확인
-  window.checkContractReadiness = async function(brandId, contractId, contractType) {
+  window.checkContractReadiness = async function(brandId, contractId, contractType, onComplete) {
     try {
       const [contractSnap, personsSnap, templatesSnap] = await Promise.all([
         getDoc(doc(db, 'brands', brandId, 'contracts', contractId)),
@@ -3974,14 +4016,14 @@
       });
       await writeActivityLog(brandId, 'contract', contractId, 'status_changed', '계약정보입력', { contract_status: '계약발송전' });
       showToast('계약 상태가 "계약발송전"으로 변경되었습니다.', 'success');
-      loadBrandContracts(brandId);
+      if (typeof onComplete === 'function') onComplete(); else loadBrandContracts(brandId);
     } catch(e) {
       showToast('준비 확인 실패: ' + e.message, 'error');
     }
   };
 
   // 전자계약 발송 모달 — 템플릿 선택 · 발송 정보 미리보기 · 발송
-  window.openSendContractModal = async function(brandId, contractId) {
+  window.openSendContractModal = async function(brandId, contractId, onComplete) {
     showModal('전자계약 발송', '<div class="spinner" style="margin:40px auto;"></div>', '', 'lg');
     try {
       const [brandSnap, personsSnap, templatesSnap] = await Promise.all([
@@ -4018,7 +4060,7 @@
       }
 
       // 공유 데이터 저장 (템플릿 변경 시 재사용)
-      window._scCtx = { brand, si, sinfo, pm, templates, brandId, contractId };
+      window._scCtx = { brand, si, sinfo, pm, templates, brandId, contractId, onComplete };
 
       const templateOpts = templates.map(t => '<option value="' + esc(t.id) + '">' + esc(t.name || t.id) + '</option>').join('');
 
@@ -4198,7 +4240,7 @@
       });
       showToast('✅ 전자계약 발송 완료. 서명자에게 ' + (signingMethod === 'kakao' ? '카카오톡' : '이메일') + '이 발송됩니다.');
       closeModal();
-      openBrandDetail(brandId);
+      if (typeof ctx.onComplete === 'function') ctx.onComplete(); else openBrandDetail(brandId);
     } catch(e) {
       // functions 미연결 또는 오류 시 — 생성된 contract 문서는 유지 (이력 보존)
       const isUnimplemented = e.code === 'functions/unimplemented' || e.code === 'functions/not-found' || e.message.includes('NOT_FOUND');
@@ -4210,7 +4252,7 @@
         showToast('발송 실패: ' + e.message, 'error');
       }
       closeModal();
-      openBrandDetail(brandId);
+      if (typeof ctx.onComplete === 'function') ctx.onComplete(); else openBrandDetail(brandId);
     }
   };
 
@@ -8295,9 +8337,12 @@
         : '-';
 
       // 상태별 액션 버튼
+      const cmOnComplete = 'function(){loadCmContractsList()}';
       let actionBtns = '';
-      if (cStatus === '계약발송전') {
-        actionBtns = '<button class="btn btn-primary" style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="openSendContractModal(\'' + c.brandId + '\',\'' + c.id + '\')">📨 전자계약 발송</button>';
+      if (cStatus === '계약정보입력') {
+        actionBtns = '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="checkContractReadiness(\'' + c.brandId + '\',\'' + c.id + '\',\'' + esc(c.contract_type || '') + '\',' + cmOnComplete + ')">📋 발송 준비 확인</button>';
+      } else if (cStatus === '계약발송전') {
+        actionBtns = '<button class="btn btn-primary" style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="openSendContractModal(\'' + c.brandId + '\',\'' + c.id + '\',' + cmOnComplete + ')">📨 전자계약 발송</button>';
       } else if (['서명진행중','계약완료','계약기간만료'].includes(cStatus)) {
         actionBtns = '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="openCmContractDetail(\'' + c.brandId + '\',\'' + esc(b.brand_name||c.brandId) + '\')">📄 계약 상세</button>';
       } else {
@@ -8306,7 +8351,7 @@
       const ucStatus = c.status || '';
       const canResend = cStatus === '계약해지' || cStatus === '발송실패' || ucStatus === '취소됨' || ucStatus === '발송실패';
       if (canResend) {
-        actionBtns += ' <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;white-space:nowrap;color:var(--orange);border-color:var(--orange);" onclick="openSendContractModal(\'' + c.brandId + '\',\'' + c.id + '\')">🔄 재발송</button>';
+        actionBtns += ' <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;white-space:nowrap;color:var(--orange);border-color:var(--orange);" onclick="openSendContractModal(\'' + c.brandId + '\',\'' + c.id + '\',' + cmOnComplete + ')">🔄 재발송</button>';
       }
 
       return '<tr style="cursor:pointer;" onclick="openBrandDetail(\'' + c.brandId + '\')">' +
