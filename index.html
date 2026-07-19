@@ -3442,7 +3442,7 @@
      계약(Contract) 관리
   ════════════════════════════════ */
   // 계약 변수 치환 헬퍼 — brand, pm(주관리자), si(supply_info) 기반
-  function resolveContractVars(text, brand, pm, si) {
+  function resolveContractVars(text, brand, pm, si, sinfo) {
     if (!text || typeof text !== 'string') return text || '';
     const d = new Date();
     const y = String(d.getFullYear());
@@ -3458,6 +3458,10 @@
       .replace(/\{\{person_name\}\}/g, pm ? (pm.name || '') : '')
       .replace(/\{\{person_phone\}\}/g, pm ? (pm.phone || '') : '')
       .replace(/\{\{person_contact_email\}\}/g, pm ? (pm.contact_email || '') : '')
+      .replace(/\{\{corp_name\}\}/g, sinfo ? (sinfo.corp_name || '') : '')
+      .replace(/\{\{representative_name\}\}/g, sinfo ? (sinfo.representative_name || '') : '')
+      .replace(/\{\{business_reg_number\}\}/g, sinfo ? (sinfo.business_reg_number || '') : '')
+      .replace(/\{\{resident_number\}\}/g, sinfo ? (sinfo.resident_number || '') : '')
       .replace(/\{\{yyyymmdd\}\}/g, y + mo + dy)
       .replace(/\{\{yyyy-mm-dd\}\}/g, y + '-' + mo + '-' + dy)
       .replace(/\{\{yyyy년mm월dd일\}\}/g, y + '년' + mo + '월' + dy + '일');
@@ -3987,9 +3991,22 @@
       if (!brandSnap.exists()) { showToast('브랜드 정보를 찾을 수 없습니다.', 'error'); closeModal(); return; }
       const brand = { id: brandId, ...brandSnap.data() };
       const si = brand.supply_info || {};
+      const rawSinfo = brand.settlement_info || {};
       const persons = personsSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.active !== false);
       const pm = persons.find(p => p.role === '주관리자' && p.active !== false) || null;
       const templates = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => t.is_active !== false);
+
+      // 암호화된 민감정보 미리 복호화 (resolveContractVars는 동기 함수이므로)
+      const sinfo = {
+        corp_name: rawSinfo.corp_name || '',
+        representative_name: rawSinfo.representative_name || '',
+        business_reg_number: isEncrypted(rawSinfo.business_reg_number)
+          ? await decryptField(rawSinfo.business_reg_number).catch(() => '')
+          : (rawSinfo.business_reg_number || ''),
+        resident_number: isEncrypted(rawSinfo.resident_number)
+          ? await decryptField(rawSinfo.resident_number).catch(() => '')
+          : (rawSinfo.resident_number || ''),
+      };
 
       if (templates.length === 0) {
         updateModal(null,
@@ -3999,7 +4016,7 @@
       }
 
       // 공유 데이터 저장 (템플릿 변경 시 재사용)
-      window._scCtx = { brand, si, pm, templates, brandId, contractId };
+      window._scCtx = { brand, si, sinfo, pm, templates, brandId, contractId };
 
       const templateOpts = templates.map(t => '<option value="' + esc(t.id) + '">' + esc(t.name || t.id) + '</option>').join('');
 
@@ -4060,7 +4077,7 @@
     const template = ctx.templates.find(t => t.id === sel.value);
     if (!template) { preview.innerHTML = '<div style="font-size:12px;color:var(--gray-400);">템플릿을 선택해주세요.</div>'; return; }
 
-    const resolve = text => resolveContractVars(text, ctx.brand, ctx.pm, ctx.si);
+    const resolve = text => resolveContractVars(text, ctx.brand, ctx.pm, ctx.si, ctx.sinfo);
     const sp = template.sender_params || {};
     const rp = template.receiver_params || {};
     const senderName   = resolve(sp.name  || '');
@@ -8857,6 +8874,10 @@
       ctVarChip('{{brand_name}}', '브랜드명', '예: 온기') +
       ctVarChip('{{brand_code}}', '브랜드코드', '예: ONG') +
       ctVarChip('{{commission_rate}}', '위탁판매수수료', '예: 10 (%기호 없이)') +
+      ctVarChip('{{corp_name}}', '상호', '사업자등록증상 상호명') +
+      ctVarChip('{{representative_name}}', '대표자명', '예: 홍길동') +
+      ctVarChip('{{business_reg_number}}', '사업자등록번호', '예: 123-45-67890') +
+      ctVarChip('{{resident_number}}', '주민등록번호', '예: 000000-0000000') +
       '</div>' +
       '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">👤 담당자 정보 (주관리자 기준)</div>' +
       '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">' +
