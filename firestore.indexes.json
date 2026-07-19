@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "contracts",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "contract_status", "order": "ASCENDING" },
+        { "fieldPath": "end_date", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
