@@ -8781,53 +8781,77 @@
     var wb = new ExcelJS.Workbook();
     var ws = wb.addWorksheet('브랜드목록');
 
-    var PURPLE = '8c52ff'; var WHITE = 'ffffff'; var GRAY_BG = 'f3f4f6'; var GRAY_TEXT = '6b7280';
-    var GUIDE_BG = 'fef9ec'; var GUIDE_TEXT = '92400e';
+    // 색상 상수
+    var C_REQ    = 'dc2626'; // 필수 — 빨강
+    var C_OPT    = '475569'; // 선택 기본정보 — 짙은 회색
+    var C_COND   = 'ea580c'; // 위탁·매입 전용 — 주황
+    var C_BIZ    = '1d4ed8'; // 사업자인 경우 — 파랑
+    var C_IND    = '6d28d9'; // 개인인 경우 — 보라
+    var C_BANK   = '0f766e'; // 정산정보 — 청록
+    var WHITE    = 'ffffff';
+    var GUIDE_BG = 'fef9ec';
+    var GUIDE_TEXT = '92400e';
+    var BORDER_CLR = { argb: 'ffd1d5db' };
+
+    // 컬럼 정의 (key는 validate/save 함수의 get() 키와 일치)
     var cols = [
-      { header: '브랜드명*',   key: 'a', width: 18 },
-      { header: '브랜드코드*',          key: 'b', width: 20 },
-      { header: '거래유형*',             key: 'c', width: 12 },
-      { header: '브랜드소개',            key: 'd', width: 28 },
-      { header: '관련사이트1',           key: 'e', width: 30 },
-      { header: '관련사이트2',           key: 'f', width: 30 },
-      { header: '위탁판매대행수수료(%)', key: 'g', width: 20 },
-      { header: '사업자구분',            key: 'h', width: 16 },
-      { header: '사업자등록번호',        key: 'i', width: 18 },
-      { header: '과세유형',              key: 'j', width: 14 },
-      { header: '주민등록번호',          key: 'k', width: 18 },
-      { header: '은행명',                key: 'l', width: 14 },
-      { header: '예금주명',              key: 'm', width: 14 },
-      { header: '계좌번호',              key: 'n', width: 22 },
+      { header: '브랜드명*',        key: 'a', width: 18,  hdr: '브랜드명*',        color: C_REQ,  guide: '예) 온기',                                            ex1: '온기',         ex2: '두루미상점' },
+      { header: '브랜드코드*',      key: 'b', width: 14,  hdr: '브랜드코드*',      color: C_REQ,  guide: '예) ONG\n영문 대문자·숫자 2~10자, 중복 불가',         ex1: 'ONG',          ex2: 'DRM'        },
+      { header: '거래유형*',        key: 'c', width: 12,  hdr: '거래유형*',        color: C_REQ,  guide: 'PB / 위탁 / 매입 중 택1',                            ex1: '위탁',         ex2: '위탁'       },
+      { header: '브랜드소개',       key: 'd', width: 28,  hdr: '브랜드소개',       color: C_OPT,  guide: '브랜드 한 줄 소개 (최대 100자)',                      ex1: '핸드메이드 소품', ex2: '수공예 작가' },
+      { header: '관련사이트1',      key: 'e', width: 30,  hdr: '관련사이트1',      color: C_OPT,  guide: 'https://instagram.com/... 등',                       ex1: 'https://instagram.com/ongi_store', ex2: 'https://instagram.com/drm_craft' },
+      { header: '관련사이트2',      key: 'f', width: 30,  hdr: '관련사이트2',      color: C_OPT,  guide: '추가 웹사이트 (선택)',                                ex1: '',             ex2: ''           },
+      { header: '대표자명',         key: 'g', width: 14,  hdr: '대표자명',         color: C_OPT,  guide: '예) 홍길동',                                          ex1: '홍길동',       ex2: '김두루'     },
+      { header: '연락처',           key: 'h', width: 14,  hdr: '연락처',           color: C_OPT,  guide: '예) 010-0000-0000',                                  ex1: '010-1111-2222', ex2: '010-3333-4444' },
+      { header: '이메일',           key: 'i', width: 24,  hdr: '이메일',           color: C_OPT,  guide: '예) brand@example.com',                              ex1: 'ongi@example.com', ex2: 'drm@example.com' },
+      { header: '위탁수수료(%)',    key: 'j', width: 15,  hdr: '위탁수수료(%)',    color: C_COND, guide: '숫자만 입력 (예: 15)\n위탁 거래유형만 입력',          ex1: '15',           ex2: '20'         },
+      { header: '사업자구분',       key: 'k', width: 18,  hdr: '사업자구분',       color: C_COND, guide: '사업자\n또는\n개인 (사업자없음)\n위탁·매입만 입력',   ex1: '개인 (사업자없음)', ex2: '사업자'  },
+      { header: '사업자등록번호',   key: 'l', width: 18,  hdr: '사업자등록번호',   color: C_BIZ,  guide: '000-00-00000\n사업자인 경우만',                       ex1: '',             ex2: '123-45-67890' },
+      { header: '과세유형',         key: 'm', width: 13,  hdr: '과세유형',         color: C_BIZ,  guide: '일반 / 간이\n사업자인 경우만',                        ex1: '',             ex2: '일반'       },
+      { header: '주민등록번호',     key: 'n', width: 18,  hdr: '주민등록번호',     color: C_IND,  guide: '000000-0000000\n개인인 경우만\n(암호화 저장됨)',       ex1: '800101-2000000', ex2: ''          },
+      { header: '은행명',           key: 'o', width: 14,  hdr: '은행명',           color: C_BANK, guide: '예) 국민은행\n위탁·매입 선택 입력',                   ex1: '국민은행',     ex2: '신한은행'   },
+      { header: '예금주명',         key: 'p', width: 14,  hdr: '예금주명',         color: C_BANK, guide: '예금주 성명\n은행명 입력 시 필수',                    ex1: '홍길동',       ex2: '김두루'     },
+      { header: '계좌번호',         key: 'q', width: 20,  hdr: '계좌번호',         color: C_BANK, guide: '하이픈 없이 숫자만\n은행명 입력 시 필수\n(암호화 저장됨)', ex1: '123456789012', ex2: '987654321098' },
     ];
-    ws.columns = cols;
+    var lastCol = 'Q';
+    var totalCols = cols.length;
 
-    // 1행: 제목 안내
-    ws.spliceRows(1, 0, ['GMBS 브랜드 대량 등록 양식 — 3행(작성안내)은 수정 금지. 4행부터 입력. 필수(*) 항목 누락 시 해당 행은 등록되지 않습니다. G열~N열은 위탁·매입 브랜드만 입력하세요.']);
-    ws.getRow(1).height = 24;
-    ws.getCell('A1').font = { bold: true, size: 11, color: { argb: 'ff' + GRAY_TEXT } };
-    ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + GRAY_BG } };
-    ws.mergeCells('A1:N1');
+    ws.columns = cols.map(function(c){ return { key: c.key, width: c.width }; });
 
-    // 2행: 헤더 (보라색 배경, 흰 굵은 글씨)
-    var headerRow = ws.getRow(2);
-    headerRow.values = cols.map(function(c){ return c.header; });
-    headerRow.height = 24;
-    headerRow.eachCell(function(cell) {
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + PURPLE } };
-      cell.font = { bold: true, color: { argb: 'ff' + WHITE }, size: 11 };
+    // 1행: 색상 범례 (섹션별 배경색 + 설명)
+    var legendDefs = [
+      { range: 'A1:C1', color: C_REQ,  label: '● 필수 항목' },
+      { range: 'D1:I1', color: C_OPT,  label: '● 선택 항목 (기본 정보)' },
+      { range: 'J1:K1', color: C_COND, label: '● 위탁·매입 전용' },
+      { range: 'L1:M1', color: C_BIZ,  label: '● 사업자인 경우만' },
+      { range: 'N1:N1', color: C_IND,  label: '● 개인인 경우만' },
+      { range: 'O1:Q1', color: C_BANK, label: '● 정산 정보 (위탁·매입)' },
+    ];
+    legendDefs.forEach(function(ld) {
+      try { ws.mergeCells(ld.range); } catch(e) {}
+      var cell = ws.getCell(ld.range.split(':')[0]);
+      cell.value = ld.label;
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + ld.color } };
+      cell.font = { bold: true, color: { argb: 'ff' + WHITE }, size: 10 };
       cell.alignment = { vertical: 'middle', horizontal: 'center' };
     });
+    ws.getRow(1).height = 22;
 
-    // 3행: 작성 안내 (노란 배경, 줄바꿈 허용)
+    // 2행: 헤더 (섹션별 배경색)
+    var headerRow = ws.getRow(2);
+    headerRow.values = [null].concat(cols.map(function(c){ return c.hdr; }));
+    headerRow.height = 28;
+    cols.forEach(function(c, ci) {
+      var cell = headerRow.getCell(ci + 1);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + c.color } };
+      cell.font = { bold: true, color: { argb: 'ff' + WHITE }, size: 11 };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: false };
+    });
+
+    // 3행: 작성 안내 (노란 배경, 줄바꿈)
     var guideRow = ws.getRow(3);
-    guideRow.values = [
-      '예) 온기', '예) ONG\n(영문대문자·숫자 2~10자, 중복불가)', 'PB / 위탁 / 매입 중 택1',
-      '브랜드 소개 한 줄', 'https://인스타그램주소 등', 'https://웹사이트 등',
-      '숫자만 입력 (예: 15)\n위탁 브랜드만 입력', '사업자 / 개인 (사업자없음)\n위탁·매입만 입력',
-      '000-00-00000\n사업자인 경우만 입력', '일반 / 간이\n사업자인 경우만', '000000-0000000\n개인인 경우만',
-      '예) 국민은행', '예금주 성명', '계좌번호 (하이픈 없이)'
-    ];
-    guideRow.height = 44;
+    guideRow.values = [null].concat(cols.map(function(c){ return c.guide; }));
+    guideRow.height = 60;
     guideRow.eachCell(function(cell) {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ff' + GUIDE_BG } };
       cell.font = { italic: true, color: { argb: 'ff' + GUIDE_TEXT }, size: 10 };
@@ -8836,16 +8860,16 @@
 
     // 4~5행: 예시 데이터
     [
-      ['온기', 'ONG', '위탁', '핸드메이드 소품 브랜드', 'https://instagram.com/ongi_store', '', '15', '개인', '', '', '800101-2000000', '국민은행', '홍길동', '123456789012'],
-      ['두루미상점', 'DRM', '위탁', '수공예 작가', 'https://instagram.com/drm_craft', '', '15', '사업자', '123-45-67890', '일반', '', '신한은행', '김두루', '987654321098'],
+      cols.map(function(c){ return c.ex1; }),
+      cols.map(function(c){ return c.ex2; }),
     ].forEach(function(rowData, i) {
       var r = ws.getRow(4 + i);
-      r.values = rowData;
+      r.values = [null].concat(rowData);
       r.height = 20;
       r.eachCell(function(cell) {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffffff' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'fffafafa' } };
         cell.font = { color: { argb: 'ff374151' }, size: 11 };
-        cell.alignment = { vertical: 'middle' };
+        cell.alignment = { vertical: 'middle', wrapText: false };
       });
     });
 
@@ -8853,13 +8877,19 @@
     for (var ri = 1; ri <= 5; ri++) {
       ws.getRow(ri).eachCell({ includeEmpty: true }, function(cell) {
         cell.border = {
-          top: { style: 'thin', color: { argb: 'ffe5e7eb' } },
-          left: { style: 'thin', color: { argb: 'ffe5e7eb' } },
-          bottom: { style: 'thin', color: { argb: 'ffe5e7eb' } },
-          right: { style: 'thin', color: { argb: 'ffe5e7eb' } }
+          top:    { style: 'thin', color: BORDER_CLR },
+          left:   { style: 'thin', color: BORDER_CLR },
+          bottom: { style: 'thin', color: BORDER_CLR },
+          right:  { style: 'thin', color: BORDER_CLR }
         };
       });
     }
+
+    // 6행: 실제 입력 안내 문구
+    ws.getRow(6).getCell(1).value = '▲ 위 4~5행은 예시입니다. 삭제 후 6행부터 입력하거나, 4행부터 덮어써 주세요.';
+    ws.getRow(6).getCell(1).font = { italic: true, color: { argb: 'ff9ca3af' }, size: 10 };
+    try { ws.mergeCells('A6:' + lastCol + '6'); } catch(e) {}
+    ws.getRow(6).height = 18;
 
     var buf = await wb.xlsx.writeBuffer();
     var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -8983,7 +9013,10 @@
       });
 
       var colIdx = {};
-      ['브랜드명','브랜드코드','거래유형','사업자구분','대표자명','연락처','이메일','SNS','브랜드소개'].forEach(function(k){
+      ['브랜드명','브랜드코드','거래유형','브랜드소개','관련사이트1','관련사이트2',
+       '대표자명','연락처','이메일','위탁수수료','사업자구분',
+       '사업자등록번호','과세유형','주민등록번호','은행명','예금주명','계좌번호'
+      ].forEach(function(k){
         colIdx[k] = headers.findIndex(function(h){ return h.includes(k); });
       });
 
@@ -9012,10 +9045,16 @@
         if (errors.length === 0) { okCount++; codesInFile.add(brandCode); }
         else errCount++;
 
-        results.push({ rowNum: i+1, brandName, brandCode, brandType,
-          bizDiv: get('사업자구분'), ceo: get('대표자명'),
-          phone: get('연락처'), email: get('이메일'), sns: get('SNS'), desc: get('브랜드소개'),
-          errors });
+        results.push({ rowNum: i+1, brandName, brandCode, brandType, errors,
+          desc: get('브랜드소개'),
+          site1: get('관련사이트1'), site2: get('관련사이트2'),
+          ceo: get('대표자명'), phone: get('연락처'), email: get('이메일'),
+          commission: get('위탁수수료'),
+          bizDiv: get('사업자구분'),
+          bizRegNum: get('사업자등록번호'), taxationType: get('과세유형'),
+          residentNum: get('주민등록번호'),
+          bankName: get('은행명'), accountHolder: get('예금주명'), accountNum: get('계좌번호')
+        });
       });
 
       window._bulkBrandValidated = results.filter(function(r){ return r.errors.length === 0; });
@@ -9070,15 +9109,36 @@
       for (var i = 0; i < items.length; i++) {
         var item = items[i];
         if (existingCodes.has(item.brandCode)) { skipped++; continue; }
+        var sites = [item.site1, item.site2].filter(function(s){ return s && s.trim(); });
         var data = {
           brand_name: item.brandName, brand_code: item.brandCode, brand_type: item.brandType,
           brand_desc: item.desc || '',
-          contact_info: { phone: item.phone || '', email: item.email || '', sns: item.sns || '' },
+          website_urls: sites,
+          contact_info: { phone: item.phone || '', email: item.email || '' },
           logo_url: '', last_product_number: '000',
           onboarding_status: '계약 정보 입력 필요', created_at: now, updated_at: now
         };
-        if (item.bizDiv) data.biz_div = item.bizDiv;
         if (item.ceo) data.ceo_name = item.ceo;
+        // 위탁 수수료
+        if (item.brandType === '위탁' && item.commission) {
+          data.fee_info = { commission_rate: parseFloat(item.commission) || 15 };
+        }
+        // 정산 정보 (위탁/매입)
+        if (item.brandType !== 'PB' && item.bizDiv) {
+          var isBiz = item.bizDiv.indexOf('개인') < 0;
+          var si = { business_type: isBiz ? 'business' : 'individual' };
+          if (isBiz) {
+            if (item.bizRegNum) si.business_reg_number = await encryptField(item.bizRegNum);
+            if (item.taxationType) si.taxation_type = item.taxationType;
+          } else {
+            if (item.residentNum) si.resident_number = await encryptField(item.residentNum);
+          }
+          if (item.bankName) si.bank_name = item.bankName;
+          if (item.accountHolder) si.account_holder = item.accountHolder;
+          if (item.accountNum) si.account_number = await encryptField(item.accountNum);
+          data.settlement_info = si;
+          if (si.bank_name) data.onboarding_status = '계약 전';
+        }
         var docRef = await addDoc(collection(db, 'brands'), data);
         existingCodes.add(item.brandCode);
         added++;
