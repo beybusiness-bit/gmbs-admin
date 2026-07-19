@@ -583,7 +583,15 @@
       const item = data?.data?.[0];
       if (!item) throw new Error('응답 없음');
       if (item.b_stt_cd === '01') {
-        hint.innerHTML = '<span style="color:var(--green);">✅ 계속사업자 (과세유형: ' + (item.tax_type || '알 수 없음') + ')</span>';
+        // 과세유형 드롭다운 자동 선택
+        const taxEl = document.getElementById('f-taxation-type');
+        let autoFilled = '';
+        if (taxEl && item.tax_type) {
+          if (item.tax_type.includes('일반')) { taxEl.value = '일반'; autoFilled = ' → 과세유형 자동 입력됨'; }
+          else if (item.tax_type.includes('간이')) { taxEl.value = '간이'; autoFilled = ' → 과세유형 자동 입력됨'; }
+          if (autoFilled) taxEl.dispatchEvent(new Event('change'));
+        }
+        hint.innerHTML = '<span style="color:var(--green);">✅ 계속사업자 (과세유형: ' + esc(item.tax_type || '알 수 없음') + autoFilled + ')</span>';
       } else if (item.b_stt_cd === '02') {
         hint.innerHTML = '<span style="color:#b45309;">⚠ 휴업자</span>';
       } else if (item.b_stt_cd === '03') {
@@ -1999,6 +2007,17 @@
         '</select>' +
         '<div class="form-hint">사업자 유형에 맞게 선택하세요.</div>'),
       '</div>',
+      /* 상호 + 대표자명 */
+      '<div class="form-row" style="margin-bottom:16px;">',
+      formGroup('상호', 'f-corp-name',
+        '<input class="form-input" id="f-corp-name" type="text" placeholder="사업자등록증상 상호명" value="' + esc(si.corp_name || '') + '" />', true),
+      formGroup('대표자명', 'f-representative-name',
+        '<input class="form-input" id="f-representative-name" type="text" placeholder="예: 홍길동" value="' + esc(si.representative_name || '') + '" />', true),
+      '</div>',
+      /* 사업자등록일 */
+      formGroup('사업자등록일', 'f-business-start-date',
+        '<input class="form-input" id="f-business-start-date" type="text" inputmode="numeric" placeholder="YYYYMMDD (예: 20200115)" maxlength="8" value="' + esc(si.business_start_date || '') + '" />' +
+        '<div class="form-hint">사업자등록증에 기재된 개업 연월일 8자리</div>', true),
       /* 부가세 안내 */
       '<div id="section-vat-notice" style="' + (taxType ? '' : 'display:none;') + 'background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px 14px;margin-bottom:14px;">',
       '<div style="font-size:11px;color:#92400e;line-height:1.8;">',
@@ -2153,8 +2172,21 @@
         const keepBizReg = bizType === 'business' && !rawBizReg && (bizRegEl || {}).dataset?.hasEnc === '1';
         const encBizReg = keepBizReg ? (si.business_reg_number || '') : (rawBizReg ? await encryptField(rawBizReg) : '');
 
+        const corpName = bizType === 'business' ? ((document.getElementById('f-corp-name') || {}).value || '').trim() : '';
+        const representativeName = bizType === 'business' ? ((document.getElementById('f-representative-name') || {}).value || '').trim() : '';
+        const businessStartDate = bizType === 'business' ? ((document.getElementById('f-business-start-date') || {}).value || '').trim() : '';
+
+        if (bizType === 'business') {
+          if (!corpName) { showToast('상호를 입력해주세요.', 'error'); btn.disabled = false; btn.innerHTML = '저장'; return; }
+          if (!representativeName) { showToast('대표자명을 입력해주세요.', 'error'); btn.disabled = false; btn.innerHTML = '저장'; return; }
+          if (!businessStartDate) { showToast('사업자등록일을 입력해주세요.', 'error'); btn.disabled = false; btn.innerHTML = '저장'; return; }
+        }
+
         data.settlement_info = {
           business_type: bizType,
+          corp_name: corpName,
+          representative_name: representativeName,
+          business_start_date: businessStartDate,
           address: ((document.getElementById('f-address') || {}).value || '').trim(),
           resident_number: encResident,
           business_reg_number: encBizReg,
@@ -2273,7 +2305,10 @@
             drow('사업자 유형', bizTypeText) +
             drow('주소', esc(si.address || '')) +
             (si.business_type === 'business'
-              ? drow('사업자등록번호', isEncrypted(si.business_reg_number)
+              ? drow('상호', esc(si.corp_name || '')) +
+                drow('대표자명', esc(si.representative_name || '')) +
+                drow('사업자등록일', esc(si.business_start_date || '')) +
+                drow('사업자등록번호', isEncrypted(si.business_reg_number)
                   ? '<div id="bd-biz-reg-wrapper"><button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="revealBrandBizReg(\'' + brandId + '\')">🔓 보기</button></div>'
                   : esc(si.business_reg_number || '')) +
                 drow('과세 유형', esc(si.taxation_type || ''))
