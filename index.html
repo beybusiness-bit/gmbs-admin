@@ -1850,9 +1850,16 @@
       const noticeEl = document.getElementById('section-individual-notice');
       const resEl = document.getElementById('section-resident');
       const bizEl = document.getElementById('section-business-fields');
+      const addrIndEl = document.getElementById('section-address-individual');
       if (noticeEl) noticeEl.style.display = isInd ? '' : 'none';
       if (resEl) resEl.style.display = isInd ? '' : 'none';
       if (bizEl) bizEl.style.display = isInd ? 'none' : '';
+      if (addrIndEl) addrIndEl.style.display = isInd ? '' : 'none';
+      // 사업자↔개인 전환 시 주소값 동기화
+      const bizAddrEl = document.getElementById('f-address-biz');
+      const indAddrEl = document.getElementById('f-address');
+      if (isInd && bizAddrEl && indAddrEl && !indAddrEl.value) indAddrEl.value = bizAddrEl ? bizAddrEl.value : '';
+      if (!isInd && indAddrEl && bizAddrEl && !bizAddrEl.value) bizAddrEl.value = indAddrEl ? indAddrEl.value : '';
     };
     window.onTaxationTypeChange = function() {
       const val = document.getElementById('f-taxation-type') && document.getElementById('f-taxation-type').value;
@@ -1983,7 +1990,7 @@
       formGroup('주민등록번호', 'f-resident',
         '<input class="form-input" id="f-resident" type="text" inputmode="numeric" autocomplete="off" oninput="onResidentNumInput(this)" onblur="onResidentNumBlur(this)" onfocus="onResidentNumFocus(this)" ' + (isEncrypted(si.resident_number) ? 'placeholder="암호화 보관 중 · 변경 시 재입력" data-has-enc="1"' : 'value="' + esc(si.resident_number || '') + '" placeholder="000000-0000000" data-actual="' + esc(si.resident_number || '') + '"') + ' />' +
         '<div id="resident-num-hint" style="font-size:11px;margin-top:4px;"></div>' +
-        '<div class="form-hint">⚠️ 원천징수 세금신고 목적으로만 사용 · 암호화 보관 · 5년 후 파기</div>'),
+        '<div class="form-hint">⚠️ 원천징수 세금신고 목적으로만 사용 · 암호화 보관 · 5년 후 파기</div>', true),
       '</div>',
       '<div class="form-hint" style="margin-bottom:14px;line-height:1.8;">🔒 주민등록번호는 소득세법에 따른 원천징수 의무 이행을 위해서만 수집됩니다. 안전하게 저장되며, 세무법정 보관 기간(5년) 이후 파기됩니다.</div>',
       '</div>',
@@ -1998,14 +2005,14 @@
         '<div id="biz-reg-num-hint" style="font-size:11px;margin-top:4px;"></div>' +
         '</div>' +
         '<button type="button" id="btn-verify-biz-num" onclick="verifyBusinessNumber()" style="white-space:nowrap;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:var(--gray-700);flex-shrink:0;margin-top:0;">사업자 확인</button>' +
-        '</div>'),
+        '</div>', true),
       formGroup('과세 유형', 'f-taxation-type',
         '<select class="form-select" id="f-taxation-type" onchange="onTaxationTypeChange()">' +
         '<option value=""' + (!taxType ? ' selected' : '') + '>선택 안 함</option>' +
         '<option value="일반"' + (taxType === '일반' ? ' selected' : '') + '>일반 과세</option>' +
         '<option value="간이"' + (taxType === '간이' ? ' selected' : '') + '>간이 과세</option>' +
         '</select>' +
-        '<div class="form-hint">사업자 유형에 맞게 선택하세요.</div>'),
+        '<div class="form-hint">사업자 유형에 맞게 선택하세요.</div>', true),
       '</div>',
       /* 상호 + 대표자명 */
       '<div class="form-row" style="margin-bottom:16px;">',
@@ -2018,7 +2025,10 @@
       formGroup('사업자등록일', 'f-business-start-date',
         '<input class="form-input" id="f-business-start-date" type="text" inputmode="numeric" placeholder="YYYYMMDD (예: 20200115)" maxlength="8" value="' + esc(si.business_start_date || '') + '" />' +
         '<div class="form-hint">사업자등록증에 기재된 개업 연월일 8자리</div>', true),
-      /* 부가세 안내 */
+      /* 사업장 주소 (사업자 섹션 안으로 이동) */
+      formGroup('사업장 주소', 'f-address-biz',
+        '<input class="form-input" id="f-address-biz" type="text" placeholder="사업장 주소" value="' + esc(si.address || '') + '" />', true),
+      /* 부가세 안내 — 사업장 주소 아래 */
       '<div id="section-vat-notice" style="' + (taxType ? '' : 'display:none;') + 'background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px 14px;margin-bottom:14px;">',
       '<div style="font-size:11px;color:#92400e;line-height:1.8;">',
       '⚠️ 상품의 판매가격 × 판매건으로 부가세 신고 및 납부처리해주셔야 합니다.<br>',
@@ -2027,19 +2037,21 @@
       '</div>',
       '</div>',
 
-      /* 주소 */
+      /* 주소 (개인용) */
+      '<div id="section-address-individual" style="' + (bizType === 'individual' ? '' : 'display:none;') + '">',
       formGroup('주소', 'f-address',
-        '<input class="form-input" id="f-address" type="text" placeholder="사업장 또는 거주지 주소" value="' + esc(si.address || '') + '" />'),
+        '<input class="form-input" id="f-address" type="text" placeholder="거주지 주소" value="' + esc(si.address || '') + '" />', true),
+      '</div>',
 
       /* 통장 정보 */
       '<div class="form-row">',
       formGroup('은행', 'f-bank-name',
-        '<input class="form-input" id="f-bank-name" type="text" placeholder="예: 국민은행" value="' + esc(si.bank_name || '') + '" />'),
+        '<input class="form-input" id="f-bank-name" type="text" placeholder="예: 국민은행" value="' + esc(si.bank_name || '') + '" />', true),
       formGroup('예금주명', 'f-account-holder',
-        '<input class="form-input" id="f-account-holder" type="text" placeholder="예: 홍길동" value="' + esc(si.account_holder || '') + '" />'),
+        '<input class="form-input" id="f-account-holder" type="text" placeholder="예: 홍길동" value="' + esc(si.account_holder || '') + '" />', true),
       '</div>',
       '<div class="form-group">',
-      '<label class="form-label" for="f-account-number">계좌번호</label>',
+      '<label class="form-label" for="f-account-number">계좌번호 <span style="color:var(--red)">*</span></label>',
       '<input class="form-input" id="f-account-number" type="text" oninput="onAccountNumInput(this)" ' + (isEncrypted(si.account_number) ? 'placeholder="암호화 보관 중 · 변경 시 재입력" data-has-enc="1"' : 'value="' + esc(si.account_number || '') + '" placeholder="- 없이 숫자만 입력"') + ' />',
       '</div>',
 
@@ -2175,24 +2187,41 @@
         const corpName = bizType === 'business' ? ((document.getElementById('f-corp-name') || {}).value || '').trim() : '';
         const representativeName = bizType === 'business' ? ((document.getElementById('f-representative-name') || {}).value || '').trim() : '';
         const businessStartDate = bizType === 'business' ? ((document.getElementById('f-business-start-date') || {}).value || '').trim() : '';
+        const addressBiz = bizType === 'business' ? ((document.getElementById('f-address-biz') || {}).value || '').trim() : '';
+        const addressInd = bizType === 'individual' ? ((document.getElementById('f-address') || {}).value || '').trim() : '';
+        const address = bizType === 'business' ? addressBiz : addressInd;
+        const taxationTypeVal = bizType === 'business' ? ((document.getElementById('f-taxation-type') || {}).value || '') : '';
+        const bankName = ((document.getElementById('f-bank-name') || {}).value || '').trim();
+        const accountHolder = ((document.getElementById('f-account-holder') || {}).value || '').trim();
 
+        // 필수값 검증
+        const err = (msg) => { showToast(msg, 'error'); btn.disabled = false; btn.innerHTML = '저장'; };
         if (bizType === 'business') {
-          if (!corpName) { showToast('상호를 입력해주세요.', 'error'); btn.disabled = false; btn.innerHTML = '저장'; return; }
-          if (!representativeName) { showToast('대표자명을 입력해주세요.', 'error'); btn.disabled = false; btn.innerHTML = '저장'; return; }
-          if (!businessStartDate) { showToast('사업자등록일을 입력해주세요.', 'error'); btn.disabled = false; btn.innerHTML = '저장'; return; }
+          if (!rawBizReg && !keepBizReg) return err('사업자등록번호를 입력해주세요.');
+          if (!taxationTypeVal) return err('과세 유형을 선택해주세요.');
+          if (!corpName) return err('상호를 입력해주세요.');
+          if (!representativeName) return err('대표자명을 입력해주세요.');
+          if (!businessStartDate) return err('사업자등록일을 입력해주세요.');
+          if (!addressBiz) return err('사업장 주소를 입력해주세요.');
+        } else {
+          if (!rawResident && !keepResident) return err('주민등록번호를 입력해주세요.');
+          if (!addressInd) return err('주소를 입력해주세요.');
         }
+        if (!bankName) return err('은행을 입력해주세요.');
+        if (!accountHolder) return err('예금주명을 입력해주세요.');
+        if (!rawAccount && !keepAccount) return err('계좌번호를 입력해주세요.');
 
         data.settlement_info = {
           business_type: bizType,
           corp_name: corpName,
           representative_name: representativeName,
           business_start_date: businessStartDate,
-          address: ((document.getElementById('f-address') || {}).value || '').trim(),
+          address,
           resident_number: encResident,
           business_reg_number: encBizReg,
-          taxation_type: bizType === 'business' ? ((document.getElementById('f-taxation-type') || {}).value || '') : '',
-          bank_name: ((document.getElementById('f-bank-name') || {}).value || '').trim(),
-          account_holder: ((document.getElementById('f-account-holder') || {}).value || '').trim(),
+          taxation_type: taxationTypeVal,
+          bank_name: bankName,
+          account_holder: accountHolder,
           account_number: encAccount,
           id_card_url: idCardUrl,
           bank_book_url: bankBookUrl,
