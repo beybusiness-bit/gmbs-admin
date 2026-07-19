@@ -390,7 +390,7 @@
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
   import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-  import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, collectionGroup, getDocs, query, where, orderBy, limit, runTransaction, writeBatch, arrayUnion, arrayRemove } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+  import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, collectionGroup, getDocs, query, where, orderBy, limit, runTransaction, writeBatch, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
   import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
   import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 
@@ -3944,7 +3944,7 @@
     // brand_types 중 활성 계약이 없는 유형 — 해지/제거 버튼 표시
     const activeContractTypes = new Set(
       contracts
-        .filter(c => !['계약기간만료','계약해지'].includes(c.contract_status || '계약정보입력'))
+        .filter(c => !['계약기간만료','계약해지','계약취소'].includes(c.contract_status || '계약정보입력'))
         .map(c => c.contract_type)
         .filter(Boolean)
     );
@@ -3970,6 +3970,11 @@
     if (!confirm('"' + contractType + '" 입점 유형을 브랜드에서 제거하시겠습니까?\n관련 계약서가 없는 유형만 제거됩니다.')) return;
     try {
       await removeContractTypeFromBrand(brandId, contractType);
+      // 레거시 단일 brand_type 필드도 같은 값이면 함께 제거
+      const brandSnap = await getDoc(doc(db, 'brands', brandId));
+      if (brandSnap.exists() && brandSnap.data().brand_type === contractType) {
+        await updateDoc(doc(db, 'brands', brandId), { brand_type: deleteField() });
+      }
       showToast('"' + contractType + '" 유형이 제거되었습니다.', 'success');
       loadBrandContracts(brandId);
     } catch(e) {
@@ -4000,7 +4005,7 @@
       if (hasUcansign && isSent) {
         // 유캔사인 발송 취소는 functions 콜러블 함수 경유
         try {
-          const fn = httpsCallable(functions, 'cancelContractCallable');
+          const fn = httpsCallable(fns, 'cancelContractCallable');
           await fn({ brandId, contractId, ucansignDocumentId: contractData.ucansign_document_id });
         } catch(fnErr) {
           // 콜러블 실패 시에도 로컬 상태는 업데이트 (서명 취소 실패는 별도 확인 필요)
