@@ -3447,6 +3447,25 @@
 
   /* ── 계약 만료 처리 ── */
   // 계약 만료/해지 시 brand_types에서 해당 유형 제거, 비면 입점종료로 전환
+  async function addContractTypeToBrand(brandId, contractType) {
+    if (!contractType) return;
+    try {
+      const brandSnap = await getDoc(doc(db, 'brands', brandId));
+      if (!brandSnap.exists()) return;
+      const brand = brandSnap.data();
+      const currentTypes = Array.isArray(brand.brand_types) ? brand.brand_types : (brand.brand_type ? [brand.brand_type] : []);
+      if (currentTypes.includes(contractType)) return; // already present
+      const newTypes = [...currentTypes, contractType];
+      const updatePayload = { brand_types: newTypes, updated_at: today() };
+      // 처음 계약이 완료되면 onboarding_status → 입점중
+      if (brand.onboarding_status === '승인됨') {
+        updatePayload.onboarding_status = '입점중';
+        updatePayload.onboarding_status_changed_at = today();
+      }
+      await updateDoc(doc(db, 'brands', brandId), updatePayload);
+    } catch(e2) {}
+  }
+
   async function removeContractTypeFromBrand(brandId, contractType) {
     if (!contractType) return;
     try {
@@ -3471,13 +3490,27 @@
   }
 
   window.expireContract = async function(brandId, contractId) {
-    if (!confirm('이 계약을 만료 처리하시겠습니까?\n체결완료 → 만료로 상태가 변경됩니다.')) return;
+    if (!confirm('이 계약을 만료 처리하시겠습니까?\n계약 상태가 만료로 변경되고 브랜드 거래 유형에서 제거됩니다.')) return;
     try {
       const cSnap = await getDoc(doc(db, 'brands', brandId, 'contracts', contractId));
       const contractType = cSnap.exists() ? cSnap.data().contract_type : null;
       await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), { contract_status: '계약기간만료', updated_at: today() });
       await removeContractTypeFromBrand(brandId, contractType);
       showToast('계약이 만료 처리되었습니다.', 'success');
+      openBrandDetail(brandId);
+    } catch(e) {
+      showToast('처리 실패: ' + esc(e.message), 'error');
+    }
+  };
+
+  window.completeContract = async function(brandId, contractId) {
+    if (!confirm('이 계약을 체결 완료 처리하시겠습니까?\n계약 유형이 브랜드 거래 유형 목록에 자동으로 추가됩니다.')) return;
+    try {
+      const cSnap = await getDoc(doc(db, 'brands', brandId, 'contracts', contractId));
+      const contractType = cSnap.exists() ? cSnap.data().contract_type : null;
+      await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), { contract_status: '계약완료', updated_at: today() });
+      await addContractTypeToBrand(brandId, contractType);
+      showToast('계약이 체결 완료 처리되었습니다.', 'success');
       openBrandDetail(brandId);
     } catch(e) {
       showToast('처리 실패: ' + esc(e.message), 'error');
@@ -3753,24 +3786,32 @@
       '발송실패': '<span class="badge badge-red">⚠️ 발송실패</span>',
     }[s] || '<span class="badge badge-gray">📄 발송대기</span>');
 
-    // 최상단: 전자계약 발송 버튼 (계약 여부와 무관하게 항상 노출)
+    // 최상단: 계약 추가 버튼들
     let html =
-      '<div style="display:flex;justify-content:flex-end;margin-bottom:14px;">' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:14px;">' +
+      '<button class="btn btn-secondary" style="font-size:12px;padding:6px 14px;" onclick="openContractModal(\'' + brandId + '\')">📝 계약 정보 입력</button>' +
       '<button class="btn btn-primary" style="font-size:12px;padding:6px 14px;" onclick="openSendContractModal(\'' + brandId + '\')">📨 전자계약 발송</button>' +
       '</div>';
 
     if (contracts.length === 0) {
-      html += '<div style="font-size:13px;color:var(--gray-400);padding:4px 0;">발송된 계약이 없습니다.</div>';
+      html += '<div style="font-size:13px;color:var(--gray-400);padding:4px 0;">등록된 계약이 없습니다.</div>';
     } else {
       contracts.forEach(c => {
         const ucStatus = c.status || '';
+        const cStatus = c.contract_status || '계약정보입력';
         const canResend = ucStatus === '취소됨' || ucStatus === '발송실패';
-        const isActive = !ucStatus || ucStatus === '발송대기' || ucStatus === '발송됨' || ucStatus === '서명진행중';
+        const isManuallyCompleted = cStatus === '계약완료' && !ucStatus;
+        const isUcansignCompleted = ucStatus === '체결완료';
+        const isCompleted = isManuallyCompleted || isUcansignCompleted;
+        const isExpired = cStatus === '계약기간만료' || cStatus === '해지';
+        const contractTypeBadge = c.contract_type ? '<span class="badge badge-blue" style="font-size:10px;">' + esc(c.contract_type) + '</span>' : '';
+        const contractStatusBadge = { '계약정보입력': '<span class="badge badge-gray" style="font-size:10px;">계약정보입력</span>', '계약완료': '<span class="badge badge-green" style="font-size:10px;">계약완료</span>', '계약기간만료': '<span class="badge badge-gray" style="font-size:10px;">만료</span>', '해지': '<span class="badge badge-red" style="font-size:10px;">해지</span>' }[cStatus] || '';
         html +=
           '<div style="padding:14px 0;border-bottom:1px solid var(--gray-100);">' +
           '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">' +
           '<span style="font-size:12px;font-weight:700;color:var(--gray-700);">v' + esc(String(c.version || 1)) + '</span>' +
-          eSignBadge(ucStatus) +
+          contractTypeBadge +
+          (ucStatus ? eSignBadge(ucStatus) : contractStatusBadge) +
           (c.participant_name ? '<span style="font-size:12px;color:var(--gray-600);">서명자: ' + esc(c.participant_name) + '</span>' : '') +
           '</div>' +
           '<div style="font-size:12px;color:var(--gray-500);margin-bottom:8px;line-height:1.8;">' +
@@ -3783,10 +3824,13 @@
           (canResend
             ? '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;margin-right:6px;" onclick="openSendContractModal(\'' + brandId + '\')">🔄 재발송</button>'
             : '') +
-          (ucStatus === '체결완료' && c.contract_status !== '만료' && c.contract_status !== '해지'
+          (!ucStatus && cStatus === '계약정보입력'
+            ? '<button class="btn btn-primary" style="font-size:11px;padding:4px 10px;margin-right:6px;" onclick="completeContract(\'' + brandId + '\',\'' + c.id + '\')">✅ 계약 완료 처리</button>'
+            : '') +
+          (isCompleted && !isExpired
             ? '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;margin-right:6px;color:var(--gray-500);" onclick="expireContract(\'' + brandId + '\',\'' + c.id + '\')">📋 만료 처리</button>'
             : '') +
-          (ucStatus === '체결완료'
+          (isUcansignCompleted
             ? (c.signed_pdf_url
                 ? '<a href="' + esc(c.signed_pdf_url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size:11px;padding:4px 10px;margin-right:6px;">📄 계약서 PDF</a>'
                 : '<span style="font-size:11px;color:var(--gray-400);margin-right:8px;">PDF 자동저장 대기중</span>')
