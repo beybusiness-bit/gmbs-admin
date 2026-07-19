@@ -3901,7 +3901,7 @@
         const bdOnComplete = 'function(){loadBrandContracts(\'' + brandId + '\')}';
         let actionBtns = '';
         if (cStatus === '계약정보입력') {
-          actionBtns = '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="checkContractReadiness(\'' + brandId + '\',\'' + c.id + '\',\'' + esc(c.contract_type || '') + '\',' + bdOnComplete + ')">📋 발송 준비 확인</button>';
+          actionBtns = '<span style="font-size:11px;color:var(--orange);">⚠️ 담당자·계약기간·템플릿 확인 후 자동 전환됩니다</span>';
         } else if (cStatus === '계약발송전') {
           actionBtns = '<button class="btn btn-primary" style="font-size:11px;padding:4px 10px;" onclick="openSendContractModal(\'' + brandId + '\',\'' + c.id + '\',' + bdOnComplete + ')">📨 전자계약 발송</button>';
         } else if (['서명진행중','계약완료','계약기간만료'].includes(cStatus) || ucStatus === '체결완료') {
@@ -3971,65 +3971,48 @@
   };
 
   // 계약정보입력 → 계약발송전 준비 확인
-  window.checkContractReadiness = async function(brandId, contractId, contractType, onComplete) {
-    try {
-      const [contractSnap, personsSnap, templatesSnap] = await Promise.all([
-        getDoc(doc(db, 'brands', brandId, 'contracts', contractId)),
-        getDocs(collection(db, 'brands', brandId, 'persons')),
-        getDocs(collection(db, 'contract_templates')),
-      ]);
-      if (!contractSnap.exists()) { showToast('계약 문서를 찾을 수 없습니다.', 'error'); return; }
-      const contract = contractSnap.data();
-      const pm = personsSnap.docs.map(d => ({ id: d.id, ...d.data() })).find(p => p.role === '주관리자' && p.active !== false);
-      const activeTemplates = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => t.is_active !== false);
+  // 계약 발송 준비 여부 확인 후 자동 승격 — UI 없이 조용히 실행
+  // returns: issues 배열 (빈 배열이면 승격 성공)
+  async function autoPromoteContractIfReady(brandId, contractId) {
+    const [contractSnap, personsSnap, templatesSnap] = await Promise.all([
+      getDoc(doc(db, 'brands', brandId, 'contracts', contractId)),
+      getDocs(collection(db, 'brands', brandId, 'persons')),
+      getDocs(collection(db, 'contract_templates')),
+    ]);
+    if (!contractSnap.exists()) return ['계약 문서를 찾을 수 없습니다.'];
+    const contract = contractSnap.data();
+    const pm = personsSnap.docs.map(d => ({ id: d.id, ...d.data() })).find(p => p.role === '주관리자' && p.active !== false);
+    const activeTemplates = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => t.is_active !== false);
 
-      const issues = [];
-      if (!contract.start_date) issues.push('계약 기간 (시작일) 미설정 — 계약 정보 수정에서 입력해주세요.');
-      if (!contract.end_at && !contract.end_date) issues.push('계약 기간 (종료일) 미설정 — 계약 정보 수정에서 입력해주세요.');
-      if (!pm) issues.push('주관리자 미등록 — 담당자 정보에서 주관리자를 추가해주세요.');
-      else {
-        if (!pm.name) issues.push('주관리자 이름 미입력 — 담당자 정보에서 이름을 입력해주세요.');
-        if (!pm.phone && !pm.contact_email) issues.push('주관리자 전화번호/이메일 미입력 — 담당자 정보에서 입력해주세요.');
-      }
-      if (activeTemplates.length === 0) {
-        issues.push('활성화된 계약서 템플릿 없음 — 설정 → 계약서 템플릿에서 추가해주세요.');
-      } else {
-        const hasConfigured = activeTemplates.some(t => t.sender_params && t.sender_params.name && t.receiver_params && t.receiver_params.name);
-        if (!hasConfigured) issues.push('계약서 템플릿에 발신인/수신인 파라미터 미설정 — 설정 → 계약서 템플릿에서 ✍️ 서명 참여자 파라미터를 입력해주세요.');
-      }
+    const issues = [];
+    if (!contract.signed_at && !contract.start_date) issues.push('계약 시작일 미설정');
+    if (!contract.end_at && !contract.end_date) issues.push('계약 종료일 미설정');
+    if (!pm) issues.push('주관리자 미등록');
+    else {
+      if (!pm.name) issues.push('주관리자 이름 미입력');
+      if (!pm.phone && !pm.contact_email) issues.push('주관리자 전화번호/이메일 미입력');
+    }
+    if (activeTemplates.length === 0) issues.push('활성화된 계약서 템플릿 없음');
 
-      if (issues.length > 0) {
-        const body =
-          '<div style="margin-bottom:12px;font-size:13px;color:var(--gray-700);">아래 항목을 먼저 완료해야 전자계약 발송이 가능합니다:</div>' +
-          '<div style="display:flex;flex-direction:column;gap:8px;">' +
-          issues.map(i => '<div style="display:flex;gap:8px;padding:8px 12px;background:var(--gray-50);border-radius:8px;border-left:3px solid var(--orange);font-size:13px;">' +
-            '<span>⚠️</span><span>' + esc(i) + '</span></div>').join('') +
-          '</div>';
-        showModal('발송 준비 확인', body, '<button class="btn btn-secondary" onclick="closeModal()">확인</button>');
-        return;
-      }
-
-      if (!confirm('모든 정보가 확인되었습니다. 계약 상태를 "계약발송전"으로 변경할까요?')) return;
+    if (issues.length === 0) {
       await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), {
         contract_status: '계약발송전',
         updated_at: today(),
       });
       await writeActivityLog(brandId, 'contract', contractId, 'status_changed', '계약정보입력', { contract_status: '계약발송전' });
-      showToast('계약 상태가 "계약발송전"으로 변경되었습니다.', 'success');
-      if (typeof onComplete === 'function') onComplete(); else loadBrandContracts(brandId);
-    } catch(e) {
-      showToast('준비 확인 실패: ' + e.message, 'error');
     }
-  };
+    return issues;
+  }
 
   // 전자계약 발송 모달 — 템플릿 선택 · 발송 정보 미리보기 · 발송
   window.openSendContractModal = async function(brandId, contractId, onComplete) {
     showModal('전자계약 발송', '<div class="spinner" style="margin:40px auto;"></div>', '', 'lg');
     try {
-      const [brandSnap, personsSnap, templatesSnap] = await Promise.all([
+      const [brandSnap, personsSnap, templatesSnap, contractSnap] = await Promise.all([
         getDoc(doc(db, 'brands', brandId)),
         getDocs(collection(db, 'brands', brandId, 'persons')),
         getDocs(collection(db, 'contract_templates')),
+        contractId ? getDoc(doc(db, 'brands', brandId, 'contracts', contractId)) : Promise.resolve(null),
       ]);
       if (!brandSnap.exists()) { showToast('브랜드 정보를 찾을 수 없습니다.', 'error'); closeModal(); return; }
       const brand = { id: brandId, ...brandSnap.data() };
@@ -4059,8 +4042,18 @@
         return;
       }
 
+      // 계약 문서 기존 기간 정보
+      const contractData = (contractSnap && contractSnap.exists()) ? contractSnap.data() : {};
+      const existingStart = contractData.signed_at || contractData.start_date || '';
+      const existingEnd = contractData.end_at || contractData.end_date || '';
+      const existingAutoRenew = contractData.auto_renew || false;
+      const existingType = contractData.contract_type || '';
+      const periodDisplay =
+        (existingStart ? existingStart : '시작일 미설정') + ' ~ ' + (existingEnd ? existingEnd : '종료일 미설정') +
+        (existingAutoRenew ? ' · 자동 갱신' : '');
+
       // 공유 데이터 저장 (템플릿 변경 시 재사용)
-      window._scCtx = { brand, si, sinfo, pm, templates, brandId, contractId, onComplete };
+      window._scCtx = { brand, si, sinfo, pm, templates, brandId, contractId, onComplete, contractData };
 
       const templateOpts = templates.map(t => '<option value="' + esc(t.id) + '">' + esc(t.name || t.id) + '</option>').join('');
 
@@ -4070,25 +4063,20 @@
 
         '<div id="sc-params-preview" style="background:var(--gray-50);border-radius:10px;padding:14px 16px;margin-bottom:14px;font-size:12px;color:var(--gray-400);">템플릿을 선택하면 발송 정보가 표시됩니다.</div>' +
 
-        '<div style="background:var(--gray-50);border-radius:10px;padding:14px 16px;margin-bottom:14px;">' +
-        '<div style="font-size:12px;font-weight:600;color:var(--gray-600);margin-bottom:10px;">계약 기간 설정</div>' +
-        '<div class="form-group"><label class="form-label">기간 입력 방식</label>' +
-        '<div style="display:flex;gap:16px;">' +
-        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;"><input type="radio" name="sc-period-type" value="months" onchange="onSendContractPeriodTypeChange()" checked /> 서명일로부터 N개월</label>' +
-        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;"><input type="radio" name="sc-period-type" value="date" onchange="onSendContractPeriodTypeChange()" /> 종료일 직접 지정</label>' +
-        '</div></div>' +
-        '<div id="sc-period-months-wrap" class="form-group"><label class="form-label">계약 기간</label>' +
-        '<div style="display:flex;align-items:center;gap:8px;"><input class="form-input" id="sc-period-months" type="number" min="1" max="120" value="12" style="width:100px;" />' +
-        '<span style="font-size:13px;color:var(--gray-600);">개월</span></div></div>' +
-        '<div id="sc-period-date-wrap" class="form-group" style="display:none;"><label class="form-label">계약 종료일</label>' +
-        '<input class="form-input" id="sc-period-date" type="date" style="max-width:200px;" /></div>' +
-        '<div class="form-group" style="margin-bottom:0;display:flex;align-items:center;gap:8px;">' +
-        '<input type="checkbox" id="sc-auto-renew" style="accent-color:var(--blue);" />' +
-        '<label for="sc-auto-renew" style="font-size:13px;color:var(--gray-700);cursor:pointer;">자동 갱신</label></div></div>' +
+        '<div style="background:var(--gray-50);border-radius:10px;padding:12px 16px;margin-bottom:14px;">' +
+        '<div style="font-size:12px;font-weight:600;color:var(--gray-600);margin-bottom:6px;">계약 정보</div>' +
+        '<div style="display:grid;grid-template-columns:100px 1fr;gap:4px;font-size:12px;">' +
+        (existingType ? '<span style="color:var(--gray-500);">계약 유형</span><span>' + esc(existingType) + '</span>' : '') +
+        '<span style="color:var(--gray-500);">계약 기간</span><span>' + esc(periodDisplay) + '</span>' +
+        '</div>' +
+        '<div style="margin-top:8px;font-size:11px;color:var(--gray-400);">기간은 계약 추가 시 입력한 정보로 자동 적용됩니다. 수정이 필요하면 계약 정보를 먼저 수정해주세요.</div>' +
+        '</div>' +
 
         '<div class="form-group" style="margin-top:8px;">' +
         '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--gray-600);">' +
-        '<input type="checkbox" id="sc-testmode" /> 테스트 모드 (포인트 차감 없음 · 워터마크 표시)</label></div>';
+        '<input type="checkbox" id="sc-testmode" /> 테스트 모드 (포인트 차감 없음 · 워터마크 표시)</label>' +
+        '<div style="margin-top:6px;margin-left:24px;font-size:11px;color:var(--gray-400);">⚠️ 테스트 모드로 진행된 서명은 법적 효력이 없습니다. 실제 계약 체결 시에는 반드시 테스트 모드를 해제해주세요.</div>' +
+        '</div>';
 
       const footer =
         '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
@@ -4101,14 +4089,6 @@
       showToast('로드 실패: ' + e.message, 'error');
       closeModal();
     }
-  };
-
-  window.onSendContractPeriodTypeChange = function() {
-    const type = (document.querySelector('input[name="sc-period-type"]:checked') || {}).value || 'months';
-    const mw = document.getElementById('sc-period-months-wrap');
-    const dw = document.getElementById('sc-period-date-wrap');
-    if (mw) mw.style.display = type === 'months' ? '' : 'none';
-    if (dw) dw.style.display = type === 'date' ? '' : 'none';
   };
 
   // 템플릿 변경 시 발송 정보 미리보기 업데이트
@@ -4169,17 +4149,12 @@
     if (!signingContact) { showToast('수신인 연락처를 확인해주세요. 주관리자 전화번호/이메일이 없습니다.', 'error'); return; }
 
     const testMode = (document.getElementById('sc-testmode') || {}).checked || false;
-    const periodType = (document.querySelector('input[name="sc-period-type"]:checked') || {}).value || 'months';
-    const periodMonths = periodType === 'months' ? (parseInt(((document.getElementById('sc-period-months') || {}).value || '12')) || 12) : null;
-    const periodEndAt = periodType === 'date' ? (((document.getElementById('sc-period-date') || {}).value || '') || null) : null;
-    const autoRenew = (document.getElementById('sc-auto-renew') || {}).checked || false;
-
     const ctx = window._scCtx || {};
     const brandId = ctx.brandId;
     let contractId = ctx.contractId;
     if (!brandId) { showToast('브랜드 정보를 찾을 수 없습니다.', 'error'); return; }
 
-    // 기존 계약 문서가 없으면 새로 생성, 있으면 업데이트
+    // 기존 계약 문서가 없으면 새로 생성, 있으면 업데이트 (기간/자동갱신은 이미 계약 추가 시 설정됨 — 덮어쓰지 않음)
     try {
       if (contractId) {
         const updateData = {
@@ -4191,11 +4166,8 @@
           fields: resolved.resolvedFields,
           contract_status: '계약발송전',
           test_mode: testMode,
-          auto_renew: autoRenew,
           updated_at: today(),
         };
-        if (periodMonths !== null) updateData.period_months = periodMonths;
-        if (periodEndAt !== null) updateData.end_at = periodEndAt;
         await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), updateData);
       } else {
         const existingSnap = await getDocs(collection(db, 'brands', brandId, 'contracts'));
@@ -4210,12 +4182,9 @@
           fields: resolved.resolvedFields,
           contract_status: '계약발송전',
           test_mode: testMode,
-          auto_renew: autoRenew,
           created_at: today(),
           updated_at: today(),
         };
-        if (periodMonths !== null) newData.period_months = periodMonths;
-        if (periodEndAt !== null) newData.end_at = periodEndAt;
         const ref = await addDoc(collection(db, 'brands', brandId, 'contracts'), newData);
         contractId = ref.id;
       }
@@ -4502,7 +4471,21 @@
         } catch(e2) {}
       }
 
-      showToast(contractId ? '계약을 수정했습니다.' : '계약을 추가했습니다.');
+      // 새 계약 추가 시: 발송 준비 조건을 자동 확인 → 다 갖춰졌으면 바로 '계약발송전'으로 승격
+      if (!contractId) {
+        try {
+          const issues = await autoPromoteContractIfReady(brandId, savedContractId);
+          if (issues.length === 0) {
+            showToast('계약을 추가하고 발송 전 단계로 전환했습니다. 전자계약 발송 버튼을 눌러 발송하세요.', 'success');
+          } else {
+            showToast('계약을 추가했습니다. 누락 정보(' + issues.join(', ') + ')를 채우면 발송 준비가 완료됩니다.', 'info');
+          }
+        } catch(e2) {
+          showToast('계약을 추가했습니다.', 'success');
+        }
+      } else {
+        showToast('계약을 수정했습니다.');
+      }
       openBrandDetail(brandId);
     } catch(e) {
       if (btn) { btn.disabled = false; btn.textContent = contractId ? '저장' : '추가'; }
@@ -8340,7 +8323,7 @@
       const cmOnComplete = 'function(){loadCmContractsList()}';
       let actionBtns = '';
       if (cStatus === '계약정보입력') {
-        actionBtns = '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="checkContractReadiness(\'' + c.brandId + '\',\'' + c.id + '\',\'' + esc(c.contract_type || '') + '\',' + cmOnComplete + ')">📋 발송 준비 확인</button>';
+        actionBtns = '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="openBrandDetail(\'' + c.brandId + '\')">브랜드 상세</button>';
       } else if (cStatus === '계약발송전') {
         actionBtns = '<button class="btn btn-primary" style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="openSendContractModal(\'' + c.brandId + '\',\'' + c.id + '\',' + cmOnComplete + ')">📨 전자계약 발송</button>';
       } else if (['서명진행중','계약완료','계약기간만료'].includes(cStatus)) {
