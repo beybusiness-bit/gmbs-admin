@@ -1749,7 +1749,8 @@
         (b.brand_name || '').toLowerCase().includes(term) ||
         (b.brand_code || '').toLowerCase().includes(term);
       const matchType = !typeFilter || (Array.isArray(b.brand_types) ? b.brand_types.includes(typeFilter) : b.brand_type === typeFilter);
-      const matchOnboarding = !onboardingFilter || b.onboarding_status === onboardingFilter;
+      const normalizeStatus = s => (s === '승인됨' ? '승인' : s);
+      const matchOnboarding = !onboardingFilter || normalizeStatus(b.onboarding_status || '심사중') === onboardingFilter;
       const isActive = b.active !== false;
       const matchActive = activeFilter === 'all'
         || (activeFilter === 'active' ? isActive : false)
@@ -1982,10 +1983,10 @@
       '<div class="form-section" id="section-settlement">',
       '<div class="form-section-title">계약 및 정산 정보 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택사항 — 나중에 추가해도 됩니다</span></div>',
 
-      /* 위탁판매대행수수료 (위탁만) */
+      /* 위탁판매수수료 (위탁만) */
       '<div id="section-commission">',
       '<div class="form-row">',
-      formGroup('위탁판매대행수수료 (%)', 'f-commission',
+      formGroup('위탁판매수수료 (%)', 'f-commission',
         '<input class="form-input" id="f-commission" type="number" min="0" max="100" step="0.1" value="' + (fi.commission_rate !== undefined ? fi.commission_rate : 15) + '" />' +
         '<div class="form-hint">기본값 10%. 판매 금액의 몇 %를 수수료로 받을지 입력.</div>'),
       '</div>',
@@ -2042,7 +2043,7 @@
         '<option value="일반"' + (taxType === '일반' ? ' selected' : '') + '>일반 과세</option>' +
         '<option value="간이"' + (taxType === '간이' ? ' selected' : '') + '>간이 과세</option>' +
         '</select>' +
-        '<div class="form-hint">사업자 유형에 맞게 선택하세요.</div>', true),
+        '<div class="form-hint">사업자 여부에 맞게 선택하세요.</div>', true),
       '</div>',
       /* 상호 + 대표자명 */
       '<div class="form-row" style="margin-bottom:16px;">',
@@ -2329,7 +2330,9 @@
         logoSection +
 
         // ① 브랜드 정보
-        sectionTitle('브랜드 정보') +
+        sectionTitle('브랜드 정보',
+          '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openBrandModal(\'' + brandId + '\')">✏️ 수정</button>' +
+          '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openOnboardingModal(\'' + brandId + '\',\'' + esc(b.onboarding_status) + '\')">🔄 입점 상태 변경</button>') +
         '<div class="detail-section">' +
           drow('입점 상태', onboardingBadge(b.onboarding_status) +
             (b.onboarding_status_reason ? ' <span style="font-size:12px;color:var(--gray-500);">— ' + esc(b.onboarding_status_reason) + '</span>' : '')) +
@@ -2343,7 +2346,8 @@
         '</div>' +
 
         // ② 담당자
-        sectionTitle('담당자') +
+        sectionTitle('담당자',
+          '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="showPersonInlineForm(\'' + brandId + '\')">+ 담당자 추가</button>') +
         '<div id="brand-persons-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
 
         // ③ 계약
@@ -2352,11 +2356,12 @@
         '<div id="brand-contracts-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
 
         // ④ 계약 및 정산 정보
-        sectionTitle('계약 및 정산 정보') +
+        sectionTitle('계약 및 정산 정보',
+          '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openBrandModal(\'' + brandId + '\')">✏️ 수정</button>') +
         '<div class="detail-section">' +
         (si.bank_name
-          ? (commissionVal ? drow('위탁판매대행수수료', commissionVal) : '') +
-            drow('사업자 유형', bizTypeText) +
+          ? (commissionVal ? drow('위탁판매수수료', commissionVal) : '') +
+            drow('사업자 여부', bizTypeText) +
             (si.business_type === 'business'
               ? drow('사업자등록번호', isEncrypted(si.business_reg_number)
                   ? '<div id="bd-biz-reg-wrapper"><button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="revealBrandBizReg(\'' + brandId + '\')">🔓 보기</button></div>'
@@ -6669,7 +6674,7 @@
       '<input class="form-input" id="stl-settlement-amount" type="number" min="0" value="' + (s.settlement_amount || '') + '" /></div>' +
       '</div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
-      '<div class="form-group"><label class="form-label">사업자 유형</label>' +
+      '<div class="form-group"><label class="form-label">사업자 여부</label>' +
       '<select class="form-input" id="stl-biz-type">' +
       '<option value="">선택</option>' +
       bizTypeOpt('비사업자') + '비사업자</option>' +
@@ -8014,7 +8019,7 @@
     if (!container) return;
     container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
     try {
-      // 승인 상태인 브랜드 전체 로드
+      // 전체 브랜드 로드
       const snap = await getDocs(query(collection(db, 'brands'), orderBy('created_at', 'desc')));
       const allBrands = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       // 승인 상태인 브랜드만
@@ -8023,14 +8028,17 @@
         return st === '승인' || st === '승인됨';
       });
 
-      // 계약 서브컬렉션이 있는 brandId 집합 조회
-      const contractSnap = await getDocs(collectionGroup(db, 'contracts'));
-      const brandsWithContracts = new Set(
-        contractSnap.docs.map(d => d.ref.parent.parent ? d.ref.parent.parent.id : null).filter(Boolean)
+      // 각 브랜드의 계약 서브컬렉션을 직접 조회해서 계약 있는지 확인 (per-brand, no collectionGroup)
+      const contractChecks = await Promise.all(
+        approvedBrands.map(async b => {
+          const cSnap = await getDocs(collection(db, 'brands', b.id, 'contracts'));
+          return { id: b.id, hasContracts: !cSnap.empty };
+        })
       );
+      const hasContractSet = new Set(contractChecks.filter(c => c.hasContracts).map(c => c.id));
 
       // 계약이 전혀 없는 승인 브랜드만
-      const needBrands = approvedBrands.filter(b => !brandsWithContracts.has(b.id));
+      const needBrands = approvedBrands.filter(b => !hasContractSet.has(b.id));
 
       window._cmNeedBrands = needBrands;
       window._cmNeedSelected = window._cmNeedSelected || new Set();
@@ -8131,22 +8139,18 @@
     if (!container) return;
     container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
     try {
-      // collectionGroup으로 모든 계약 조회
-      const contractSnap = await getDocs(collectionGroup(db, 'contracts'));
-      // brand 정보도 필요 — brandId 목록 수집 후 일괄 조회
-      const brandIds = [...new Set(
-        contractSnap.docs.map(d => d.ref.parent.parent ? d.ref.parent.parent.id : null).filter(Boolean)
-      )];
-      const brandMap = {};
-      await Promise.all(brandIds.map(async bid => {
-        const bs = await getDoc(doc(db, 'brands', bid));
-        if (bs.exists()) brandMap[bid] = { id: bid, ...bs.data() };
-      }));
+      // 전체 브랜드 로드 후 각 브랜드의 계약 서브컬렉션을 직접 조회 (per-brand, no collectionGroup)
+      const brandSnap = await getDocs(query(collection(db, 'brands'), orderBy('created_at', 'desc')));
+      const allBrands = brandSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-      const contracts = contractSnap.docs.map(d => {
-        const brandId = d.ref.parent.parent ? d.ref.parent.parent.id : null;
-        return { id: d.id, brandId, brand: brandMap[brandId] || {}, ...d.data() };
-      });
+      const contractArrays = await Promise.all(
+        allBrands.map(async b => {
+          const cSnap = await getDocs(collection(db, 'brands', b.id, 'contracts'));
+          return cSnap.docs.map(d => ({ id: d.id, brandId: b.id, brand: b, ...d.data() }));
+        })
+      );
+
+      const contracts = contractArrays.flat();
 
       // 최신순 정렬 (created_at 기준)
       contracts.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
@@ -8832,7 +8836,7 @@
       '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">' +
       ctVarChip('{{brand_name}}', '브랜드명', '예: 온기') +
       ctVarChip('{{brand_code}}', '브랜드코드', '예: ONG') +
-      ctVarChip('{{commission_rate}}', '위탁판매대행수수료', '예: 10 (%기호 없이)') +
+      ctVarChip('{{commission_rate}}', '위탁판매수수료', '예: 10 (%기호 없이)') +
       '</div>' +
       '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">👤 담당자 정보</div>' +
       '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">' +
