@@ -8151,6 +8151,21 @@
     const pendingApps  = apps.filter(a => a.status === '제출됨').length;
     const pendingJoins = joins.filter(j => j.status === '제출됨').length;
 
+    // 취소됨 기본 숨김 — 이전 렌더 상태 유지
+    const showCancelledApps  = !!(window._appReviewData && window._appReviewData._showCancelledApps);
+    const showCancelledJoins = !!(window._appReviewData && window._appReviewData._showCancelledJoins);
+    const filteredApps  = showCancelledApps  ? apps  : apps.filter(a => a.status !== '취소됨');
+    const filteredJoins = showCancelledJoins ? joins : joins.filter(j => j.status !== '취소됨');
+    const cancelledAppsCount  = apps.filter(a => a.status === '취소됨').length;
+    const cancelledJoinsCount = joins.filter(j => j.status === '취소됨').length;
+
+    const cancelToggle = (tab, count, show) => count === 0 ? '' :
+      '<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--gray-500);cursor:pointer;">' +
+      '<input type="checkbox" ' + (show ? 'checked' : '') + ' onchange="window.toggleCancelledApps(\'' + tab + '\',this.checked)" />' +
+      '취소된 신청 포함 (' + count + '건)' +
+      '</label></div>';
+
     container.innerHTML =
       '<div style="margin-bottom:20px;">' +
         '<div style="display:flex;gap:0;border-bottom:2px solid var(--gray-200);">' +
@@ -8161,10 +8176,11 @@
       '</div>' +
 
       '<div id="tab-application" style="display:' + (activeTab==='application'?'block':'none') + ';">' +
+        cancelToggle('application', cancelledAppsCount, showCancelledApps) +
         '<div class="card" style="overflow-x:auto;">' +
           '<table class="data-table"><thead><tr>' +
             '<th>상태</th><th style="width:44px;"></th><th>브랜드명</th><th>사업자 구분</th><th>신청일</th>' +
-          '</tr></thead><tbody>' + appRows(apps) + '</tbody></table>' +
+          '</tr></thead><tbody>' + appRows(filteredApps) + '</tbody></table>' +
         '</div>' +
       '</div>' +
 
@@ -8177,18 +8193,28 @@
       '</div>' +
 
       '<div id="tab-join" style="display:' + (activeTab==='join'?'block':'none') + ';">' +
+        cancelToggle('join', cancelledJoinsCount, showCancelledJoins) +
         '<div class="card" style="overflow-x:auto;">' +
           '<table class="data-table"><thead><tr>' +
             '<th>상태</th><th style="width:44px;"></th><th>대상 브랜드</th><th>신청자명</th><th>역할</th><th>이메일</th><th>처리자</th><th>신청일</th>' +
-          '</tr></thead><tbody>' + joinRows(joins) + '</tbody></table>' +
+          '</tr></thead><tbody>' + joinRows(filteredJoins) + '</tbody></table>' +
         '</div>' +
       '</div>';
 
-    window._appReviewData = { apps, joins, pendingProducts };
+    window._appReviewData = { apps, joins, pendingProducts, _showCancelledApps: showCancelledApps, _showCancelledJoins: showCancelledJoins };
   }
 
   window.switchApplicationTab = function(tab) {
     const d = window._appReviewData || { apps: [], joins: [], pendingProducts: [] };
+    const content = document.getElementById('page-content');
+    renderApplicationReviewUI(content, d.apps, d.joins, d.pendingProducts, tab);
+  };
+
+  window.toggleCancelledApps = function(tab, show) {
+    const d = window._appReviewData || { apps: [], joins: [], pendingProducts: [] };
+    if (tab === 'application') d._showCancelledApps = show;
+    else if (tab === 'join') d._showCancelledJoins = show;
+    window._appReviewData = d;
     const content = document.getElementById('page-content');
     renderApplicationReviewUI(content, d.apps, d.joins, d.pendingProducts, tab);
   };
@@ -8222,7 +8248,8 @@
     };
 
     const isPending = item.status === '제출됨';
-    const statusBadge = { '제출됨': '<span class="badge badge-blue">제출됨</span>', '승인': '<span class="badge badge-green">승인</span>', '거절': '<span class="badge badge-red">거절</span>' }[item.status] || '';
+    const isCancelled = item.status === '취소됨';
+    const statusBadge = { '제출됨': '<span class="badge badge-blue">제출됨</span>', '승인': '<span class="badge badge-green">승인</span>', '거절': '<span class="badge badge-red">거절</span>', '취소됨': '<span class="badge badge-gray">취소됨</span>' }[item.status] || '<span class="badge badge-gray">' + esc(item.status||'') + '</span>';
 
     // 정산 정보 (암호화 필드는 버튼 클릭 시에만 복호화)
     const si = item.settlement_info || {};
@@ -8308,7 +8335,13 @@
 
       // ⑥ 거절 사유 표시
       (item.rejection_reason ? '<div style="padding:10px;background:#fee2e2;border-radius:6px;font-size:12px;color:#991b1b;margin-bottom:12px;">거절 사유: ' + esc(item.rejection_reason) + '</div>' : '') +
-      (isPending
+      (isCancelled
+        ? '<div style="margin-top:8px;padding:12px;background:var(--gray-50);border-radius:8px;font-size:13px;">' +
+            '<div style="font-weight:600;margin-bottom:6px;color:var(--gray-500);">신청 취소됨</div>' +
+            '<div style="font-size:12px;color:var(--gray-400);">취소일시: ' + fmtDate(item.cancelled_at) + '</div>' +
+            '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">신청자가 직접 취소한 건입니다. 어드민 처리가 필요하지 않습니다.</div>' +
+          '</div>'
+        : isPending
         ? '<div id="app-decision-wrap" style="border-top:1px solid var(--gray-200);padding-top:16px;margin-top:8px;">' +
             '<div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:10px;">처리 결정</div>' +
             '<div style="display:flex;gap:8px;margin-bottom:14px;">' +
