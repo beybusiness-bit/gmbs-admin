@@ -3441,6 +3441,28 @@
   /* ════════════════════════════════
      계약(Contract) 관리
   ════════════════════════════════ */
+  // 계약 변수 치환 헬퍼 — brand, pm(주관리자), si(supply_info) 기반
+  function resolveContractVars(text, brand, pm, si) {
+    if (!text || typeof text !== 'string') return text || '';
+    const d = new Date();
+    const y = String(d.getFullYear());
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const dy = String(d.getDate()).padStart(2, '0');
+    const commRate = (si && si.commission_rate !== undefined)
+      ? String(si.commission_rate)
+      : ((brand.fee_info && brand.fee_info.commission_rate !== undefined) ? String(brand.fee_info.commission_rate) : '');
+    return text
+      .replace(/\{\{brand_name\}\}/g, brand.brand_name || '')
+      .replace(/\{\{brand_code\}\}/g, brand.brand_code || '')
+      .replace(/\{\{commission_rate\}\}/g, commRate)
+      .replace(/\{\{person_name\}\}/g, pm ? (pm.name || '') : '')
+      .replace(/\{\{person_phone\}\}/g, pm ? (pm.phone || '') : '')
+      .replace(/\{\{person_contact_email\}\}/g, pm ? (pm.contact_email || '') : '')
+      .replace(/\{\{yyyymmdd\}\}/g, y + mo + dy)
+      .replace(/\{\{yyyy-mm-dd\}\}/g, y + '-' + mo + '-' + dy)
+      .replace(/\{\{yyyy년mm월dd일\}\}/g, y + '년' + mo + '월' + dy + '일');
+  }
+
   async function loadBrandContracts(brandId) {
     const sec = document.getElementById('brand-contracts-section');
     if (!sec) return;
@@ -3868,7 +3890,9 @@
 
         // 상태별 액션 버튼
         let actionBtns = '';
-        if (cStatus === '계약발송전') {
+        if (cStatus === '계약정보입력') {
+          actionBtns = '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="checkContractReadiness(\'' + brandId + '\',\'' + c.id + '\',\'' + esc(c.contract_type || '') + '\')">📋 발송 준비 확인</button>';
+        } else if (cStatus === '계약발송전') {
           actionBtns = '<button class="btn btn-primary" style="font-size:11px;padding:4px 10px;" onclick="openSendContractModal(\'' + brandId + '\',\'' + c.id + '\')">📨 전자계약 발송</button>';
         } else if (['서명진행중','계약완료','계약기간만료'].includes(cStatus) || ucStatus === '체결완료') {
           actionBtns = '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openCmContractDetail(\'' + brandId + '\',\'' + esc(c._brandName || '') + '\',\'' + c.id + '\')">📄 계약 상세</button>';
@@ -3899,120 +3923,107 @@
     sec.innerHTML = html;
   }
 
-  // 전자계약 발송 모달 — 템플릿 선택 · 서명자 확인 · 발송
-  window.openSendContractModal = async function(brandId) {
+  // 계약정보입력 → 계약발송전 준비 확인
+  window.checkContractReadiness = async function(brandId, contractId, contractType) {
+    try {
+      const [contractSnap, personsSnap, templatesSnap] = await Promise.all([
+        getDoc(doc(db, 'brands', brandId, 'contracts', contractId)),
+        getDocs(collection(db, 'brands', brandId, 'persons')),
+        getDocs(collection(db, 'contract_templates')),
+      ]);
+      if (!contractSnap.exists()) { showToast('계약 문서를 찾을 수 없습니다.', 'error'); return; }
+      const contract = contractSnap.data();
+      const pm = personsSnap.docs.map(d => ({ id: d.id, ...d.data() })).find(p => p.role === '주관리자' && p.active !== false);
+      const activeTemplates = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => t.is_active !== false);
+
+      const issues = [];
+      if (!contract.start_date) issues.push('계약 기간 (시작일) 미설정 — 계약 정보 수정에서 입력해주세요.');
+      if (!contract.end_at && !contract.end_date) issues.push('계약 기간 (종료일) 미설정 — 계약 정보 수정에서 입력해주세요.');
+      if (!pm) issues.push('주관리자 미등록 — 담당자 정보에서 주관리자를 추가해주세요.');
+      else {
+        if (!pm.name) issues.push('주관리자 이름 미입력 — 담당자 정보에서 이름을 입력해주세요.');
+        if (!pm.phone && !pm.contact_email) issues.push('주관리자 전화번호/이메일 미입력 — 담당자 정보에서 입력해주세요.');
+      }
+      if (activeTemplates.length === 0) {
+        issues.push('활성화된 계약서 템플릿 없음 — 설정 → 계약서 템플릿에서 추가해주세요.');
+      } else {
+        const hasConfigured = activeTemplates.some(t => t.sender_params && t.sender_params.name && t.receiver_params && t.receiver_params.name);
+        if (!hasConfigured) issues.push('계약서 템플릿에 발신인/수신인 파라미터 미설정 — 설정 → 계약서 템플릿에서 ✍️ 서명 참여자 파라미터를 입력해주세요.');
+      }
+
+      if (issues.length > 0) {
+        const body =
+          '<div style="margin-bottom:12px;font-size:13px;color:var(--gray-700);">아래 항목을 먼저 완료해야 전자계약 발송이 가능합니다:</div>' +
+          '<div style="display:flex;flex-direction:column;gap:8px;">' +
+          issues.map(i => '<div style="display:flex;gap:8px;padding:8px 12px;background:var(--gray-50);border-radius:8px;border-left:3px solid var(--orange);font-size:13px;">' +
+            '<span>⚠️</span><span>' + esc(i) + '</span></div>').join('') +
+          '</div>';
+        showModal('발송 준비 확인', body, '<button class="btn btn-secondary" onclick="closeModal()">확인</button>');
+        return;
+      }
+
+      if (!confirm('모든 정보가 확인되었습니다. 계약 상태를 "계약발송전"으로 변경할까요?')) return;
+      await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), {
+        contract_status: '계약발송전',
+        updated_at: today(),
+      });
+      await writeActivityLog(brandId, 'contract', contractId, 'status_changed', '계약정보입력', { contract_status: '계약발송전' });
+      showToast('계약 상태가 "계약발송전"으로 변경되었습니다.', 'success');
+      loadBrandContracts(brandId);
+    } catch(e) {
+      showToast('준비 확인 실패: ' + e.message, 'error');
+    }
+  };
+
+  // 전자계약 발송 모달 — 템플릿 선택 · 발송 정보 미리보기 · 발송
+  window.openSendContractModal = async function(brandId, contractId) {
     showModal('전자계약 발송', '<div class="spinner" style="margin:40px auto;"></div>', '', 'lg');
     try {
       const [brandSnap, personsSnap, templatesSnap] = await Promise.all([
         getDoc(doc(db, 'brands', brandId)),
-        getDocs(collection(db, 'brands', brandId, 'managers')),
+        getDocs(collection(db, 'brands', brandId, 'persons')),
         getDocs(collection(db, 'contract_templates')),
       ]);
       if (!brandSnap.exists()) { showToast('브랜드 정보를 찾을 수 없습니다.', 'error'); closeModal(); return; }
       const brand = { id: brandId, ...brandSnap.data() };
+      const si = brand.supply_info || {};
       const persons = personsSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.active !== false);
+      const pm = persons.find(p => p.role === '주관리자' && p.active !== false) || null;
       const templates = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => t.is_active !== false);
 
       if (templates.length === 0) {
-        const body = '<div style="padding:16px;background:var(--gray-50);border-radius:10px;font-size:13px;color:var(--gray-600);line-height:1.7;">' +
-          '⚠️ 등록된 계약서 템플릿이 없습니다.<br>' +
-          '<b>설정 → 계약서 템플릿</b>에서 먼저 템플릿을 추가해주세요.' +
-          '</div>';
-        updateModal(null, body, '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>');
+        updateModal(null,
+          '<div style="padding:16px;background:var(--gray-50);border-radius:10px;font-size:13px;color:var(--gray-600);line-height:1.7;">⚠️ 등록된 계약서 템플릿이 없습니다.<br><b>설정 → 계약서 템플릿</b>에서 먼저 템플릿을 추가해주세요.</div>',
+          '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>');
         return;
       }
 
-      const ci = brand.contact_info || {};
-      const si = brand.supply_info || {};
-      const typeLabel = { PB: 'PB', 위탁: '위탁', 매입: '매입', 기타: '기타' };
+      // 공유 데이터 저장 (템플릿 변경 시 재사용)
+      window._scCtx = { brand, si, pm, templates, brandId, contractId };
 
-      // 브랜드 정보 요약 표시
-      const brandInfoHtml =
-        '<div style="background:var(--blue-light);border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:13px;">' +
-        '<div style="font-weight:700;margin-bottom:8px;color:var(--gray-800);">브랜드 정보 확인</div>' +
-        '<div style="display:grid;grid-template-columns:80px 1fr;gap:4px 12px;color:var(--gray-700);">' +
-        '<span style="color:var(--gray-500);">브랜드명</span><span style="font-weight:600;">' + esc(brand.brand_name || '') + '</span>' +
-        '<span style="color:var(--gray-500);">브랜드코드</span><span>' + esc(brand.brand_code || '') + '</span>' +
-        '<span style="color:var(--gray-500);">거래유형</span><span>' + esc(typeLabel[brand.brand_type] || brand.brand_type || '-') + '</span>' +
-        (si.business_type ? '<span style="color:var(--gray-500);">사업자구분</span><span>' + (si.business_type === 'business' ? '사업자' : '개인') + '</span>' : '') +
-        (si.business_number ? '<span style="color:var(--gray-500);">사업자번호</span><span>' + esc(si.business_number) + '</span>' : '') +
-        '</div>' +
-        (persons.length === 0
-          ? '<div style="margin-top:10px;color:var(--red);font-size:12px;">⚠️ 등록된 담당자가 없습니다. 브랜드 수정에서 담당자를 먼저 추가해주세요.</div>'
-          : '') +
-        '</div>';
+      const templateOpts = templates.map(t => '<option value="' + esc(t.id) + '">' + esc(t.name || t.id) + '</option>').join('');
 
-      const personOpts = persons.map(p =>
-        '<option value="' + esc(p.id) + '" data-name="' + esc(p.name || '') + '" data-phone="' + esc(p.phone || '') + '" data-email="' + esc(p.email || '') + '">' +
-        esc(p.name || '') + (p.role ? ' (' + esc(p.role) + ')' : '') + '</option>'
-      ).join('');
-
-      const templateOpts = templates.map(t =>
-        '<option value="' + esc(t.id) + '" data-fields=\'' + esc(JSON.stringify(t.default_fields || {})) + '\'>' + esc(t.name || t.id) + '</option>'
-      ).join('');
-
-      const adminEmail = firebase.auth().currentUser?.email || '';
-      const adminName = adminEmail.split('@')[0] || 'GMBS';
-
-      const formHtml = brandInfoHtml +
+      const formHtml =
         '<div class="form-group"><label class="form-label">계약서 템플릿 <span style="color:var(--red);">*</span></label>' +
         '<select class="form-input" id="sc-template" onchange="onSendContractTemplateChange()">' + templateOpts + '</select></div>' +
 
-        '<div style="background:var(--gray-50);border-radius:10px;padding:14px 16px;margin-bottom:14px;">' +
-        '<div style="font-size:12px;font-weight:600;color:var(--gray-600);margin-bottom:10px;">① 발신인 (GMBS) 정보</div>' +
-        '<div class="form-row">' +
-        '<div class="form-group"><label class="form-label">발신인 이름 <span style="color:var(--red);">*</span></label>' +
-        '<input class="form-input" id="sc-sender-name" placeholder="GMBS 담당자 이름" value="' + esc(adminName) + '" /></div>' +
-        '<div class="form-group"><label class="form-label">발신인 이메일 <span style="color:var(--red);">*</span></label>' +
-        '<input class="form-input" id="sc-sender-email" type="email" placeholder="gmbs@email.com" value="' + esc(adminEmail) + '" /></div>' +
-        '</div></div>' +
+        '<div id="sc-params-preview" style="background:var(--gray-50);border-radius:10px;padding:14px 16px;margin-bottom:14px;font-size:12px;color:var(--gray-400);">템플릿을 선택하면 발송 정보가 표시됩니다.</div>' +
 
         '<div style="background:var(--gray-50);border-radius:10px;padding:14px 16px;margin-bottom:14px;">' +
-        '<div style="font-size:12px;font-weight:600;color:var(--gray-600);margin-bottom:10px;">② 수신인 (입점자) 정보</div>' +
-        '<div class="form-group"><label class="form-label">담당자 선택</label>' +
-        '<select class="form-input" id="sc-person" onchange="onSendContractPersonChange()">' +
-        '<option value="">직접 입력</option>' + personOpts +
-        '</select></div>' +
-
-        '<div class="form-group"><label class="form-label">수신인 이름 <span style="color:var(--red);">*</span></label>' +
-        '<input class="form-input" id="sc-name" placeholder="서명자 이름" /></div>' +
-
-        '<div class="form-group"><label class="form-label">서명 방식 <span style="color:var(--red);">*</span></label>' +
-        '<div style="display:flex;gap:10px;">' +
-        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">' +
-        '<input type="radio" name="sc-method" value="kakao" onchange="onSendMethodChange()" checked /> 💬 카카오톡</label>' +
-        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">' +
-        '<input type="radio" name="sc-method" value="email" onchange="onSendMethodChange()" /> 📧 이메일</label>' +
-        '</div></div>' +
-
-        '<div class="form-group"><label class="form-label" id="sc-contact-label">전화번호 <span style="color:var(--red);">*</span></label>' +
-        '<input class="form-input" id="sc-contact" placeholder="010-0000-0000" /></div>' +
-        '</div>' +
-
-        '<div id="sc-fields-section"></div>' +
-
-        '<div style="background:var(--gray-50);border-radius:10px;padding:14px 16px;margin-bottom:14px;">' +
-        '<div style="font-size:12px;font-weight:600;color:var(--gray-600);margin-bottom:10px;">③ 계약 기간 설정</div>' +
+        '<div style="font-size:12px;font-weight:600;color:var(--gray-600);margin-bottom:10px;">계약 기간 설정</div>' +
         '<div class="form-group"><label class="form-label">기간 입력 방식</label>' +
         '<div style="display:flex;gap:16px;">' +
-        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">' +
-        '<input type="radio" name="sc-period-type" value="months" onchange="onSendContractPeriodTypeChange()" checked /> 서명일로부터 N개월</label>' +
-        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">' +
-        '<input type="radio" name="sc-period-type" value="date" onchange="onSendContractPeriodTypeChange()" /> 종료일 직접 지정</label>' +
+        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;"><input type="radio" name="sc-period-type" value="months" onchange="onSendContractPeriodTypeChange()" checked /> 서명일로부터 N개월</label>' +
+        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;"><input type="radio" name="sc-period-type" value="date" onchange="onSendContractPeriodTypeChange()" /> 종료일 직접 지정</label>' +
         '</div></div>' +
-        '<div id="sc-period-months-wrap" class="form-group">' +
-        '<label class="form-label">계약 기간</label>' +
-        '<div style="display:flex;align-items:center;gap:8px;">' +
-        '<input class="form-input" id="sc-period-months" type="number" min="1" max="120" value="12" style="width:100px;" />' +
-        '<span style="font-size:13px;color:var(--gray-600);">개월 (서명 완료일 기준으로 functions가 종료일 자동 계산)</span>' +
-        '</div></div>' +
-        '<div id="sc-period-date-wrap" class="form-group" style="display:none;">' +
-        '<label class="form-label">계약 종료일</label>' +
+        '<div id="sc-period-months-wrap" class="form-group"><label class="form-label">계약 기간</label>' +
+        '<div style="display:flex;align-items:center;gap:8px;"><input class="form-input" id="sc-period-months" type="number" min="1" max="120" value="12" style="width:100px;" />' +
+        '<span style="font-size:13px;color:var(--gray-600);">개월</span></div></div>' +
+        '<div id="sc-period-date-wrap" class="form-group" style="display:none;"><label class="form-label">계약 종료일</label>' +
         '<input class="form-input" id="sc-period-date" type="date" style="max-width:200px;" /></div>' +
         '<div class="form-group" style="margin-bottom:0;display:flex;align-items:center;gap:8px;">' +
         '<input type="checkbox" id="sc-auto-renew" style="accent-color:var(--blue);" />' +
-        '<label for="sc-auto-renew" style="font-size:13px;color:var(--gray-700);cursor:pointer;">자동 갱신 (만료 전 functions가 자동 연장)</label>' +
-        '</div></div>' +
+        '<label for="sc-auto-renew" style="font-size:13px;color:var(--gray-700);cursor:pointer;">자동 갱신</label></div></div>' +
 
         '<div class="form-group" style="margin-top:8px;">' +
         '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--gray-600);">' +
@@ -4020,16 +4031,9 @@
 
       const footer =
         '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
-        '<button class="btn btn-primary" onclick="submitSendContract(\'' + brandId + '\')">📨 발송</button>';
+        '<button class="btn btn-primary" onclick="submitSendContract()">📨 발송</button>';
 
       updateModal(null, formHtml, footer);
-
-      // 첫 담당자 자동 선택
-      if (persons.length > 0) {
-        const sel = document.getElementById('sc-person');
-        if (sel) { sel.value = persons[0].id; onSendContractPersonChange(); }
-      }
-      // 첫 템플릿 동적 필드 렌더
       onSendContractTemplateChange();
 
     } catch(e) {
@@ -4046,132 +4050,116 @@
     if (dw) dw.style.display = type === 'date' ? '' : 'none';
   };
 
-  window.onSendContractPersonChange = function() {
-    const sel = document.getElementById('sc-person');
-    if (!sel) return;
-    const opt = sel.options[sel.selectedIndex];
-    const name = opt ? (opt.getAttribute('data-name') || '') : '';
-    const phone = opt ? (opt.getAttribute('data-phone') || '') : '';
-    const email = opt ? (opt.getAttribute('data-email') || '') : '';
-    const nameEl = document.getElementById('sc-name');
-    const contactEl = document.getElementById('sc-contact');
-    if (nameEl && name) nameEl.value = name;
-    // 서명 방식에 맞춰 연락처 자동 입력
-    const method = (document.querySelector('input[name="sc-method"]:checked') || {}).value || 'kakao';
-    if (contactEl) contactEl.value = method === 'kakao' ? phone : email;
-  };
-
-  window.onSendMethodChange = function() {
-    const method = (document.querySelector('input[name="sc-method"]:checked') || {}).value || 'kakao';
-    const label = document.getElementById('sc-contact-label');
-    const contactEl = document.getElementById('sc-contact');
-    if (label) label.innerHTML = (method === 'kakao' ? '전화번호' : '이메일') + ' <span style="color:var(--red);">*</span>';
-    // 담당자가 선택된 경우 자동 전환
-    const sel = document.getElementById('sc-person');
-    if (sel && sel.value) {
-      const opt = sel.options[sel.selectedIndex];
-      const phone = opt ? (opt.getAttribute('data-phone') || '') : '';
-      const email = opt ? (opt.getAttribute('data-email') || '') : '';
-      if (contactEl) contactEl.value = method === 'kakao' ? phone : email;
-    }
-  };
-
+  // 템플릿 변경 시 발송 정보 미리보기 업데이트
   window.onSendContractTemplateChange = function() {
     const sel = document.getElementById('sc-template');
-    const sec = document.getElementById('sc-fields-section');
-    if (!sel || !sec) return;
-    const opt = sel.options[sel.selectedIndex];
-    let fields = {};
-    try { fields = JSON.parse(opt ? (opt.getAttribute('data-fields') || '{}') : '{}'); } catch(e) { fields = {}; }
-    const keys = Object.keys(fields);
-    if (keys.length === 0) { sec.innerHTML = ''; return; }
-    sec.innerHTML =
-      '<div class="form-group"><label class="form-label">계약 동적 필드</label>' +
-      '<div style="display:grid;gap:8px;">' +
-      keys.map(k =>
-        '<div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:center;">' +
-        '<span style="font-size:13px;color:var(--gray-600);">' + esc(k) + '</span>' +
-        '<input class="form-input" id="sc-field-' + esc(k) + '" value="' + esc(fields[k] || '') + '" style="font-size:13px;" />' +
-        '</div>'
-      ).join('') +
-      '</div></div>';
+    const preview = document.getElementById('sc-params-preview');
+    if (!sel || !preview) return;
+    const ctx = window._scCtx;
+    if (!ctx) return;
+    const template = ctx.templates.find(t => t.id === sel.value);
+    if (!template) { preview.innerHTML = '<div style="font-size:12px;color:var(--gray-400);">템플릿을 선택해주세요.</div>'; return; }
+
+    const resolve = text => resolveContractVars(text, ctx.brand, ctx.pm, ctx.si);
+    const sp = template.sender_params || {};
+    const rp = template.receiver_params || {};
+    const senderName   = resolve(sp.name  || '');
+    const senderEmail  = resolve(sp.email || '');
+    const receiverName  = resolve(rp.name  || '');
+    const receiverEmail = resolve(rp.email || '');
+    const receiverPhone = resolve(rp.phone || '');
+
+    const resolvedFields = {};
+    Object.entries(template.default_fields || {}).forEach(([k, v]) => { resolvedFields[k] = resolve(v); });
+
+    // 저장 (발송 시 사용)
+    window._scResolved = { templateId: template.id, templateName: template.name || template.id, senderName, senderEmail, receiverName, receiverEmail, receiverPhone, resolvedFields };
+
+    const vrow = (l, v) =>
+      '<div style="display:grid;grid-template-columns:130px 1fr;gap:4px;padding:5px 0;border-bottom:1px solid var(--gray-100);">' +
+      '<span style="font-size:12px;color:var(--gray-500);">' + esc(l) + '</span>' +
+      '<span style="font-size:13px;' + (v ? '' : 'color:var(--orange);') + '">' + esc(v || '(미설정)') + '</span>' +
+      '</div>';
+    let html =
+      '<div style="font-size:12px;font-weight:600;color:var(--gray-600);margin-bottom:8px;">발송 정보 미리보기</div>' +
+      '<div style="margin-bottom:10px;">' +
+      '<div style="font-size:11px;font-weight:600;color:var(--gray-500);margin-bottom:4px;">① 발신인 (GMBS)</div>' +
+      vrow('이름', senderName) + vrow('이메일', senderEmail) +
+      '</div>' +
+      '<div style="margin-bottom:10px;">' +
+      '<div style="font-size:11px;font-weight:600;color:var(--gray-500);margin-bottom:4px;">② 수신인 (입점자)</div>' +
+      vrow('이름', receiverName) + vrow('이메일', receiverEmail) + vrow('카카오번호', receiverPhone) +
+      '</div>';
+    if (Object.keys(resolvedFields).length > 0) {
+      html += '<div><div style="font-size:11px;font-weight:600;color:var(--gray-500);margin-bottom:4px;">③ 계약서 채워넣기 필드</div>' +
+        Object.entries(resolvedFields).map(([k, v]) => vrow(k, v)).join('') + '</div>';
+    }
+    preview.innerHTML = html;
   };
 
-  window.submitSendContract = async function(brandId) {
-    const templateSel = document.getElementById('sc-template');
-    const nameEl = document.getElementById('sc-name');
-    const contactEl = document.getElementById('sc-contact');
-    const methodEl = document.querySelector('input[name="sc-method"]:checked');
+  window.submitSendContract = async function() {
+    const resolved = window._scResolved;
+    if (!resolved || !resolved.templateId) { showToast('계약서 템플릿을 선택해주세요.', 'error'); return; }
+    if (!resolved.senderName) { showToast('템플릿에 발신인 이름이 설정되지 않았습니다. 계약서 템플릿 설정을 확인해주세요.', 'error'); return; }
+    if (!resolved.senderEmail) { showToast('템플릿에 발신인 이메일이 설정되지 않았습니다. 계약서 템플릿 설정을 확인해주세요.', 'error'); return; }
+    if (!resolved.receiverName) { showToast('수신인 이름을 확인해주세요. 주관리자 이름이 없습니다.', 'error'); return; }
+    const signingContact = resolved.receiverPhone || resolved.receiverEmail;
+    const signingMethod = resolved.receiverPhone ? 'kakao' : 'email';
+    if (!signingContact) { showToast('수신인 연락처를 확인해주세요. 주관리자 전화번호/이메일이 없습니다.', 'error'); return; }
+
     const testMode = (document.getElementById('sc-testmode') || {}).checked || false;
-    const senderName = ((document.getElementById('sc-sender-name') || {}).value || '').trim();
-    const senderEmail = ((document.getElementById('sc-sender-email') || {}).value || '').trim();
-
-    const templateDocId = templateSel ? templateSel.value : '';
-    const templateName = templateSel ? (templateSel.options[templateSel.selectedIndex] || {}).text : '';
-    const participantName = (nameEl ? nameEl.value : '').trim();
-    const signingMethod = methodEl ? methodEl.value : 'kakao';
-    const contactInfo = (contactEl ? contactEl.value : '').trim();
-
-    if (!templateDocId) { showToast('계약서 템플릿을 선택해주세요.', 'error'); return; }
-    if (!senderName) { showToast('발신인 이름을 입력해주세요.', 'error'); return; }
-    if (!senderEmail) { showToast('발신인 이메일을 입력해주세요.', 'error'); return; }
-    if (!participantName) { showToast('수신인(주관리자) 이름을 입력해주세요. 담당자 정보에서 주관리자를 먼저 등록해주세요.', 'error'); return; }
-    if (!contactInfo) { showToast(signingMethod === 'kakao' ? '주관리자 전화번호를 입력해주세요.' : '주관리자 이메일을 입력해주세요.', 'error'); return; }
-
-    // 주관리자 연결 확인
-    try {
-      const personsSnap = await getDocs(collection(db, 'brands', brandId, 'persons'));
-      const pm = personsSnap.docs.map(d => d.data()).find(p => p.role === '주관리자' && p.active !== false);
-      if (!pm) { showToast('주관리자가 등록되지 않았습니다. 담당자 정보에서 주관리자를 먼저 등록해주세요.', 'error'); return; }
-      if (!pm.name) { showToast('주관리자 이름이 입력되지 않았습니다. 담당자 정보에서 이름을 입력해주세요.', 'error'); return; }
-      const pmEmail = pm.contact_email || pm.email || '';
-      if (!pm.phone && !pmEmail) { showToast('주관리자 전화번호 또는 이메일이 없습니다. 담당자 정보에서 입력해주세요.', 'error'); return; }
-    } catch(e) {
-      showToast('담당자 정보 확인 실패: ' + e.message, 'error'); return;
-    }
-
-    // 동적 필드 수집
-    let fields = {};
-    try {
-      const opt = templateSel ? templateSel.options[templateSel.selectedIndex] : null;
-      const defaultFields = JSON.parse(opt ? (opt.getAttribute('data-fields') || '{}') : '{}');
-      Object.keys(defaultFields).forEach(k => {
-        const el = document.getElementById('sc-field-' + k);
-        if (el) fields[k] = el.value;
-      });
-    } catch(e) { fields = {}; }
-
-    // 계약 기간 필드 수집
     const periodType = (document.querySelector('input[name="sc-period-type"]:checked') || {}).value || 'months';
     const periodMonths = periodType === 'months' ? (parseInt(((document.getElementById('sc-period-months') || {}).value || '12')) || 12) : null;
     const periodEndAt = periodType === 'date' ? (((document.getElementById('sc-period-date') || {}).value || '') || null) : null;
     const autoRenew = (document.getElementById('sc-auto-renew') || {}).checked || false;
 
-    // Firestore에 contract 문서 먼저 생성 (version 자동 증가)
-    let contractId;
+    const ctx = window._scCtx || {};
+    const brandId = ctx.brandId;
+    let contractId = ctx.contractId;
+    if (!brandId) { showToast('브랜드 정보를 찾을 수 없습니다.', 'error'); return; }
+
+    // 기존 계약 문서가 없으면 새로 생성, 있으면 업데이트
     try {
-      const existingSnap = await getDocs(collection(db, 'brands', brandId, 'contracts'));
-      const version = existingSnap.size + 1;
-      const contractDocData = {
-        version,
-        template_doc_id: templateDocId,
-        template_name: templateName,
-        participant_name: participantName,
-        signing_method: signingMethod,
-        signing_contact: contactInfo,
-        fields,
-        contract_status: '계약발송전',
-        test_mode: testMode,
-        auto_renew: autoRenew,
-        created_at: today(),
-        updated_at: today(),
-      };
-      if (periodMonths !== null) contractDocData.period_months = periodMonths;
-      if (periodEndAt !== null) contractDocData.end_at = periodEndAt;
-      const contractRef = await addDoc(collection(db, 'brands', brandId, 'contracts'), contractDocData);
-      contractId = contractRef.id;
+      if (contractId) {
+        const updateData = {
+          template_doc_id: resolved.templateId,
+          template_name: resolved.templateName,
+          participant_name: resolved.receiverName,
+          signing_method: signingMethod,
+          signing_contact: signingContact,
+          fields: resolved.resolvedFields,
+          contract_status: '계약발송전',
+          test_mode: testMode,
+          auto_renew: autoRenew,
+          updated_at: today(),
+        };
+        if (periodMonths !== null) updateData.period_months = periodMonths;
+        if (periodEndAt !== null) updateData.end_at = periodEndAt;
+        await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), updateData);
+      } else {
+        const existingSnap = await getDocs(collection(db, 'brands', brandId, 'contracts'));
+        const version = existingSnap.size + 1;
+        const newData = {
+          version,
+          template_doc_id: resolved.templateId,
+          template_name: resolved.templateName,
+          participant_name: resolved.receiverName,
+          signing_method: signingMethod,
+          signing_contact: signingContact,
+          fields: resolved.resolvedFields,
+          contract_status: '계약발송전',
+          test_mode: testMode,
+          auto_renew: autoRenew,
+          created_at: today(),
+          updated_at: today(),
+        };
+        if (periodMonths !== null) newData.period_months = periodMonths;
+        if (periodEndAt !== null) newData.end_at = periodEndAt;
+        const ref = await addDoc(collection(db, 'brands', brandId, 'contracts'), newData);
+        contractId = ref.id;
+      }
     } catch(e) {
-      showToast('계약 문서 생성 실패: ' + e.message, 'error'); return;
+      showToast('계약 문서 처리 실패: ' + e.message, 'error'); return;
     }
 
     // functions 콜러블 호출
@@ -4180,13 +4168,13 @@
       const result = await sendContractCallable({
         brandId,
         contractId,
-        contractTemplateDocId: templateDocId,
-        senderName,
-        senderEmail,
-        participantName,
+        contractTemplateDocId: resolved.templateId,
+        senderName: resolved.senderName,
+        senderEmail: resolved.senderEmail,
+        participantName: resolved.receiverName,
         signingMethodType: signingMethod,
-        signingContactInfo: contactInfo,
-        fields,
+        signingContactInfo: signingContact,
+        fields: resolved.resolvedFields,
         testMode,
       });
       showToast('✅ 전자계약 발송 완료. 서명자에게 ' + (signingMethod === 'kakao' ? '카카오톡' : '이메일') + '이 발송됩니다.');
@@ -8870,30 +8858,43 @@
       ctVarChip('{{brand_code}}', '브랜드코드', '예: ONG') +
       ctVarChip('{{commission_rate}}', '위탁판매수수료', '예: 10 (%기호 없이)') +
       '</div>' +
-      '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">👤 담당자 정보</div>' +
-      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">' +
-      ctVarChip('{{ceo_name}}', '담당자명/대표자명', '예: 홍길동') +
-      ctVarChip('{{phone}}', '연락처', '예: 010-1234-5678') +
-      ctVarChip('{{email}}', '이메일', '예: hello@brand.com') +
+      '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">👤 담당자 정보 (주관리자 기준)</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">' +
+      ctVarChip('{{person_name}}', '주관리자 이름', 'persons.name') +
+      ctVarChip('{{person_phone}}', '주관리자 전화번호', 'persons.phone') +
+      ctVarChip('{{person_contact_email}}', '주관리자 이메일', 'persons.contact_email') +
       '</div>' +
-      '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">📅 날짜 (발송 시 오늘 날짜 자동 적용)</div>' +
+      '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;margin-top:8px;">📅 날짜 (발송 시 오늘 날짜 자동 적용)</div>' +
       '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">' +
       ctVarChip('{{yyyymmdd}}', '날짜', '예: 20260717') +
       ctVarChip('{{yyyy-mm-dd}}', '날짜(하이픈)', '예: 2026-07-17') +
       ctVarChip('{{yyyy년mm월dd일}}', '날짜(한글)', '예: 2026년07월17일') +
       '</div>' +
-      '<div style="font-size:11px;font-weight:600;color:#5b21b6;margin-bottom:6px;">✍️ 서명 참여자 (수신인 → 주관리자 정보 자동 치환)</div>' +
-      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">' +
-      ctVarChip('{{sender_name}}', '발신인 이름', '예: GMBS 담당자명') +
-      ctVarChip('{{sender_email}}', '발신인 이메일', '예: gmbs@example.com') +
       '</div>' +
-      '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
-      ctVarChip('{{receiver_name}}', '수신인 이름', '발송 시 주관리자 이름으로 자동 치환') +
-      ctVarChip('{{receiver_email}}', '수신인 이메일', '발송 시 주관리자 이메일로 자동 치환') +
-      ctVarChip('{{receiver_kakao}}', '수신인 카카오번호', '발송 시 주관리자 전화번호로 자동 치환') +
-      '</div>' +
-      '</div>' +
+      '<div class="form-group" style="margin-top:12px;">' +
+      '<label class="form-label">✍️ 서명 참여자 파라미터 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">(발송 API에 전달하는 값)</span></label>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:10px;">발송 시 이 값으로 발신인/수신인을 설정합니다. 고정값 또는 위의 변수 입력 가능.</div>' +
+      '<div style="background:var(--gray-50);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px;">' +
+      '<div>' +
+      '<div style="font-size:11px;font-weight:600;color:var(--gray-600);margin-bottom:8px;">발신인 (GMBS)</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+      '<div><div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">이름</div><input class="form-input" id="ct-sender-name" placeholder="예: 베이 또는 {{person_name}}" /></div>' +
+      '<div><div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">이메일</div><input class="form-input" id="ct-sender-email" placeholder="예: itsbeybusiness@gmail.com" /></div>' +
+      '</div></div>' +
+      '<div>' +
+      '<div style="font-size:11px;font-weight:600;color:var(--gray-600);margin-bottom:8px;">수신인 (입점자)</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">' +
+      '<div><div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">이름</div><input class="form-input" id="ct-receiver-name" placeholder="예: {{person_name}}" /></div>' +
+      '<div><div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">이메일</div><input class="form-input" id="ct-receiver-email" placeholder="예: {{person_contact_email}}" /></div>' +
+      '<div><div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">카카오번호</div><input class="form-input" id="ct-receiver-phone" placeholder="예: {{person_phone}}" /></div>' +
+      '</div></div>' +
+      '</div></div>' +
+      '<div class="form-group" style="margin-top:12px;">' +
+      '<label class="form-label">계약서 채워넣기 필드 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">(계약서 PDF 내부 항목)</span></label>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:8px;">계약서 안에 자동으로 채울 항목이 있으면 입력하세요. 없으면 비워두세요.</div>' +
       '<div id="ct-fields-rows" style="display:flex;flex-direction:column;gap:6px;"></div>' +
+      '<button type="button" onclick="window._addCtFieldRow(\'\',\'\',\'\')" style="margin-top:8px;font-size:12px;background:none;border:1px dashed var(--gray-300);color:var(--gray-500);cursor:pointer;border-radius:6px;padding:4px 10px;">+ 필드 직접 추가</button>' +
+      '</div>' +
       '</div>' +
 
       '<div class="form-group">' +
@@ -9027,6 +9028,20 @@
     };
 
     // 기존 데이터 복원
+    if (t.sender_params) {
+      const snEl = document.getElementById('ct-sender-name');
+      const seEl = document.getElementById('ct-sender-email');
+      if (snEl) snEl.value = t.sender_params.name || '';
+      if (seEl) seEl.value = t.sender_params.email || '';
+    }
+    if (t.receiver_params) {
+      const rnEl = document.getElementById('ct-receiver-name');
+      const reEl = document.getElementById('ct-receiver-email');
+      const rpEl = document.getElementById('ct-receiver-phone');
+      if (rnEl) rnEl.value = t.receiver_params.name || '';
+      if (reEl) reEl.value = t.receiver_params.email || '';
+      if (rpEl) rpEl.value = t.receiver_params.phone || '';
+    }
     if (t.default_fields && typeof t.default_fields === 'object') {
       Object.entries(t.default_fields).forEach(([k, v]) => window._addCtFieldRow(k, String(v), (t.field_descs || {})[k] || ''));
     }
@@ -9049,7 +9064,16 @@
       if (k) { defaultFields[k] = v || ''; }
     });
 
-    const data = { name, ucansign_template_id: ucansignId, type: type || '', default_fields: defaultFields, is_active: isActive, updated_at: today() };
+    const senderParams = {
+      name: ((document.getElementById('ct-sender-name') || {}).value || '').trim(),
+      email: ((document.getElementById('ct-sender-email') || {}).value || '').trim(),
+    };
+    const receiverParams = {
+      name: ((document.getElementById('ct-receiver-name') || {}).value || '').trim(),
+      email: ((document.getElementById('ct-receiver-email') || {}).value || '').trim(),
+      phone: ((document.getElementById('ct-receiver-phone') || {}).value || '').trim(),
+    };
+    const data = { name, ucansign_template_id: ucansignId, type: type || '', sender_params: senderParams, receiver_params: receiverParams, default_fields: defaultFields, is_active: isActive, updated_at: today() };
     try {
       if (templateId) {
         await updateDoc(doc(db, 'contract_templates', templateId), data);
