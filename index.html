@@ -1778,6 +1778,7 @@
       const onboardingBadge = s => ({
         '심사중': '<span class="badge badge-yellow">심사중</span>',
         '승인': '<span class="badge badge-green">승인</span>',
+        '승인됨': '<span class="badge badge-green">승인</span>',
         '거절': '<span class="badge badge-red">거절</span>',
         '입점중': '<span class="badge badge-green">입점중</span>',
         '입점종료': '<span class="badge badge-gray">입점종료</span>'
@@ -2302,12 +2303,17 @@
       const onboardingBadge = s => ({
         '심사중': '<span class="badge badge-yellow">심사중</span>',
         '승인': '<span class="badge badge-green">승인</span>',
+        '승인됨': '<span class="badge badge-green">승인</span>',
         '거절': '<span class="badge badge-red">거절</span>',
         '입점중': '<span class="badge badge-green">입점중</span>',
         '입점종료': '<span class="badge badge-gray">입점종료</span>'
       }[s] || '<span class="badge badge-gray">심사중</span>');
 
-      const sectionTitle = text => '<div class="detail-section-title">' + text + '</div>';
+      const sectionTitle = (text, actionHtml) =>
+        '<div class="detail-section-title" style="display:flex;align-items:center;justify-content:space-between;">' +
+        '<span>' + text + '</span>' +
+        (actionHtml ? '<span style="display:flex;gap:6px;">' + actionHtml + '</span>' : '') +
+        '</div>';
       // 섹션 박스 안에 들어가는 행 (detail-section 안에서 사용)
       const drow = (label, val) => val
         ? '<div class="detail-row"><span class="detail-row-label">' + label + '</span><span class="detail-row-val">' + val + '</span></div>'
@@ -2336,7 +2342,16 @@
             : '') +
         '</div>' +
 
-        // ② 계약 및 정산 정보
+        // ② 담당자
+        sectionTitle('담당자') +
+        '<div id="brand-persons-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
+
+        // ③ 계약
+        sectionTitle('계약',
+          '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openAddContractModal(\'' + brandId + '\')">+ 계약 추가</button>') +
+        '<div id="brand-contracts-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
+
+        // ④ 계약 및 정산 정보
         sectionTitle('계약 및 정산 정보') +
         '<div class="detail-section">' +
         (si.bank_name
@@ -2369,14 +2384,6 @@
                 drow('통장 사본', docFileCell(si.bank_book_url, brandId, 'bank_book_url')))
           : '<div class="detail-row" style="color:var(--gray-400);font-size:13px;">아직 입력된 정보가 없습니다.</div>') +
         '</div>' +
-
-        // ③ 담당자
-        sectionTitle('담당자') +
-        '<div id="brand-persons-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
-
-        // ④ 계약
-        sectionTitle('계약') +
-        '<div id="brand-contracts-section"><div class="spinner" style="margin:16px auto;"></div></div>' +
 
         // ⑤ 변경 이력
         sectionTitle('변경 이력') +
@@ -3124,7 +3131,8 @@
         const avatar = avatarSrc
           ? '<img src="' + esc(avatarSrc) + '" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:1px solid var(--gray-200);flex-shrink:0;" onerror="this.outerHTML=\'<div style=&quot;width:36px;height:36px;border-radius:50%;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;&quot;>👤</div>\'" />'
           : '<div style="width:36px;height:36px;border-radius:50%;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">👤</div>';
-        return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--gray-100);' + dimStyle + '">' +
+        return '<div style="border-bottom:1px solid var(--gray-100);">' +
+          '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;' + dimStyle + '">' +
           avatar +
           '<div style="flex:1;">' +
           '<div style="font-size:13px;font-weight:600;color:var(--gray-800);">' + esc(p.name || '') +
@@ -3151,6 +3159,8 @@
             ? '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--blue);" onclick="showPermissionsForm(\'' + brandId + '\',\'' + p.id + '\')">🔐 권한 설정</button>'
             : '') +
           '</div>' +
+          '</div>' +
+          '<div id="person-perm-area-' + p.id + '"></div>' +
           '</div>';
       };
       html += active.map(p => personRow(p, false)).join('');
@@ -3196,7 +3206,9 @@
   ];
 
   window.showPermissionsForm = async function(brandId, personId) {
-    const formArea = document.getElementById('person-form-area');
+    // close any other open perm areas
+    document.querySelectorAll('[id^="person-perm-area-"]').forEach(el => { el.innerHTML = ''; });
+    const formArea = document.getElementById('person-perm-area-' + personId);
     if (!formArea) return;
     let perms = {};
     let personName = '';
@@ -3269,8 +3281,7 @@
     try {
       await updateDoc(doc(db, 'brands', brandId, 'managers', personId), { permissions: perms, updated_at: today() });
       showToast('권한이 저장되었습니다.', 'success');
-      const formArea = document.getElementById('person-form-area');
-      if (formArea) formArea.innerHTML = '';
+      document.querySelectorAll('[id^="person-perm-area-"]').forEach(el => { el.innerHTML = ''; });
       loadBrandPersons(brandId);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
@@ -3325,6 +3336,7 @@
   window.cancelPersonInlineForm = function(brandId) {
     const formArea = document.getElementById('person-form-area');
     if (formArea) formArea.innerHTML = '';
+    document.querySelectorAll('[id^="person-perm-area-"]').forEach(el => { el.innerHTML = ''; });
   };
 
   window.savePersonInline = async function(brandId, personId, isEdit) {
@@ -3816,12 +3828,7 @@
       '발송실패': '<span class="badge badge-red">⚠️ 발송실패</span>',
     }[s] || '<span class="badge badge-gray">📄 발송대기</span>');
 
-    // 최상단: 계약 추가 버튼들
-    let html =
-      '<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:14px;">' +
-      '<button class="btn btn-secondary" style="font-size:12px;padding:6px 14px;" onclick="openAddContractModal(\'' + brandId + '\')">+ 계약 추가</button>' +
-      '<button class="btn btn-primary" style="font-size:12px;padding:6px 14px;" onclick="openSendContractModal(\'' + brandId + '\')">📨 전자계약 발송</button>' +
-      '</div>';
+    let html = '';
 
     if (contracts.length === 0) {
       html += '<div style="font-size:13px;color:var(--gray-400);padding:4px 0;">등록된 계약이 없습니다.</div>';
@@ -4229,10 +4236,11 @@
     modal.className = 'modal-backdrop';
     modal.innerHTML =
       '<div class="modal" style="max-width:480px;">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">' +
-          '<div style="font-size:16px;font-weight:700;">계약 추가</div>' +
-          '<button onclick="document.getElementById(\'add-contract-modal\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--gray-400);">×</button>' +
+        '<div class="modal-header">' +
+          '<div class="modal-title">계약 추가</div>' +
+          '<button class="modal-close" onclick="document.getElementById(\'add-contract-modal\').remove()">×</button>' +
         '</div>' +
+        '<div class="modal-body">' +
         '<div class="form-group">' +
           '<label class="form-label">입점 유형 <span class="required">*</span></label>' +
           '<select class="form-input" id="add-contract-type">' +
@@ -4269,6 +4277,7 @@
         '<div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;">' +
           '<button class="btn btn-secondary" onclick="document.getElementById(\'add-contract-modal\').remove()">취소</button>' +
           '<button class="btn btn-primary" onclick="saveNewContract(\'' + brandId + '\')">저장</button>' +
+        '</div>' +
         '</div>' +
       '</div>';
     document.body.appendChild(modal);
@@ -7817,15 +7826,11 @@
      설정 페이지
   ════════════════════════════════ */
   async function renderSettings(container) {
-    const tabStyle = (active) =>
-      'padding:8px 18px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.12s;' +
-      (active ? 'background:var(--blue);color:#fff;' : 'background:var(--gray-100);color:var(--gray-600);');
-
     container.innerHTML =
       '<div style="max-width:680px;">' +
-      '<div style="display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap;">' +
-        '<button id="stab-general" style="' + tabStyle(true) + '" onclick="switchSettingsTab(\'general\')">일반</button>' +
-        '<button id="stab-api" style="' + tabStyle(false) + '" onclick="switchSettingsTab(\'api\')">API 및 웹훅</button>' +
+      '<div class="tab-bar">' +
+        '<button id="stab-general" class="tab-btn active" onclick="switchSettingsTab(\'general\')">일반</button>' +
+        '<button id="stab-api" class="tab-btn" onclick="switchSettingsTab(\'api\')">API 및 웹훅</button>' +
       '</div>' +
 
       /* ── 탭: 일반 ── */
@@ -7905,7 +7910,7 @@
       const btn = document.getElementById('stab-' + t);
       const content = document.getElementById('stab-content-' + t);
       const isActive = t === tab;
-      if (btn) btn.style.cssText = 'padding:8px 18px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.12s;' + (isActive ? 'background:var(--blue);color:#fff;' : 'background:var(--gray-100);color:var(--gray-600);');
+      if (btn) { btn.classList.toggle('active', isActive); }
       if (content) content.style.display = isActive ? '' : 'none';
     });
     if (tab === 'api') {
