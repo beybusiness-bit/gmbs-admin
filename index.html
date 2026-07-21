@@ -3480,7 +3480,7 @@
       const brandTypes = Array.isArray(bd.brand_types) && bd.brand_types.length > 0 ? bd.brand_types : (bd.brand_type ? [bd.brand_type] : []);
       const contracts = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-      renderContractsSection(brandId, contracts, sec, brandTypes);
+      renderContractsSection(brandId, bd.brand_name || '', contracts, sec, brandTypes);
     } catch(e) {
       if (sec) sec.innerHTML = '<div style="font-size:12px;color:var(--gray-400);">계약 로드 실패: ' + esc(e.message) + '</div>';
     }
@@ -3869,7 +3869,7 @@
     }
   };
 
-  function renderContractsSection(brandId, contracts, sec, brandTypes) {
+  function renderContractsSection(brandId, brandName, contracts, sec, brandTypes) {
     const eSignBadge = s => ({
       '발송대기': '<span class="badge badge-gray">📄 발송대기</span>',
       '발송됨':   '<span class="badge badge-blue">✉️ 발송됨</span>',
@@ -3885,10 +3885,21 @@
       html += '<div style="font-size:13px;color:var(--gray-400);padding:4px 0;">등록된 계약이 없습니다.</div>';
     } else {
       contracts.forEach(c => {
-        const ucStatus = c.status || ''; // 레거시 호환
+        const ucStatus = c.status || '';
         const cStatus = c.contract_status || '계약정보입력';
         const isUcansignBased = !!(c.ucansign_document_id);
-        const contractTypeBadge = c.contract_type ? '<span class="badge badge-blue" style="font-size:10px;">' + esc(c.contract_type) + '</span>' : '';
+
+        // no_contract 판별: 명시적 플래그 OR 레거시(계약완료인데 서명일·유캔사인·파일 모두 없음)
+        const isNoContract = c.no_contract === true || (
+          cStatus === '계약완료' && !c.signed_at && !c.ucansign_document_id && !c.file_url
+        );
+
+        const contractTypeBadge = c.contract_type
+          ? '<span class="badge badge-blue" style="font-size:10px;">' + esc(c.contract_type) + '</span>'
+          : '';
+        const noContractTag = isNoContract
+          ? '<span class="badge badge-gray" style="font-size:10px;">[계약서 없음]</span>'
+          : '';
         const contractStatusBadge = {
           '계약정보입력': '<span class="badge badge-gray" style="font-size:10px;">계약정보입력</span>',
           '계약발송전':   '<span class="badge badge-blue" style="font-size:10px;">계약발송전</span>',
@@ -3899,39 +3910,35 @@
           '계약취소':     '<span class="badge badge-red" style="font-size:10px;">계약취소</span>',
         }[cStatus] || '<span class="badge badge-gray" style="font-size:10px;">' + esc(cStatus) + '</span>';
 
-        // 상태별 액션 버튼
         const bdOnComplete = 'function(){loadBrandContracts(\'' + brandId + '\')}';
         let actionBtns = '';
-        // no_contract:true — 계약서 없이 추가된 유형, 유형 제거만 가능
-        if (c.no_contract) {
+
+        if (isNoContract) {
           actionBtns = '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:var(--red);" onclick="removeOrphanBrandType(\'' + brandId + '\',\'' + esc(c.contract_type || '') + '\',\'' + c.id + '\')">🗑 유형 제거</button>';
         } else if (cStatus === '계약정보입력') {
-          actionBtns = '<span style="font-size:11px;color:var(--orange);">⚠️ 담당자·계약기간·템플릿 확인 후 자동 전환됩니다</span>';
+          actionBtns = '<span style="font-size:11px;color:var(--orange);">⚠️ 필수 정보 확인 후 자동 전환됩니다</span>';
         } else if (cStatus === '계약발송전') {
           actionBtns = '<button class="btn btn-primary" style="font-size:11px;padding:4px 10px;" onclick="openSendContractModal(\'' + brandId + '\',\'' + c.id + '\',' + bdOnComplete + ')">📨 전자계약 발송</button>';
         } else if (['서명진행중','계약완료','계약기간만료'].includes(cStatus) || ucStatus === '체결완료') {
-          actionBtns = '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openCmContractDetail(\'' + brandId + '\',\'' + esc(c._brandName || '') + '\',\'' + c.id + '\')">📄 계약 상세</button>';
+          actionBtns = '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openCmContractDetail(\'' + brandId + '\',\'' + esc(brandName) + '\',true)">📄 계약 상세</button>';
         }
-        // 재발송 (취소/실패된 유캔사인 계약)
         const canResend = isUcansignBased && (cStatus === '계약해지' || cStatus === '발송실패' || ucStatus === '취소됨' || ucStatus === '발송실패');
         if (canResend) {
           actionBtns += ' <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openSendContractModal(\'' + brandId + '\',\'' + c.id + '\',' + bdOnComplete + ')">🔄 재발송</button>';
         }
-        // 계약취소 버튼 (계약완료·만료·해지·취소 전까지 모든 단계)
-        const canCancel = ['계약정보입력','계약발송전','서명진행중','발송실패'].includes(cStatus);
+        const canCancel = !isNoContract && ['계약정보입력','계약발송전','서명진행중','발송실패'].includes(cStatus);
         if (canCancel) {
           actionBtns += ' <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:var(--red);" onclick="cancelContract(\'' + brandId + '\',\'' + c.id + '\',' + bdOnComplete + ')">🚫 계약 취소</button>';
         }
 
-        // 전자계약 발송 이후 단계면 계약서 문서 제목 표시
         const showTemplateName = c.template_name && ['서명진행중','계약완료','계약기간만료','계약해지','발송실패'].includes(cStatus);
 
         html +=
           '<div style="padding:14px 0;border-bottom:1px solid var(--gray-100);">' +
           '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">' +
           '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
-          contractTypeBadge +
-          (ucStatus ? eSignBadge(ucStatus) : contractStatusBadge) +
+          contractTypeBadge + noContractTag +
+          (isNoContract ? '' : (ucStatus ? eSignBadge(ucStatus) : contractStatusBadge)) +
           '</div>' +
           '<div style="display:flex;gap:6px;">' + actionBtns + '</div>' +
           '</div>' +
@@ -3944,8 +3951,8 @@
           '</div>';
       });
     }
-    // no_contract:true 플래그가 있는 계약건 → 계약서 없이 추가된 유형, 유형 제거 버튼 표시
-    // (레거시: brand_types에는 있으나 어떤 계약건에도 속하지 않는 유형도 동일 처리)
+
+    // 레거시: brand_types에는 있으나 어떤 계약 문서에도 없는 유형
     const contractDocTypes = new Set(contracts.map(c => c.contract_type).filter(Boolean));
     const legacyOrphanTypes = (Array.isArray(brandTypes) ? brandTypes : []).filter(t => !contractDocTypes.has(t));
     legacyOrphanTypes.forEach(t => {
@@ -3954,7 +3961,8 @@
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">' +
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
         '<span class="badge badge-yellow" style="font-size:10px;">' + esc(t) + '</span>' +
-        '<span style="font-size:11px;color:var(--gray-400);">계약서 없는 유형 (레거시)</span>' +
+        '<span class="badge badge-gray" style="font-size:10px;">[계약서 없음]</span>' +
+        '<span style="font-size:11px;color:var(--gray-400);">레거시</span>' +
         '</div>' +
         '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:var(--red);" ' +
         'onclick="removeOrphanBrandType(\'' + brandId + '\',\'' + esc(t) + '\')">🗑 유형 제거</button>' +
@@ -4028,25 +4036,49 @@
   // 계약 발송 준비 여부 확인 후 자동 승격 — UI 없이 조용히 실행
   // returns: issues 배열 (빈 배열이면 승격 성공)
   async function autoPromoteContractIfReady(brandId, contractId) {
-    const [contractSnap, personsSnap, templatesSnap] = await Promise.all([
+    const [contractSnap, brandSnap, rulesSnap] = await Promise.all([
       getDoc(doc(db, 'brands', brandId, 'contracts', contractId)),
-      getDocs(collection(db, 'brands', brandId, 'persons')),
-      getDocs(collection(db, 'contract_templates')),
+      getDoc(doc(db, 'brands', brandId)),
+      getDoc(doc(db, 'settings', 'contract_field_rules')),
     ]);
     if (!contractSnap.exists()) return ['계약 문서를 찾을 수 없습니다.'];
     const contract = contractSnap.data();
-    const pm = personsSnap.docs.map(d => ({ id: d.id, ...d.data() })).find(p => p.role === '주관리자' && p.active !== false);
-    const activeTemplates = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => t.is_active !== false);
+
+    // no_contract 계약은 이미 계약완료 상태 — 검증 없이 통과
+    if (contract.no_contract) return [];
+
+    const contractType = contract.contract_type || '';
+    const brandData = brandSnap.exists() ? brandSnap.data() : {};
+    const si = brandData.settlement_info || {};
+    const rulesData = rulesSnap.exists() ? rulesSnap.data() : {};
+    const requiredGroups = rulesData[contractType] || [];
 
     const issues = [];
-    if (!contract.signed_at && !contract.start_date) issues.push('계약 시작일 미설정');
-    if (!contract.end_at && !contract.end_date) issues.push('계약 종료일 미설정');
-    if (!pm) issues.push('주관리자 미등록');
-    else {
-      if (!pm.name) issues.push('주관리자 이름 미입력');
-      if (!pm.phone && !pm.email) issues.push('주관리자 전화번호/이메일 미입력');
+    for (const group of requiredGroups) {
+      if (group === 'business_type') {
+        if (!si.business_type) issues.push('사업자 여부 미선택');
+      } else if (group === 'id_number') {
+        if (!si.business_type) {
+          issues.push('사업자 여부 선택 필요 (번호 검증 전제)');
+        } else if (si.business_type === 'business') {
+          if (!si.business_reg_number) issues.push('사업자등록번호 미입력');
+        } else {
+          if (!si.resident_number) issues.push('주민등록번호 미입력');
+        }
+      } else if (group === 'corp_name') {
+        if (si.business_type === 'business' && !si.corp_name) issues.push('상호 미입력');
+      } else if (group === 'representative_name') {
+        if (si.business_type === 'business' && !si.representative_name) issues.push('대표자명 미입력');
+      } else if (group === 'business_start_date') {
+        if (si.business_type === 'business' && !si.business_start_date) issues.push('사업자등록일 미입력');
+      } else if (group === 'taxation_type') {
+        if (si.business_type === 'business' && !si.taxation_type) issues.push('과세 유형 미선택');
+      } else if (group === 'address') {
+        if (!si.address) issues.push('주소 미입력');
+      } else if (group === 'bank_account') {
+        if (!si.bank_name || !si.account_number) issues.push('계좌 정보 미입력 (은행명·계좌번호 필요)');
+      }
     }
-    if (activeTemplates.length === 0) issues.push('활성화된 계약서 템플릿 없음');
 
     if (issues.length === 0) {
       await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), {
@@ -4074,7 +4106,15 @@
       const rawSinfo = brand.settlement_info || {};
       const persons = personsSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.active !== false);
       const pm = persons.find(p => p.role === '주관리자' && p.active !== false) || null;
-      const templates = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => t.is_active !== false);
+      // 계약 문서 기본 정보 먼저 추출
+      const contractData = (contractSnap && contractSnap.exists()) ? contractSnap.data() : {};
+      const contractType = contractData.contract_type || '';
+      // 활성 + 해당 계약 유형과 일치하는 템플릿만 표시 (contract_type 없는 기존 템플릿은 모두 표시)
+      const templates = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => {
+        if (t.is_active === false) return false;
+        if (!t.contract_type || !contractType) return true;
+        return t.contract_type === contractType;
+      });
 
       // 암호화된 민감정보 미리 복호화 (resolveContractVars는 동기 함수이므로)
       const sinfo = {
@@ -4096,12 +4136,11 @@
         return;
       }
 
-      // 계약 문서 기존 기간 정보
-      const contractData = (contractSnap && contractSnap.exists()) ? contractSnap.data() : {};
+      // 계약 기간 정보
       const existingStart = contractData.signed_at || contractData.start_date || '';
       const existingEnd = contractData.end_at || contractData.end_date || '';
       const existingAutoRenew = contractData.auto_renew || false;
-      const existingType = contractData.contract_type || '';
+      const existingType = contractType;
       const periodDisplay =
         (existingStart ? existingStart : '시작일 미설정') + ' ~ ' + (existingEnd ? existingEnd : '종료일 미설정') +
         (existingAutoRenew ? ' · 자동 갱신' : '');
@@ -4410,8 +4449,19 @@
       });
       if (immediate) {
         await addContractTypeToBrand(brandId, contractType);
+        showToast('계약이 추가되었습니다.', 'success');
+      } else {
+        try {
+          const issues = await autoPromoteContractIfReady(brandId, newRef.id);
+          if (issues.length === 0) {
+            showToast('계약을 추가하고 발송 전 단계로 전환했습니다. 전자계약 발송 버튼을 눌러 발송하세요.', 'success');
+          } else {
+            showToast('계약을 추가했습니다. 누락 정보(' + issues.join(', ') + ')를 채우면 발송 준비가 완료됩니다.', 'info');
+          }
+        } catch(e2) {
+          showToast('계약이 추가되었습니다.', 'success');
+        }
       }
-      showToast('계약이 추가되었습니다.', 'success');
       document.getElementById('add-contract-modal').remove();
       openBrandDetail(brandId);
     } catch(e) {
@@ -8087,7 +8137,7 @@
       '<div class="tab-bar">' +
         '<button id="ctab-need" class="tab-btn active" onclick="switchContractTab(\'need\')">계약 필요 브랜드</button>' +
         '<button id="ctab-contracts" class="tab-btn" onclick="switchContractTab(\'contracts\')">입점 계약 관리</button>' +
-        '<button id="ctab-template" class="tab-btn" onclick="switchContractTab(\'template\')">전자계약 템플릿 관리</button>' +
+        '<button id="ctab-template" class="tab-btn" onclick="switchContractTab(\'template\')">유형별 계약서 관리</button>' +
       '</div>' +
 
       /* ── 탭: 계약 필요 브랜드 ── */
@@ -8100,17 +8150,9 @@
         '<div id="cm-contracts-content"><div class="spinner" style="margin:60px auto;"></div></div>' +
       '</div>' +
 
-      /* ── 탭: 전자계약 템플릿 관리 ── */
+      /* ── 탭: 유형별 계약서 관리 ── */
       '<div id="ctab-content-template" style="display:none;">' +
-        '<div class="card" style="padding:24px;">' +
-          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
-            '<div style="font-size:15px;font-weight:700;color:var(--gray-900);">계약서 템플릿</div>' +
-            '<button class="btn btn-primary" style="font-size:12px;padding:5px 12px;" onclick="openContractTemplateModal(null)">+ 템플릿 추가</button>' +
-          '</div>' +
-          '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">유캔사인 템플릿 ID와 연결합니다. 전자계약 발송 시 계약서 종류를 선택할 수 있습니다.</div>' +
-          '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">유캔사인 API 키 설정은 <a href="#settings" onclick="navigate(\'settings\')" style="color:var(--blue);">설정 → API 및 웹훅</a> 탭에서 합니다.</div>' +
-          '<div id="contract-templates-list"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
-        '</div>' +
+        '<div id="type-template-tab-body"><div class="spinner" style="margin:60px auto;"></div></div>' +
       '</div>' +
 
       '</div>';
@@ -8127,7 +8169,7 @@
       if (btn) { btn.classList.toggle('active', isActive); }
       if (content) content.style.display = isActive ? '' : 'none';
     });
-    if (tab === 'template') loadContractTemplatesList();
+    if (tab === 'template') loadTypeTemplateTab(window._templateTabType || null);
     if (tab === 'need') loadCmNeedBrandsList();
     if (tab === 'contracts') loadCmContractsList();
   };
@@ -8588,9 +8630,13 @@
   };
 
   // 계약건 관리 모달 (특정 브랜드의 모든 계약 목록)
-  window.openCmContractDetail = async function(brandId, brandName) {
+  window.openCmContractDetail = async function(brandId, brandName, fromBrandDetail) {
     const formHTML = '<div id="cm-contract-detail-list"><div class="spinner" style="width:20px;height:20px;"></div></div>';
-    const footerHTML = '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>';
+    const closeAction = fromBrandDetail
+      ? 'openBrandDetail(\'' + brandId + '\')'
+      : 'closeModal()';
+    const closeLabel = fromBrandDetail ? '← 브랜드 상세' : '닫기';
+    const footerHTML = '<button class="btn btn-secondary" onclick="' + closeAction + '">' + closeLabel + '</button>';
     showModal('📄 계약건 관리 — ' + esc(brandName), formHTML, footerHTML, 'lg');
     try {
       const q = query(collection(db, 'brands', brandId, 'contracts'), orderBy('signed_at', 'desc'));
@@ -8615,7 +8661,7 @@
         '발송됨':    '<span class="badge badge-blue">발송됨</span>',
         '취소됨':    '<span class="badge badge-red">취소됨</span>',
       };
-      const cmDetailOnComplete = 'function(){openCmContractDetail(\'' + brandId + '\',\'' + esc(brandName) + '\')}';
+      const cmDetailOnComplete = 'function(){openCmContractDetail(\'' + brandId + '\',\'' + esc(brandName) + '\',' + (fromBrandDetail ? 'true' : 'false') + ')}';
       el.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">' +
         '<thead><tr style="border-bottom:2px solid var(--gray-200);">' +
           '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">버전/ID</th>' +
@@ -8904,47 +8950,171 @@
   };
 
   /* ── 계약서 템플릿 목록 로드 ── */
-  async function loadContractTemplatesList() {
-    const area = document.getElementById('contract-templates-list');
-    if (!area) return;
+  // 유형별 계약서 관리 탭 — 타입 필터 + 템플릿 목록 + 유형별 필수 정보 설정
+  window.loadTypeTemplateTab = async function loadTypeTemplateTab(selectedType) {
+    window._templateTabType = selectedType || null;
+    const body = document.getElementById('type-template-tab-body');
+    if (!body) return;
+    body.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
     try {
-      const snap = await getDocs(collection(db, 'contract_templates'));
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-      if (list.length === 0) {
-        area.innerHTML = '<div style="font-size:13px;color:var(--gray-400);">등록된 템플릿이 없습니다. + 템플릿 추가 버튼으로 등록해주세요.</div>';
-        return;
-      }
-      area.innerHTML = list.map(t =>
-        '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--gray-100);">' +
-        '<div style="flex:1;">' +
-        '<div style="font-size:14px;font-weight:600;color:var(--gray-800);">' + esc(t.name || t.id) + '</div>' +
-        '<div style="font-size:12px;color:var(--gray-500);margin-top:2px;">' +
-        'ID: <code style="font-size:11px;background:var(--gray-100);padding:1px 5px;border-radius:3px;">' + esc(t.ucansign_template_id || '미설정') + '</code>' +
-        (t.type ? ' &nbsp;· 유형: ' + esc(t.type) : '') +
-        '</div></div>' +
-        '<label style="position:relative;display:inline-block;width:40px;height:22px;cursor:pointer;flex-shrink:0;" title="' + (t.is_active !== false ? '활성 — 클릭해서 비활성화' : '비활성 — 클릭해서 활성화') + '">' +
-        '<input type="checkbox" ' + (t.is_active !== false ? 'checked' : '') + ' onchange="toggleContractTemplateActive(\'' + t.id + '\',this.checked)" style="opacity:0;width:0;height:0;" />' +
-        '<span style="position:absolute;inset:0;border-radius:11px;background:' + (t.is_active !== false ? 'var(--blue)' : 'var(--gray-300)') + ';transition:background .2s;">' +
-        '<span style="position:absolute;top:3px;left:' + (t.is_active !== false ? '21px' : '3px') + ';width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;"></span>' +
-        '</span>' +
-        '</label>' +
-        '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openContractTemplateModal(\'' + t.id + '\')">수정</button>' +
-        '</div>'
-      ).join('');
+      const [templatesSnap, rulesSnap] = await Promise.all([
+        getDocs(collection(db, 'contract_templates')),
+        getDoc(doc(db, 'settings', 'contract_field_rules')),
+      ]);
+      const allTemplates = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const rulesData = rulesSnap.exists() ? rulesSnap.data() : {};
+
+      // 유형 목록: 템플릿의 contract_type + rules의 키 (union)
+      const typeSet = new Set([
+        ...allTemplates.map(t => t.contract_type).filter(Boolean),
+        ...Object.keys(rulesData),
+      ]);
+      const allTypes = [...typeSet].sort();
+
+      // 필터 버튼
+      const filterBtns =
+        '<button class="tab-btn' + (!selectedType ? ' active' : '') + '" onclick="loadTypeTemplateTab(null)">전체</button>' +
+        allTypes.map(t =>
+          '<button class="tab-btn' + (selectedType === t ? ' active' : '') + '" onclick="loadTypeTemplateTab(\'' + esc(t) + '\')">' + esc(t) + '</button>'
+        ).join('');
+
+      // 필터링된 템플릿
+      const showAll = !selectedType;
+      const filteredTemplates = showAll
+        ? allTemplates.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        : allTemplates.filter(t => t.contract_type === selectedType).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+      const templateRows = filteredTemplates.length === 0
+        ? '<div style="font-size:13px;color:var(--gray-400);padding:8px 0;">' + (selectedType ? '이 유형의 템플릿이 없습니다.' : '등록된 템플릿이 없습니다.') + '</div>'
+        : filteredTemplates.map(t => {
+            const typeTag = (showAll && t.contract_type)
+              ? '<span class="badge badge-blue" style="font-size:10px;margin-right:6px;">' + esc(t.contract_type) + '</span>'
+              : '';
+            const toggleBg = t.is_active !== false ? 'var(--blue)' : 'var(--gray-300)';
+            const toggleLeft = t.is_active !== false ? '21px' : '3px';
+            return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--gray-100);">' +
+              '<div style="flex:1;">' +
+              '<div style="font-size:14px;font-weight:600;color:var(--gray-800);">' + typeTag + esc(t.name || t.id) + '</div>' +
+              '<div style="font-size:12px;color:var(--gray-500);margin-top:2px;">' +
+              'ID: <code style="font-size:11px;background:var(--gray-100);padding:1px 5px;border-radius:3px;">' + esc(t.ucansign_template_id || '미설정') + '</code>' +
+              '</div></div>' +
+              '<label style="position:relative;display:inline-block;width:40px;height:22px;cursor:pointer;flex-shrink:0;">' +
+              '<input type="checkbox" ' + (t.is_active !== false ? 'checked' : '') + ' onchange="toggleContractTemplateActive(\'' + t.id + '\',this.checked)" style="opacity:0;width:0;height:0;" />' +
+              '<span style="position:absolute;inset:0;border-radius:11px;background:' + toggleBg + ';transition:background .2s;">' +
+              '<span style="position:absolute;top:3px;left:' + toggleLeft + ';width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;"></span>' +
+              '</span>' +
+              '</label>' +
+              '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openContractTemplateModal(\'' + t.id + '\')">수정</button>' +
+              '</div>';
+          }).join('');
+
+      // 유형별 필수 브랜드 정보 섹션 (특정 유형 선택 시만)
+      const requiredFieldsSection = selectedType ? renderContractFieldRulesUI(selectedType, rulesData[selectedType] || []) : '';
+
+      body.innerHTML =
+        '<div class="card" style="padding:24px;">' +
+        '<div style="font-size:12px;color:var(--gray-400);margin-bottom:12px;">유캔사인 API 키 설정은 <a href="#settings" onclick="navigate(\'settings\')" style="color:var(--blue);">설정 → API 및 웹훅</a> 탭에서 합니다.</div>' +
+
+        // 유형 필터 바
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;">' + filterBtns + '</div>' +
+
+        // 계약서 템플릿 섹션
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">' +
+        '<div style="font-size:14px;font-weight:700;color:var(--gray-800);">계약서 템플릿</div>' +
+        '<button class="btn btn-primary" style="font-size:12px;padding:5px 12px;" onclick="openContractTemplateModal(null,' + (selectedType ? '\'' + esc(selectedType) + '\'' : 'null') + ')">+ 템플릿 추가</button>' +
+        '</div>' +
+        '<div id="contract-templates-list">' + templateRows + '</div>' +
+
+        // 유형별 필수 브랜드 정보 (특정 유형 선택 시)
+        (selectedType
+          ? '<hr style="border:none;border-top:1px solid var(--gray-100);margin:20px 0;" />' + requiredFieldsSection
+          : '') +
+        '</div>';
+
     } catch(e) {
-      area.innerHTML = '<div style="font-size:13px;color:var(--red);">로드 실패: ' + esc(e.message) + '</div>';
+      body.innerHTML = '<div style="font-size:13px;color:var(--red);">로드 실패: ' + esc(e.message) + '</div>';
     }
+  };
+
+  // 유형별 필수 브랜드 정보 체크박스 UI 렌더
+  const SETTLEMENT_FIELD_GROUPS = [
+    { key: 'business_type', label: '사업자 여부', note: null },
+    { key: 'id_number', label: '사업자등록번호 / 주민등록번호', note: '사업자이면 사업자등록번호, 비사업자이면 주민등록번호를 자동으로 확인합니다' },
+    { key: 'corp_name', label: '상호', note: '사업자에게만 적용됩니다' },
+    { key: 'representative_name', label: '대표자명', note: '사업자에게만 적용됩니다' },
+    { key: 'business_start_date', label: '사업자등록일', note: '사업자에게만 적용됩니다' },
+    { key: 'taxation_type', label: '과세 유형', note: '사업자에게만 적용됩니다' },
+    { key: 'address', label: '주소 (사업장/거주지)', note: null },
+    { key: 'bank_account', label: '계좌 정보', note: '은행명, 계좌번호, 예금주명 모두 확인합니다' },
+  ];
+
+  function renderContractFieldRulesUI(contractType, currentRules) {
+    const checkboxRows = SETTLEMENT_FIELD_GROUPS.map(g => {
+      const checked = currentRules.includes(g.key);
+      return '<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;cursor:pointer;border-bottom:1px solid var(--gray-100);">' +
+        '<input type="checkbox" id="cfr-' + g.key + '"' + (checked ? ' checked' : '') + ' style="margin-top:2px;flex-shrink:0;" />' +
+        '<div>' +
+        '<div style="font-size:13px;font-weight:500;color:var(--gray-800);">' + esc(g.label) + '</div>' +
+        (g.note ? '<div style="font-size:11px;color:var(--gray-400);margin-top:2px;">' + esc(g.note) + '</div>' : '') +
+        '</div>' +
+        '</label>';
+    }).join('');
+
+    return '<div>' +
+      '<div style="font-size:14px;font-weight:700;color:var(--gray-800);margin-bottom:4px;">유형별 필수 브랜드 정보</div>' +
+      '<div style="font-size:12px;color:var(--gray-500);margin-bottom:12px;">계약 추가 후 자동 전환 조건입니다. 체크된 항목이 브랜드에 모두 입력되어야 <b>계약발송전</b> 단계로 자동 전환됩니다.</div>' +
+      '<div style="font-size:13px;font-weight:600;color:var(--gray-600);margin-bottom:8px;">계약 및 정산 정보</div>' +
+      checkboxRows +
+      '<button class="btn btn-primary" style="margin-top:12px;font-size:12px;padding:6px 16px;" onclick="saveContractFieldRules(\'' + esc(contractType) + '\')">저장</button>' +
+      '</div>';
   }
 
-  window.openContractTemplateModal = async function(templateId) {
+  window.saveContractFieldRules = async function(contractType) {
+    const selected = SETTLEMENT_FIELD_GROUPS
+      .filter(g => (document.getElementById('cfr-' + g.key) || {}).checked)
+      .map(g => g.key);
+    try {
+      const rulesRef = doc(db, 'settings', 'contract_field_rules');
+      const existing = await getDoc(rulesRef);
+      const existingData = existing.exists() ? existing.data() : {};
+      existingData[contractType] = selected;
+      await setDoc(rulesRef, existingData);
+      showToast('"' + contractType + '" 유형 필수 정보가 저장되었습니다.', 'success');
+    } catch(e) {
+      showToast('저장 실패: ' + e.message, 'error');
+    }
+  };
+
+  // 레거시 호환용 — 다른 곳에서 직접 호출 시
+  async function loadContractTemplatesList() {
+    loadTypeTemplateTab(window._templateTabType || null);
+  }
+
+  window.openContractTemplateModal = async function(templateId, presetType) {
     let existing = null;
     if (templateId) {
       const snap = await getDoc(doc(db, 'contract_templates', templateId));
       if (snap.exists()) existing = { id: snap.id, ...snap.data() };
     }
     const t = existing || { is_active: true };
+
+    // 유형 옵션 목록: 기존 rules 키 + 기존 템플릿의 contract_type + 기본값
+    const rulesSnap = await getDoc(doc(db, 'settings', 'contract_field_rules'));
+    const rulesTypes = rulesSnap.exists() ? Object.keys(rulesSnap.data()) : [];
+    const baseTypes = ['위탁', 'PB', '매입', '기타'];
+    const allTypeOptions = [...new Set([...baseTypes, ...rulesTypes])].sort();
+    const currentType = t.contract_type || presetType || '';
+    const typeOptions = allTypeOptions.map(opt =>
+      '<option value="' + esc(opt) + '"' + (opt === currentType ? ' selected' : '') + '>' + esc(opt) + '</option>'
+    ).join('');
+
     const formHtml =
+      '<div class="form-group"><label class="form-label">입점 유형 <span style="color:var(--red);">*</span></label>' +
+      '<select class="form-input" id="ct-contract-type">' +
+      '<option value="">선택하세요</option>' + typeOptions +
+      '</select>' +
+      '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">이 템플릿이 어떤 계약 유형에서 사용되는지 지정합니다. 전자계약 발송 시 해당 유형의 템플릿만 표시됩니다.</div></div>' +
+
       '<div class="form-group"><label class="form-label">계약서 이름 <span style="color:var(--red);">*</span></label>' +
       '<input class="form-input" id="ct-name" value="' + esc(t.name || '') + '" placeholder="예: (사업자) 오프라인 위탁판매 입점계약서" /></div>' +
 
@@ -8955,9 +9125,6 @@
       '</div>' +
       '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">유캔사인 로그인 → 템플릿 메뉴 → 해당 템플릿 클릭 → URL 또는 상세 화면의 ID 복사</div></div>' +
 
-      '<div class="form-group"><label class="form-label">계약 종류 태그 <span style="font-size:12px;font-weight:400;color:var(--gray-400);">(선택 · 목록 구분용 메모)</span></label>' +
-      '<input class="form-input" id="ct-type" value="' + esc(t.type || '') + '" placeholder="예: 사업자 / 예: 비사업자 / 예: PB계약" />' +
-      '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">목록에서 한눈에 구분할 수 있도록 짧게 적어두는 메모예요. 계약 기능에는 영향 없습니다.</div></div>' +
 
       '<div class="form-group"><label class="form-label">계약서 변수 기본값 <span style="font-size:12px;font-weight:400;color:var(--gray-400);">(선택)</span></label>' +
       '<div style="font-size:12px;color:var(--gray-500);margin-bottom:8px;">유캔사인 계약서 안에 <strong>자동으로 채울 항목</strong>이 있으면 입력하세요. 없으면 비워두세요.</div>' +
@@ -9172,11 +9339,12 @@
   };
 
   window.saveContractTemplate = async function(templateId) {
+    const contractType = (document.getElementById('ct-contract-type') || {}).value?.trim();
     const name = (document.getElementById('ct-name') || {}).value?.trim();
     const ucansignId = (document.getElementById('ct-ucansign-id') || {}).value?.trim();
-    const type = (document.getElementById('ct-type') || {}).value?.trim();
     const isActive = (document.getElementById('ct-active') || {}).checked;
 
+    if (!contractType) { showToast('입점 유형을 선택해주세요.', 'error'); return; }
     if (!name) { showToast('계약서 이름을 입력해주세요.', 'error'); return; }
     if (!ucansignId) { showToast('유캔사인 템플릿 ID를 입력해주세요.', 'error'); return; }
 
@@ -9197,7 +9365,7 @@
       email: ((document.getElementById('ct-receiver-email') || {}).value || '').trim(),
       phone: ((document.getElementById('ct-receiver-phone') || {}).value || '').trim(),
     };
-    const data = { name, ucansign_template_id: ucansignId, type: type || '', sender_params: senderParams, receiver_params: receiverParams, default_fields: defaultFields, is_active: isActive, updated_at: today() };
+    const data = { name, contract_type: contractType, ucansign_template_id: ucansignId, sender_params: senderParams, receiver_params: receiverParams, default_fields: defaultFields, is_active: isActive, updated_at: today() };
     try {
       if (templateId) {
         await updateDoc(doc(db, 'contract_templates', templateId), data);
@@ -9207,7 +9375,7 @@
       }
       showToast('저장되었습니다.');
       closeModal();
-      loadContractTemplatesList();
+      loadTypeTemplateTab(window._templateTabType || null);
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
 
@@ -9217,7 +9385,7 @@
       await deleteDoc(doc(db, 'contract_templates', templateId));
       showToast('삭제되었습니다.');
       closeModal();
-      loadContractTemplatesList();
+      loadTypeTemplateTab(window._templateTabType || null);
     } catch(e) { showToast('삭제 실패: ' + e.message, 'error'); }
   };
 
@@ -9225,7 +9393,7 @@
     try {
       await updateDoc(doc(db, 'contract_templates', templateId), { is_active: isActive, updated_at: today() });
       showToast(isActive ? '활성화되었습니다.' : '비활성화되었습니다.', 'success');
-    } catch(e) { showToast('변경 실패: ' + e.message, 'error'); loadContractTemplatesList(); }
+    } catch(e) { showToast('변경 실패: ' + e.message, 'error'); loadTypeTemplateTab(window._templateTabType || null); }
   };
 
   function settingNumField(label, id, val, min, max) {
