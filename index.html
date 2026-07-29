@@ -2148,11 +2148,10 @@
 
         // ④ 계약 및 정산 정보
         sectionTitle('계약 및 정산 정보',
-          '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openBrandModal(\'' + brandId + '\')">✏️ 수정</button>') +
+          '<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="openSettlementInfoModal(\'' + brandId + '\')">✏️ 수정</button>') +
         '<div class="detail-section">' +
         (si.bank_name
-          ? (commissionVal ? drow('위탁판매수수료', commissionVal) : '') +
-            drow('사업자 여부', bizTypeText) +
+          ? drow('사업자 여부', bizTypeText) +
             (si.business_type === 'business'
               ? drow('사업자등록번호', isEncrypted(si.business_reg_number)
                   ? '<div id="bd-biz-reg-wrapper"><button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="revealBrandBizReg(\'' + brandId + '\')">🔓 보기</button></div>'
@@ -3233,14 +3232,14 @@
      계약(Contract) 관리
   ════════════════════════════════ */
   // 계약 변수 치환 헬퍼 — brand, pm(주관리자), si(supply_info) 기반
-  function resolveContractVars(text, brand, pm, si, sinfo) {
+  function resolveContractVars(text, brand, pm, si, sinfo, contractCommissionRate) {
     if (!text || typeof text !== 'string') return text || '';
     const d = new Date();
     const y = String(d.getFullYear());
     const mo = String(d.getMonth() + 1).padStart(2, '0');
     const dy = String(d.getDate()).padStart(2, '0');
-    const commRate = (si && si.commission_rate !== undefined)
-      ? String(si.commission_rate)
+    const commRate = (contractCommissionRate !== undefined && contractCommissionRate !== null)
+      ? String(contractCommissionRate)
       : ((brand.fee_info && brand.fee_info.commission_rate !== undefined) ? String(brand.fee_info.commission_rate) : '');
     return text
       .replace(/\{\{brand_name\}\}/g, brand.brand_name || '')
@@ -3985,7 +3984,7 @@
     const template = ctx.templates.find(t => t.id === sel.value);
     if (!template) { preview.innerHTML = '<div style="font-size:12px;color:var(--gray-400);">템플릿을 선택해주세요.</div>'; return; }
 
-    const resolve = text => resolveContractVars(text, ctx.brand, ctx.pm, ctx.si, ctx.sinfo);
+    const resolve = text => resolveContractVars(text, ctx.brand, ctx.pm, ctx.si, ctx.sinfo, ctx.contractData ? ctx.contractData.commission_rate : undefined);
     const sp = template.sender_params || {};
     const rp = template.receiver_params || {};
     const senderName   = resolve(sp.name  || '');
@@ -4175,7 +4174,7 @@
         '<div class="modal-body">' +
         '<div class="form-group">' +
           '<label class="form-label">입점 유형 <span class="required">*</span></label>' +
-          '<select class="form-input" id="add-contract-type">' +
+          '<select class="form-input" id="add-contract-type" onchange="document.getElementById(\'add-contract-commission-row\').style.display=(this.value===\'위탁\'?\'\':\' none\')">' +
             '<option value="">선택하세요</option>' +
             '<option value="위탁">위탁</option>' +
             '<option value="PB">PB</option>' +
@@ -4192,6 +4191,10 @@
             '<label class="form-label">계약 종료일 <span class="required">*</span></label>' +
             '<input type="date" class="form-input" id="add-contract-end" />' +
           '</div>' +
+        '</div>' +
+        '<div id="add-contract-commission-row" style="display:none;" class="form-group">' +
+          '<label class="form-label">위탁판매수수료율 (%)</label>' +
+          '<input type="number" class="form-input" id="add-contract-commission" min="0" max="100" step="0.1" placeholder="예: 10 (%기호 없이)" />' +
         '</div>' +
         '<div class="form-group">' +
           '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;">' +
@@ -4228,16 +4231,19 @@
 
     const contractStatus = immediate ? '계약완료' : '계약정보입력';
     try {
-      const newRef = await addDoc(collection(db, 'brands', brandId, 'contracts'), {
+      const commissionRateInput = parseFloat((document.getElementById('add-contract-commission') || {}).value);
+      const contractDoc = {
         contract_type: contractType,
         start_date: startDate,
         end_date: endDate,
         auto_renew: autoRenew,
         contract_status: contractStatus,
         ...(immediate ? { no_contract: true } : {}),
+        ...(contractType === '위탁' && !isNaN(commissionRateInput) ? { commission_rate: commissionRateInput } : {}),
         created_at: today(),
         updated_at: today(),
-      });
+      };
+      const newRef = await addDoc(collection(db, 'brands', brandId, 'contracts'), contractDoc);
       if (immediate) {
         await addContractTypeToBrand(brandId, contractType);
         showToast('계약이 추가되었습니다.', 'success');
@@ -4267,6 +4273,227 @@
     const area = document.getElementById('contract-file-area');
     if (preview) preview.textContent = file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)';
     if (area) area.style.borderColor = 'var(--blue)';
+  };
+
+  /* ── 계약 및 정산 정보 편집 모달 ── */
+  window.openSettlementInfoModal = async function(brandId) {
+    const existing = document.getElementById('settlement-info-modal');
+    if (existing) existing.remove();
+
+    let si = {};
+    try {
+      const snap = await getDoc(doc(db, 'brands', brandId));
+      if (snap.exists()) si = snap.data().settlement_info || {};
+    } catch(e) { showToast('불러오기 실패: ' + e.message, 'error'); return; }
+
+    const bizType = si.business_type || 'business';
+    const isInd = bizType === 'individual';
+
+    const modal = document.createElement('div');
+    modal.id = 'settlement-info-modal';
+    modal.className = 'modal-backdrop';
+    modal.style.cssText = 'z-index:10001;';
+
+    const fg = (lbl, id, inputHtml, req) =>
+      '<div class="form-group">' +
+      '<label class="form-label" for="' + id + '">' + lbl + (req ? ' <span class="required">*</span>' : '') + '</label>' +
+      inputHtml + '</div>';
+
+    const indSec = isInd ? '' : 'display:none;';
+    const bizSec = isInd ? 'display:none;' : '';
+
+    modal.innerHTML =
+      '<div class="modal" style="max-width:540px;">' +
+        '<div class="modal-header">' +
+          '<div class="modal-title">계약 및 정산 정보 수정</div>' +
+          '<button class="modal-close" onclick="document.getElementById(\'settlement-info-modal\').remove()">×</button>' +
+        '</div>' +
+        '<div class="modal-body" style="max-height:80vh;overflow-y:auto;">' +
+
+        /* 사업자 여부 */
+        '<div class="form-group">' +
+          '<label class="form-label">사업자 여부</label>' +
+          '<div style="display:flex;gap:10px;">' +
+            '<label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border:1px solid var(--gray-300);border-radius:8px;cursor:pointer;flex:1;" id="si-lbl-biz">' +
+              '<input type="radio" name="si-biz-type" id="si-biz-business" value="business"' + (isInd ? '' : ' checked') + ' onchange="onSiBizTypeChange()" style="accent-color:var(--blue);" />' +
+              '<div><div style="font-weight:600;font-size:13px;">사업자</div><div style="font-size:11px;color:var(--gray-400);">사업자등록번호 보유</div></div>' +
+            '</label>' +
+            '<label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border:1px solid var(--gray-300);border-radius:8px;cursor:pointer;flex:1;" id="si-lbl-ind">' +
+              '<input type="radio" name="si-biz-type" id="si-biz-individual" value="individual"' + (isInd ? ' checked' : '') + ' onchange="onSiBizTypeChange()" style="accent-color:var(--blue);" />' +
+              '<div><div style="font-weight:600;font-size:13px;">개인 (사업자 없음)</div><div style="font-size:11px;color:var(--gray-400);">3.3% 원천징수 적용</div></div>' +
+            '</label>' +
+          '</div>' +
+        '</div>' +
+
+        /* 개인 안내 */
+        '<div id="si-individual-notice" style="' + indSec + 'background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;">' +
+          '⚠️ 원칙적으로 사업자 없이 상품 판매를 할 수가 없기에, 판매 규모가 커지면 세무 안정성을 위해 사업자 등록이 필요할 수 있습니다.' +
+        '</div>' +
+
+        /* 개인: 주민등록번호 */
+        '<div id="si-section-resident" style="' + indSec + '">' +
+          fg('주민등록번호', 'si-resident',
+            '<input class="form-input" id="si-resident" type="text" inputmode="numeric" autocomplete="off" oninput="onResidentNumInput(this)" onblur="onResidentNumBlur(this)" onfocus="onResidentNumFocus(this)" ' +
+            (isEncrypted(si.resident_number) ? 'placeholder="암호화 보관 중 · 변경 시 재입력" data-has-enc="1"' : 'value="' + esc(si.resident_number || '') + '" placeholder="000000-0000000"') + ' />' +
+            '<div id="si-resident-hint" style="font-size:11px;margin-top:4px;"></div>' +
+            '<div class="form-hint">🔒 소득세법에 따른 원천징수 의무 이행을 위해서만 수집됩니다.</div>') +
+        '</div>' +
+
+        /* 사업자: 사업자등록번호 + 과세유형 등 */
+        '<div id="si-section-business" style="' + bizSec + '">' +
+          fg('사업자등록번호', 'si-biz-reg-num',
+            '<div style="display:flex;gap:8px;align-items:flex-start;">' +
+            '<div style="flex:1;"><input class="form-input" id="si-biz-reg-num" type="text" placeholder="000-00-00000" value="' + esc(si.business_reg_number || '') + '" oninput="onBizRegNumInput(this)" />' +
+            '<div id="si-biz-reg-hint" style="font-size:11px;margin-top:4px;"></div></div>' +
+            '<button type="button" onclick="verifySiBizNumber()" style="white-space:nowrap;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;background:#fff;font-size:12px;font-weight:600;cursor:pointer;margin-top:0;">사업자 확인</button>' +
+            '</div>') +
+          fg('과세 유형', 'si-taxation-type',
+            '<select class="form-input" id="si-taxation-type">' +
+            '<option value="">선택하세요</option>' +
+            ['일반과세자','간이과세자','면세사업자'].map(o => '<option value="' + o + '"' + (si.taxation_type === o ? ' selected' : '') + '>' + o + '</option>').join('') +
+            '</select>') +
+          fg('상호', 'si-corp-name',
+            '<input class="form-input" id="si-corp-name" type="text" placeholder="사업자등록증상 상호명" value="' + esc(si.corp_name || '') + '" />') +
+          fg('대표자명', 'si-representative',
+            '<input class="form-input" id="si-representative" type="text" placeholder="대표자명" value="' + esc(si.representative_name || '') + '" />') +
+          fg('사업자등록일', 'si-biz-start',
+            '<input class="form-input" id="si-biz-start" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" maxlength="10" value="' + esc(formatBizDate(si.business_start_date || '')) + '" oninput="autoHyphenBizDate(this)" />') +
+          fg('사업장 주소', 'si-addr-biz',
+            '<input class="form-input" id="si-addr-biz" type="text" placeholder="사업장 주소" value="' + esc(si.address || '') + '" />') +
+        '</div>' +
+
+        /* 개인: 주소 */
+        '<div id="si-section-addr-ind" style="' + indSec + '">' +
+          fg('주소', 'si-addr-ind',
+            '<input class="form-input" id="si-addr-ind" type="text" placeholder="주소" value="' + esc(si.address || '') + '" />') +
+        '</div>' +
+
+        /* 계좌 정보 */
+        '<div style="border-top:1px solid var(--gray-200);margin:16px 0;"></div>' +
+        fg('은행', 'si-bank-name',
+          '<input class="form-input" id="si-bank-name" type="text" placeholder="예: 국민은행" value="' + esc(si.bank_name || '') + '" />') +
+        fg('예금주', 'si-account-holder',
+          '<input class="form-input" id="si-account-holder" type="text" placeholder="예금주명" value="' + esc(si.account_holder || '') + '" />') +
+        fg('계좌번호', 'si-account-number',
+          '<input class="form-input" id="si-account-number" type="text" inputmode="numeric" autocomplete="off" placeholder="계좌번호 (- 없이 입력)" ' +
+          (isEncrypted(si.account_number) ? 'data-has-enc="1" placeholder="암호화 보관 중 · 변경 시 재입력"' : 'value="' + esc(si.account_number || '') + '"') + ' />') +
+
+        '<div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;">' +
+          '<button class="btn btn-secondary" onclick="document.getElementById(\'settlement-info-modal\').remove()">취소</button>' +
+          '<button class="btn btn-primary" onclick="saveSettlementInfo(\'' + brandId + '\')">저장</button>' +
+        '</div>' +
+        '</div>' +
+      '</div>';
+
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+    window.onSiBizTypeChange = function() {
+      const isI = document.getElementById('si-biz-individual') && document.getElementById('si-biz-individual').checked;
+      ['si-individual-notice','si-section-resident','si-section-addr-ind'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.style.display = isI ? '' : 'none';
+      });
+      ['si-section-business'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.style.display = isI ? 'none' : '';
+      });
+    };
+
+    window.verifySiBizNumber = async function() {
+      const numEl = document.getElementById('si-biz-reg-num');
+      const hintEl = document.getElementById('si-biz-reg-hint');
+      if (!numEl || !hintEl) return;
+      const num = numEl.value.replace(/-/g, '');
+      if (num.length !== 10) { hintEl.innerHTML = '<span style="color:var(--red);">10자리를 입력하세요.</span>'; return; }
+      hintEl.innerHTML = '<span style="color:var(--gray-400);">조회 중...</span>';
+      try {
+        const r = await fetch('https://api.odcloud.kr/api/nts-businessman/v1/status?serviceKey=', { method: 'GET' });
+        hintEl.innerHTML = '<span style="color:var(--gray-400);">국세청 연동은 별도 API키 설정이 필요합니다.</span>';
+      } catch(e) {
+        hintEl.innerHTML = '<span style="color:var(--gray-400);">확인 기능 미연동 상태입니다.</span>';
+      }
+    };
+
+    /* 암호화된 사업자등록번호 복호화 후 인풋에 채우기 */
+    const bizRegEl = document.getElementById('si-biz-reg-num');
+    if (bizRegEl && si.business_reg_number && isEncrypted(si.business_reg_number)) {
+      bizRegEl.value = '';
+      bizRegEl.placeholder = '복호화 중...';
+      bizRegEl.dataset.hasEnc = '1';
+      decryptField(si.business_reg_number).then(v => {
+        bizRegEl.value = v || '';
+        bizRegEl.placeholder = '000-00-00000';
+      }).catch(() => { bizRegEl.placeholder = '복호화 실패'; });
+    }
+    const accEl = document.getElementById('si-account-number');
+    if (accEl && si.account_number && isEncrypted(si.account_number)) {
+      accEl.value = '';
+      accEl.placeholder = '복호화 중...';
+      decryptField(si.account_number).then(v => {
+        accEl.value = v || '';
+        accEl.placeholder = '계좌번호 (- 없이 입력)';
+      }).catch(() => { accEl.placeholder = '복호화 실패'; });
+    }
+  };
+
+  window.saveSettlementInfo = async function(brandId) {
+    const isInd = document.getElementById('si-biz-individual') && document.getElementById('si-biz-individual').checked;
+    const bizType = isInd ? 'individual' : 'business';
+
+    const residentRaw = (document.getElementById('si-resident') || {}).value || '';
+    const bizRegRaw = (document.getElementById('si-biz-reg-num') || {}).value || '';
+    const accountRaw = (document.getElementById('si-account-number') || {}).value || '';
+
+    const residentEl = document.getElementById('si-resident');
+    const hasEncResident = residentEl && residentEl.dataset.hasEnc === '1' && !residentEl.value;
+    const accEl = document.getElementById('si-account-number');
+    const hasEncAcc = accEl && accEl.dataset.hasEnc === '1' && !accEl.value;
+    const bizRegEl2 = document.getElementById('si-biz-reg-num');
+    const hasEncBiz = bizRegEl2 && bizRegEl2.dataset.hasEnc === '1' && !bizRegEl2.value;
+
+    let si_new = {};
+    try {
+      /* 기존 settlement_info 유지하다가 변경분 덮어씌우기 */
+      const snap = await getDoc(doc(db, 'brands', brandId));
+      si_new = (snap.exists() && snap.data().settlement_info) ? { ...snap.data().settlement_info } : {};
+    } catch(e) {}
+
+    si_new.business_type = bizType;
+
+    const addrVal = isInd
+      ? ((document.getElementById('si-addr-ind') || {}).value || '')
+      : ((document.getElementById('si-addr-biz') || {}).value || '');
+    if (addrVal) si_new.address = addrVal;
+
+    if (!isInd) {
+      if (!hasEncBiz && bizRegRaw) si_new.business_reg_number = await encryptField(bizRegRaw.replace(/-/g,''));
+      const taxType = (document.getElementById('si-taxation-type') || {}).value;
+      if (taxType) si_new.taxation_type = taxType;
+      const corpName = (document.getElementById('si-corp-name') || {}).value || '';
+      if (corpName) si_new.corp_name = corpName;
+      const repName = (document.getElementById('si-representative') || {}).value || '';
+      if (repName) si_new.representative_name = repName;
+      const bizStart = (document.getElementById('si-biz-start') || {}).value || '';
+      if (bizStart) si_new.business_start_date = bizStart;
+      delete si_new.resident_number;
+    } else {
+      if (!hasEncResident && residentRaw) si_new.resident_number = await encryptField(residentRaw.replace(/-/g,''));
+      delete si_new.business_reg_number;
+    }
+
+    const bankName = (document.getElementById('si-bank-name') || {}).value || '';
+    if (bankName) si_new.bank_name = bankName;
+    const accountHolder = (document.getElementById('si-account-holder') || {}).value || '';
+    if (accountHolder) si_new.account_holder = accountHolder;
+    if (!hasEncAcc && accountRaw) si_new.account_number = await encryptField(accountRaw.replace(/-/g,''));
+
+    try {
+      await updateDoc(doc(db, 'brands', brandId), { settlement_info: si_new, updated_at: today() });
+      showToast('계약 및 정산 정보가 저장되었습니다.', 'success');
+      document.getElementById('settlement-info-modal').remove();
+      openBrandDetail(brandId);
+    } catch(e) {
+      showToast('저장 실패: ' + e.message, 'error');
+    }
   };
 
   window.openContractStatusModal = function(brandId, contractId, currentStatus) {
@@ -5730,8 +5957,7 @@
 
   function buildProductNewHTML(brands) {
     const brandOptions = brands.map(b => {
-      const comm = (b.fee_info && b.fee_info.commission_rate !== undefined) ? b.fee_info.commission_rate : (b.commission_rate !== undefined ? b.commission_rate : 15);
-      return '<option value="' + b.id + '" data-code="' + esc(b.brand_code) + '" data-last="' + esc(b.last_product_number || '000') + '" data-commission="' + comm + '" data-types="' + esc((b.brand_types || (b.brand_type ? [b.brand_type] : [])).join(',')) + '">' + esc(b.brand_name) + ' (' + esc(b.brand_code) + ')</option>';
+      return '<option value="' + b.id + '" data-code="' + esc(b.brand_code) + '" data-last="' + esc(b.last_product_number || '000') + '" data-types="' + esc((b.brand_types || (b.brand_type ? [b.brand_type] : [])).join(',')) + '">' + esc(b.brand_name) + ' (' + esc(b.brand_code) + ')</option>';
     }).join('');
 
     return [
@@ -5976,26 +6202,39 @@
     window._stockManaged = false;
 
     /* 브랜드 선택 → 상품ID 미리보기 + 가격 섹션 렌더 */
-    document.getElementById('p-brand').addEventListener('change', function() {
+    document.getElementById('p-brand').addEventListener('change', async function() {
       const opt = this.options[this.selectedIndex];
       const code = opt.dataset.code;
       const last = opt.dataset.last || '000';
       const brandTypes = (opt.dataset.types || '').split(',').filter(Boolean);
-      const commission = opt.dataset.commission || 15;
+      const brandId = opt.value;
       const preview = document.getElementById('p-product-id-preview');
       if (!code) { preview.textContent = '브랜드 선택 후 표시'; preview.style.color = 'var(--gray-400)'; return; }
       const next = String(parseInt(last, 10) + 1).padStart(3, '0');
       preview.textContent = code + '-' + next;
       preview.style.color = 'var(--blue)';
+
+      /* 위탁 계약에서 commission_rate 로드 */
+      let commission = 15;
+      if (brandTypes.includes('위탁') && brandId) {
+        try {
+          const cSnap = await getDocs(query(collection(db, 'brands', brandId, 'contracts'),
+            where('contract_type', '==', '위탁'), where('contract_status', 'in', ['계약완료', '계약발송전'])));
+          const activeCt = cSnap.docs.map(d => d.data()).find(c => c.commission_rate !== undefined);
+          if (activeCt) commission = activeCt.commission_rate;
+        } catch(e) { /* 로드 실패 시 기본값 15 사용 */ }
+      }
+
       renderPriceSection(brandTypes, commission);
       renderTransactionTypeSection(brandTypes);
       // 거래 유형 변경 시 가격 섹션 재렌더 (위탁 ↔ PB/매입)
+      const savedCommission = commission;
       setTimeout(() => {
         const ttSel = document.getElementById('p-transaction-type');
         if (ttSel) {
           ttSel.addEventListener('change', function() {
             const selected = this.value;
-            renderPriceSection([selected], commission);
+            renderPriceSection([selected], savedCommission);
           });
         }
       }, 0);
