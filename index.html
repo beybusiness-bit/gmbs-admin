@@ -4378,9 +4378,37 @@
           '<input class="form-input" id="si-account-number" type="text" inputmode="numeric" autocomplete="off" placeholder="계좌번호 (- 없이 입력)" ' +
           (isEncrypted(si.account_number) ? 'data-has-enc="1" placeholder="암호화 보관 중 · 변경 시 재입력"' : 'value="' + esc(si.account_number || '') + '"') + ' />') +
 
+        /* 서류 첨부 */
+        '<div style="border-top:1px solid var(--gray-200);margin:16px 0;"></div>' +
+        '<div style="font-size:13px;font-weight:600;color:var(--gray-700);margin-bottom:12px;">서류 첨부 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택사항 · 변경할 파일만 선택</span></div>' +
+        '<div id="si-docs-business" style="' + bizSec + '">' +
+          '<div class="form-group">' +
+            '<label class="form-label">사업자등록증</label>' +
+            (si.biz_reg_url ? '<div style="margin-bottom:6px;"><a href="' + esc(si.biz_reg_url) + '" target="_blank" rel="noopener noreferrer" style="font-size:12px;color:var(--blue);">현재 파일 보기</a></div>' : '') +
+            '<input type="file" class="form-input" id="si-file-biz-reg" accept="image/*,.pdf" style="padding:6px;" />' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label class="form-label">통장 사본</label>' +
+            (si.bank_book_url ? '<div style="margin-bottom:6px;"><a href="' + esc(si.bank_book_url) + '" target="_blank" rel="noopener noreferrer" style="font-size:12px;color:var(--blue);">현재 파일 보기</a></div>' : '') +
+            '<input type="file" class="form-input" id="si-file-bank-book-biz" accept="image/*,.pdf" style="padding:6px;" />' +
+          '</div>' +
+        '</div>' +
+        '<div id="si-docs-individual" style="' + indSec + '">' +
+          '<div class="form-group">' +
+            '<label class="form-label">신분증 사본</label>' +
+            (si.id_card_url ? '<div style="margin-bottom:6px;"><a href="' + esc(si.id_card_url) + '" target="_blank" rel="noopener noreferrer" style="font-size:12px;color:var(--blue);">현재 파일 보기</a></div>' : '') +
+            '<input type="file" class="form-input" id="si-file-id-card" accept="image/*,.pdf" style="padding:6px;" />' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label class="form-label">통장 사본</label>' +
+            (si.bank_book_url ? '<div style="margin-bottom:6px;"><a href="' + esc(si.bank_book_url) + '" target="_blank" rel="noopener noreferrer" style="font-size:12px;color:var(--blue);">현재 파일 보기</a></div>' : '') +
+            '<input type="file" class="form-input" id="si-file-bank-book-ind" accept="image/*,.pdf" style="padding:6px;" />' +
+          '</div>' +
+        '</div>' +
+
         '<div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;">' +
           '<button class="btn btn-secondary" onclick="document.getElementById(\'settlement-info-modal\').remove()">취소</button>' +
-          '<button class="btn btn-primary" onclick="saveSettlementInfo(\'' + brandId + '\')">저장</button>' +
+          '<button class="btn btn-primary" id="btn-save-settlement-info" onclick="saveSettlementInfo(\'' + brandId + '\')">저장</button>' +
         '</div>' +
         '</div>' +
       '</div>';
@@ -4390,10 +4418,10 @@
 
     window.onSiBizTypeChange = function() {
       const isI = document.getElementById('si-biz-individual') && document.getElementById('si-biz-individual').checked;
-      ['si-individual-notice','si-section-resident','si-section-addr-ind'].forEach(id => {
+      ['si-individual-notice','si-section-resident','si-section-addr-ind','si-docs-individual'].forEach(id => {
         const el = document.getElementById(id); if (el) el.style.display = isI ? '' : 'none';
       });
-      ['si-section-business'].forEach(id => {
+      ['si-section-business','si-docs-business'].forEach(id => {
         const el = document.getElementById(id); if (el) el.style.display = isI ? 'none' : '';
       });
     };
@@ -4486,13 +4514,34 @@
     if (accountHolder) si_new.account_holder = accountHolder;
     if (!hasEncAcc && accountRaw) si_new.account_number = await encryptField(accountRaw.replace(/-/g,''));
 
+    const btn = document.getElementById('btn-save-settlement-info');
+    if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
     try {
+      /* 파일 업로드 */
+      let brandCode = brandId;
+      try { const bs = await getDoc(doc(db, 'brands', brandId)); if (bs.exists()) brandCode = bs.data().brand_code || brandId; } catch(e2) {}
+      const basePrefix = 'brands/' + brandCode + '/settlement/';
+
+      if (!isInd) {
+        const bizRegFile = (document.getElementById('si-file-biz-reg') || {}).files?.[0];
+        const bankBookBizFile = (document.getElementById('si-file-bank-book-biz') || {}).files?.[0];
+        if (bizRegFile) { const s = await uploadBytes(ref(storage, basePrefix + 'biz_reg'), bizRegFile); si_new.biz_reg_url = await getDownloadURL(s.ref); }
+        if (bankBookBizFile) { const s = await uploadBytes(ref(storage, basePrefix + 'bank_book'), bankBookBizFile); si_new.bank_book_url = await getDownloadURL(s.ref); }
+      } else {
+        const idCardFile = (document.getElementById('si-file-id-card') || {}).files?.[0];
+        const bankBookIndFile = (document.getElementById('si-file-bank-book-ind') || {}).files?.[0];
+        if (idCardFile) { const s = await uploadBytes(ref(storage, basePrefix + 'id_card'), idCardFile); si_new.id_card_url = await getDownloadURL(s.ref); }
+        if (bankBookIndFile) { const s = await uploadBytes(ref(storage, basePrefix + 'bank_book'), bankBookIndFile); si_new.bank_book_url = await getDownloadURL(s.ref); }
+      }
+
       await updateDoc(doc(db, 'brands', brandId), { settlement_info: si_new, updated_at: today() });
       showToast('계약 및 정산 정보가 저장되었습니다.', 'success');
       document.getElementById('settlement-info-modal').remove();
       openBrandDetail(brandId);
     } catch(e) {
-      showToast('저장 실패: ' + e.message, 'error');
+      showToast('저장 실패: ' + esc(e.message), 'error');
+      const btn2 = document.getElementById('btn-save-settlement-info');
+      if (btn2) { btn2.disabled = false; btn2.textContent = '저장'; }
     }
   };
 
@@ -8742,6 +8791,7 @@
       el.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">' +
         '<thead><tr style="border-bottom:2px solid var(--gray-200);">' +
           '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">버전/ID</th>' +
+          '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">유형 / 수수료</th>' +
           '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">상태</th>' +
           '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">서명일</th>' +
           '<th style="text-align:left;padding:8px 6px;color:var(--gray-500);font-size:11px;">만료일</th>' +
@@ -8757,11 +8807,19 @@
           const cancelBtn = canCancel
             ? ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;color:var(--red);border-color:var(--red);" onclick="cancelContract(\'' + brandId + '\',\'' + d.id + '\',' + cmDetailOnComplete + ')">🚫 취소</button>'
             : '';
+          const commissionCell = c.contract_type === '위탁'
+            ? '<div style="font-size:11px;color:var(--gray-500);">' + (c.commission_rate !== undefined ? c.commission_rate + '%' : '<span style="color:var(--orange);">미설정</span>') +
+              ' <button class="btn btn-secondary" style="font-size:10px;padding:1px 5px;" onclick="editContractCommission(\'' + brandId + '\',\'' + d.id + '\',\'' + esc(brandName) + '\',' + (fromBrandDetail ? 'true' : 'false') + ')">수정</button></div>'
+            : '';
           return '<tr style="border-bottom:1px solid var(--gray-100);">' +
             '<td style="padding:8px 6px;">' +
               esc(c.version || '-') +
               '<div style="font-size:10px;color:var(--gray-400);margin-top:2px;font-family:monospace;">' + esc(d.id) +
               ' <button class="btn btn-secondary" style="font-size:10px;padding:1px 5px;" onclick="navigator.clipboard.writeText(\'' + esc(d.id) + '\').then(()=>showToast(\'ID 복사됨\'))">복사</button></div>' +
+            '</td>' +
+            '<td style="padding:8px 6px;font-size:12px;">' +
+              (c.contract_type ? '<span style="font-weight:600;">' + esc(c.contract_type) + '</span>' : '-') +
+              commissionCell +
             '</td>' +
             '<td style="padding:8px 6px;">' + (statusBadge[cStatus] || esc(cStatus || '-')) + '</td>' +
             '<td style="padding:8px 6px;font-size:12px;">' + esc(c.signed_at || '-') + '</td>' +
@@ -8785,6 +8843,51 @@
       const el = document.getElementById('cm-contract-detail-list');
       if (el) el.innerHTML = '<span style="color:var(--red);">로딩 실패: ' + esc(e.message) + '</span>';
     }
+  };
+
+  window.editContractCommission = async function(brandId, contractId, brandName, fromBrandDetail) {
+    let currentRate = '';
+    try {
+      const s = await getDoc(doc(db, 'brands', brandId, 'contracts', contractId));
+      if (s.exists() && s.data().commission_rate !== undefined) currentRate = s.data().commission_rate;
+    } catch(e) {}
+    const existing = document.getElementById('edit-commission-modal');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'edit-commission-modal';
+    modal.className = 'modal-backdrop';
+    modal.style.cssText = 'z-index:10002;';
+    modal.innerHTML =
+      '<div class="modal" style="max-width:360px;">' +
+        '<div class="modal-header">' +
+          '<div class="modal-title">위탁판매수수료율 수정</div>' +
+          '<button class="modal-close" onclick="document.getElementById(\'edit-commission-modal\').remove()">×</button>' +
+        '</div>' +
+        '<div class="modal-body">' +
+          '<div class="form-group">' +
+            '<label class="form-label">수수료율 (%)</label>' +
+            '<input class="form-input" id="edit-commission-input" type="number" min="0" max="100" step="0.1" placeholder="예: 10" value="' + esc(String(currentRate)) + '" />' +
+          '</div>' +
+          '<div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;">' +
+            '<button class="btn btn-secondary" onclick="document.getElementById(\'edit-commission-modal\').remove()">취소</button>' +
+            '<button class="btn btn-primary" onclick="saveContractCommission(\'' + brandId + '\',\'' + contractId + '\',\'' + esc(brandName) + '\',' + (fromBrandDetail ? 'true' : 'false') + ')">저장</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    setTimeout(() => { const el = document.getElementById('edit-commission-input'); if (el) el.focus(); }, 50);
+  };
+
+  window.saveContractCommission = async function(brandId, contractId, brandName, fromBrandDetail) {
+    const val = parseFloat((document.getElementById('edit-commission-input') || {}).value);
+    if (isNaN(val) || val < 0 || val > 100) { showToast('0~100 사이의 수수료율을 입력하세요.', 'error'); return; }
+    try {
+      await updateDoc(doc(db, 'brands', brandId, 'contracts', contractId), { commission_rate: val, updated_at: today() });
+      showToast('수수료율이 저장되었습니다.', 'success');
+      document.getElementById('edit-commission-modal').remove();
+      openCmContractDetail(brandId, brandName, fromBrandDetail);
+    } catch(e) { showToast('저장 실패: ' + esc(e.message), 'error'); }
   };
 
   window.cancelTerminationRequest = async function(brandId, contractId, brandName) {
