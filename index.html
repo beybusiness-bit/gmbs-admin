@@ -1930,10 +1930,6 @@
 
   function buildBrandFormHTML(existing, si, fi) {
     const v = (key, def) => existing ? (existing[key] !== undefined ? existing[key] : (def || '')) : (def || '');
-    const showSI = true;
-    const showCommission = true;
-    const bizType = si.business_type || 'business';
-    const taxType = si.taxation_type || '';
     const existingUrls = (existing && Array.isArray(existing.website_urls) && existing.website_urls.length > 0)
       ? existing.website_urls
       : [''];
@@ -1981,124 +1977,10 @@
       '</div>',
       '</div>',
 
-      /* ── 계약 및 정산 정보 (위탁/매입만) ── */
-      '<div class="form-section" id="section-settlement">',
-      '<div class="form-section-title">계약 및 정산 정보 <span style="font-size:11px;font-weight:400;color:var(--gray-400);">선택사항 — 나중에 추가해도 됩니다</span></div>',
-
-      /* 위탁판매수수료 (위탁만) */
-      '<div id="section-commission">',
-      '<div class="form-row">',
-      formGroup('위탁판매수수료 (%)', 'f-commission',
-        '<input class="form-input" id="f-commission" type="number" min="0" max="100" step="0.1" value="' + (fi.commission_rate !== undefined ? fi.commission_rate : 15) + '" />' +
-        '<div class="form-hint">기본값 10%. 판매 금액의 몇 %를 수수료로 받을지 입력.</div>'),
-      '</div>',
-      '</div>',
-
-      /* 사업자 여부 */
-      '<div class="form-group" style="margin-bottom:16px;">',
-      '<label class="form-label">사업자 여부</label>',
-      '<div style="display:flex;gap:10px;">',
-      '<label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border:1px solid var(--gray-300);border-radius:8px;cursor:pointer;flex:1;transition:all 0.12s;" id="lbl-biz-business">',
-      '<input type="radio" name="biz-type" id="f-biz-business" value="business"' + (bizType !== 'individual' ? ' checked' : '') + ' onchange="onBizTypeChange()" style="accent-color:var(--blue);" />',
-      '<div><div style="font-weight:600;font-size:13px;">사업자</div><div style="font-size:11px;color:var(--gray-400);">사업자등록번호 보유</div></div>',
-      '</label>',
-      '<label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border:1px solid var(--gray-300);border-radius:8px;cursor:pointer;flex:1;transition:all 0.12s;" id="lbl-biz-individual">',
-      '<input type="radio" name="biz-type" id="f-biz-individual" value="individual"' + (bizType === 'individual' ? ' checked' : '') + ' onchange="onBizTypeChange()" style="accent-color:var(--blue);" />',
-      '<div><div style="font-weight:600;font-size:13px;">개인 (사업자 없음)</div><div style="font-size:11px;color:var(--gray-400);">3.3% 원천징수 적용</div></div>',
-      '</label>',
-      '</div>',
-      '</div>',
-
-      /* 개인 안내 문구 */
-      '<div id="section-individual-notice" style="' + (bizType === 'individual' ? '' : 'display:none;') + 'background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px 14px;margin-bottom:14px;">',
-      '<div style="font-size:11px;color:#92400e;line-height:1.8;">',
-      '⚠️ 공급가액에서 3.3% 원천징수 후 정산되며, 직접 종합소득세 신고를 하셔야 합니다.<br>',
-      '⚠️ 원칙적으로 사업자 없이 상품 판매를 할 수가 없기에, 상품 판매건수나 판매금액이 많아지면 세무 안정성을 위해 사업자 등록이 필요할 수 있습니다.',
-      '</div>',
-      '</div>',
-
-      /* 개인: 주민등록번호 */
-      '<div id="section-resident" style="' + (bizType === 'individual' ? '' : 'display:none;') + '">',
-      '<div class="form-row" style="margin-bottom:16px;">',
-      formGroup('주민등록번호', 'f-resident',
-        '<input class="form-input" id="f-resident" type="text" inputmode="numeric" autocomplete="off" oninput="onResidentNumInput(this)" onblur="onResidentNumBlur(this)" onfocus="onResidentNumFocus(this)" ' + (isEncrypted(si.resident_number) ? 'placeholder="암호화 보관 중 · 변경 시 재입력" data-has-enc="1"' : 'value="' + esc(si.resident_number || '') + '" placeholder="000000-0000000" data-actual="' + esc(si.resident_number || '') + '"') + ' />' +
-        '<div id="resident-num-hint" style="font-size:11px;margin-top:4px;"></div>' +
-        '<div class="form-hint">⚠️ 원천징수 세금신고 목적으로만 사용 · 암호화 보관 · 5년 후 파기</div>', true),
-      '</div>',
-      '<div class="form-hint" style="margin-bottom:14px;line-height:1.8;">🔒 주민등록번호는 소득세법에 따른 원천징수 의무 이행을 위해서만 수집됩니다. 안전하게 저장되며, 세무법정 보관 기간(5년) 이후 파기됩니다.</div>',
-      '</div>',
-
-      /* 사업자: 사업자등록번호 + 과세유형 */
-      '<div id="section-business-fields" style="' + (bizType === 'individual' ? 'display:none;' : '') + '">',
-      '<div class="form-row" style="margin-bottom:4px;">',
-      formGroup('사업자등록번호', 'f-biz-reg-num',
-        '<div style="display:flex;gap:6px;align-items:flex-start;">' +
-        '<div style="flex:1;">' +
-        '<input class="form-input" id="f-biz-reg-num" type="text" placeholder="000-00-00000" value="' + esc(si.business_reg_number || '') + '" oninput="onBizRegNumInput(this)" />' +
-        '<div id="biz-reg-num-hint" style="font-size:11px;margin-top:4px;"></div>' +
-        '</div>' +
-        '<button type="button" id="btn-verify-biz-num" onclick="verifyBusinessNumber()" style="white-space:nowrap;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:var(--gray-700);flex-shrink:0;margin-top:0;">사업자 확인</button>' +
-        '</div>', true),
-      formGroup('과세 유형', 'f-taxation-type',
-        '<select class="form-select" id="f-taxation-type" onchange="onTaxationTypeChange()">' +
-        '<option value=""' + (!taxType ? ' selected' : '') + '>선택 안 함</option>' +
-        '<option value="일반"' + (taxType === '일반' ? ' selected' : '') + '>일반 과세</option>' +
-        '<option value="간이"' + (taxType === '간이' ? ' selected' : '') + '>간이 과세</option>' +
-        '</select>' +
-        '<div class="form-hint">사업자 여부에 맞게 선택하세요.</div>', true),
-      '</div>',
-      /* 상호 + 대표자명 */
-      '<div class="form-row" style="margin-bottom:16px;">',
-      formGroup('상호', 'f-corp-name',
-        '<input class="form-input" id="f-corp-name" type="text" placeholder="사업자등록증상 상호명" value="' + esc(si.corp_name || '') + '" />', true),
-      formGroup('대표자명', 'f-representative-name',
-        '<input class="form-input" id="f-representative-name" type="text" placeholder="예: 홍길동" value="' + esc(si.representative_name || '') + '" />', true),
-      '</div>',
-      /* 사업자등록일 */
-      formGroup('사업자등록일', 'f-business-start-date',
-        '<input class="form-input" id="f-business-start-date" type="text" inputmode="numeric" placeholder="YYYY-MM-DD (예: 2020-01-15)" maxlength="10" value="' + esc(formatBizDate(si.business_start_date || '')) + '" oninput="autoHyphenBizDate(this)" />' +
-        '<div class="form-hint">사업자등록증에 기재된 개업 연월일 (숫자 입력 시 자동 변환)</div>', true),
-      /* 사업장 주소 (사업자 섹션 안으로 이동) */
-      formGroup('사업장 주소', 'f-address-biz',
-        '<input class="form-input" id="f-address-biz" type="text" placeholder="사업장 주소" value="' + esc(si.address || '') + '" />', true),
-      /* 부가세 안내 — 사업장 주소 아래 */
-      '<div id="section-vat-notice" style="' + (taxType ? '' : 'display:none;') + 'background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px 14px;margin-bottom:14px;">',
-      '<div style="font-size:11px;color:#92400e;line-height:1.8;">',
-      '⚠️ 상품의 판매가격 × 판매건으로 부가세 신고 및 납부처리해주셔야 합니다.<br>',
-      '⚠️ GMBS에서 수취한 중개수수료에 해당하는 금액은 GMBS에서 브랜드로 적격증빙을 발행해 해당 금액만큼 부가세 공제를 받을 수 있습니다.',
-      '</div>',
-      '</div>',
-      '</div>',
-
-      /* 주소 (개인용) */
-      '<div id="section-address-individual" style="' + (bizType === 'individual' ? '' : 'display:none;') + '">',
-      formGroup('주소', 'f-address',
-        '<input class="form-input" id="f-address" type="text" placeholder="거주지 주소" value="' + esc(si.address || '') + '" />', true),
-      '</div>',
-
-      /* 통장 정보 */
-      '<div class="form-row">',
-      formGroup('은행', 'f-bank-name',
-        '<input class="form-input" id="f-bank-name" type="text" placeholder="예: 국민은행" value="' + esc(si.bank_name || '') + '" />', true),
-      formGroup('예금주명', 'f-account-holder',
-        '<input class="form-input" id="f-account-holder" type="text" placeholder="예: 홍길동" value="' + esc(si.account_holder || '') + '" />', true),
-      '</div>',
-      '<div class="form-group">',
-      '<label class="form-label" for="f-account-number">계좌번호 <span style="color:var(--red)">*</span></label>',
-      '<input class="form-input" id="f-account-number" type="text" oninput="onAccountNumInput(this)" ' + (isEncrypted(si.account_number) ? 'placeholder="암호화 보관 중 · 변경 시 재입력" data-has-enc="1"' : 'value="' + esc(si.account_number || '') + '" placeholder="- 없이 숫자만 입력"') + ' />',
-      '</div>',
-
-      /* 서류 이미지 — 사업자: 사업자등록증+통장사본 / 개인: 신분증+통장사본 */
-      '<div class="form-row">',
-      bizType === 'business'
-        ? '<div class="form-group"><label class="form-label">사업자등록증</label>' + fileUploadArea('upload-biz-reg-doc', 'preview-biz-reg-doc', 'input-biz-reg-doc', si.biz_reg_url) + '</div>'
-        : '<div class="form-group"><label class="form-label">신분증 사본</label>' + fileUploadArea('upload-id-card', 'preview-id-card', 'input-id-card', si.id_card_url) + '</div>',
-      '<div class="form-group">',
-      '<label class="form-label">통장 사본</label>',
-      fileUploadArea('upload-bank-book', 'preview-bank-book', 'input-bank-book', si.bank_book_url),
-      '</div>',
-      '</div>',
-      '</div>',
+      /* ── 계약 및 정산 정보 섹션 제거됨 ──
+         settlement_info는 브랜드 상세 팝업에서 별도 편집.
+         위탁판매수수료는 계약 문서(contracts/{id}.commission_rate)에서 관리.
+      */
 
     ].join('');
   }
@@ -2166,99 +2048,8 @@
       }
       data.logo_url = logoUrl;
 
-      /* 정산/수수료 정보 */
-      {
-        data.fee_info = {
-          commission_rate: parseFloat((document.getElementById('f-commission') || {}).value) || 15
-        };
-
-        const bizInd = document.getElementById('f-biz-individual');
-        const bizType = (bizInd && bizInd.checked) ? 'individual' : 'business';
-
-        /* 이미지 업로드 — 사업자: 사업자등록증+통장사본 / 개인: 신분증+통장사본 */
-        const si_existing = existing && existing.settlement_info ? existing.settlement_info : {};
-        let idCardUrl = si_existing.id_card_url || '';
-        let bankBookUrl = si_existing.bank_book_url || '';
-        let bizRegDocUrl = si_existing.biz_reg_url || '';
-
-        async function uploadDocFile(inputId, folder) {
-          const el = document.getElementById(inputId);
-          const file = el && el.files[0];
-          if (!file) return null;
-          const ext = file.name.split('.').pop();
-          const snapFile = await uploadBytes(ref(storage, 'brands/' + brandCode + '/' + folder + '.' + ext), file);
-          return await getDownloadURL(snapFile.ref);
-        }
-
-        if (bizType === 'business') {
-          const u = await uploadDocFile('input-biz-reg-doc', 'biz_reg');
-          if (u) bizRegDocUrl = u;
-        } else {
-          const u = await uploadDocFile('input-id-card', 'id_card');
-          if (u) idCardUrl = u;
-        }
-        const uBank = await uploadDocFile('input-bank-book', 'bank_book');
-        if (uBank) bankBookUrl = uBank;
-
-        const residentEl = document.getElementById('f-resident');
-        const accountEl = document.getElementById('f-account-number');
-        const rawResident = bizType === 'individual' ? ((residentEl || {}).dataset?.actual || (residentEl || {}).value || '').trim() : '';
-        const rawAccount = ((accountEl || {}).value || '').trim();
-        // data-has-enc="1" + 빈 값: 사용자가 변경하지 않음 → 기존 암호화 값 유지
-        const keepResident = bizType === 'individual' && !rawResident && (residentEl || {}).dataset?.hasEnc === '1';
-        const keepAccount = !rawAccount && (accountEl || {}).dataset?.hasEnc === '1';
-        const encResident = keepResident ? (si_existing.resident_number || '') : (rawResident ? await encryptField(rawResident) : '');
-        const encAccount = keepAccount ? (si_existing.account_number || '') : (rawAccount ? await encryptField(rawAccount) : '');
-
-        const rawBizReg = bizType === 'business' ? ((document.getElementById('f-biz-reg-num') || {}).value || '').trim() : '';
-        const bizRegEl = document.getElementById('f-biz-reg-num');
-        const keepBizReg = bizType === 'business' && !rawBizReg && (bizRegEl || {}).dataset?.hasEnc === '1';
-        const encBizReg = keepBizReg ? (si_existing.business_reg_number || '') : (rawBizReg ? await encryptField(rawBizReg) : '');
-
-        const corpName = bizType === 'business' ? ((document.getElementById('f-corp-name') || {}).value || '').trim() : '';
-        const representativeName = bizType === 'business' ? ((document.getElementById('f-representative-name') || {}).value || '').trim() : '';
-        const businessStartDate = bizType === 'business' ? formatBizDate(((document.getElementById('f-business-start-date') || {}).value || '').trim()) : '';
-        const addressBiz = bizType === 'business' ? ((document.getElementById('f-address-biz') || {}).value || '').trim() : '';
-        const addressInd = bizType === 'individual' ? ((document.getElementById('f-address') || {}).value || '').trim() : '';
-        const address = bizType === 'business' ? addressBiz : addressInd;
-        const taxationTypeVal = bizType === 'business' ? ((document.getElementById('f-taxation-type') || {}).value || '') : '';
-        const bankName = ((document.getElementById('f-bank-name') || {}).value || '').trim();
-        const accountHolder = ((document.getElementById('f-account-holder') || {}).value || '').trim();
-
-        // 필수값 검증
-        const err = (msg) => { showToast(msg, 'error'); btn.disabled = false; btn.innerHTML = '저장'; };
-        if (bizType === 'business') {
-          if (!rawBizReg && !keepBizReg) return err('사업자등록번호를 입력해주세요.');
-          if (!taxationTypeVal) return err('과세 유형을 선택해주세요.');
-          if (!corpName) return err('상호를 입력해주세요.');
-          if (!representativeName) return err('대표자명을 입력해주세요.');
-          if (!businessStartDate) return err('사업자등록일을 입력해주세요.');
-          if (!addressBiz) return err('사업장 주소를 입력해주세요.');
-        } else {
-          if (!rawResident && !keepResident) return err('주민등록번호를 입력해주세요.');
-          if (!addressInd) return err('주소를 입력해주세요.');
-        }
-        if (!bankName) return err('은행을 입력해주세요.');
-        if (!accountHolder) return err('예금주명을 입력해주세요.');
-        if (!rawAccount && !keepAccount) return err('계좌번호를 입력해주세요.');
-
-        data.settlement_info = {
-          business_type: bizType,
-          corp_name: corpName,
-          representative_name: representativeName,
-          business_start_date: businessStartDate,
-          address,
-          resident_number: encResident,
-          business_reg_number: encBizReg,
-          taxation_type: taxationTypeVal,
-          bank_name: bankName,
-          account_holder: accountHolder,
-          account_number: encAccount,
-          id_card_url: idCardUrl,
-          bank_book_url: bankBookUrl,
-          biz_reg_url: bizRegDocUrl
-        };
-      }
+      /* 정산/수수료 정보는 브랜드 상세 팝업에서 별도 편집.
+         fee_info(위탁판매수수료)는 계약 문서에서 관리. 여기서 저장하지 않음. */
 
       if (brandId) {
         await updateDoc(doc(db, 'brands', brandId), data);
