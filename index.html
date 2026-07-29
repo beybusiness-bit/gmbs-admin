@@ -4717,6 +4717,27 @@
     try {
       const psnap = await getDoc(doc(db, 'products', productId));
       const brandId = psnap.exists() ? (psnap.data().brand_id || '') : '';
+      const pc = psnap.exists() ? (psnap.data().pending_changes || null) : null;
+      const isEditRequest = pc && pc.type === 'edit';
+
+      if (status === '승인' && pc) {
+        // 수정 요청 승인: pending_changes를 실제 필드에 적용
+        if (pc.product_name !== undefined) data.product_name = pc.product_name;
+        if (pc.base_price !== undefined) data.base_price = pc.base_price;
+        if (pc.memo !== undefined) data.memo = pc.memo;
+        data.pending_changes = deleteField();
+        // SKU별 변경사항 적용
+        if (pc.skus) {
+          for (const [skuId, skuChanges] of Object.entries(pc.skus)) {
+            await updateDoc(doc(db, 'products', productId, 'skus', skuId), { ...skuChanges, updated_at: today() });
+          }
+        }
+      } else if ((status === '거절' || status === '판매중지') && isEditRequest) {
+        // 수정 요청 거절: pending_changes만 초기화, approval_status는 승인으로 복원
+        data.pending_changes = deleteField();
+        data.approval_status = '승인';
+      }
+
       await updateDoc(doc(db, 'products', productId), data);
       await writeActivityLog(brandId, 'product', productId, 'status_changed', null, { approval_status: status });
       showToast('승인 상태를 저장했습니다.');
@@ -5382,6 +5403,7 @@
       const p = productSnap.data();
       const skus = skusSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       skus.sort((a, b) => (a.option_sort_order ?? 99) - (b.option_sort_order ?? 99));
+      const pc = p.pending_changes || null;
 
       const skuRows = skus.map(s => {
         const optLabel = s.option_number === '00' ? '옵션 없음'
@@ -5417,7 +5439,32 @@
         : row('승인 상태', '<span class="badge badge-gray">미설정</span>' +
             ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openApprovalModal(\'' + productId + '\',\'\')">심사</button>');
 
+      // pending_changes 수정 요청 섹션
+      const pendingSection = (function() {
+        if (!pc) return '';
+        const lines = [];
+        if (pc.product_name !== undefined) lines.push('<div style="display:grid;grid-template-columns:120px 1fr 1fr;gap:4px 12px;font-size:12px;align-items:center;"><span style="color:var(--gray-500);">상품명</span><span style="text-decoration:line-through;color:var(--gray-400);">' + esc(p.product_name) + '</span><span style="font-weight:600;color:var(--primary);">' + esc(pc.product_name) + '</span></div>');
+        if (pc.base_price !== undefined) lines.push('<div style="display:grid;grid-template-columns:120px 1fr 1fr;gap:4px 12px;font-size:12px;align-items:center;"><span style="color:var(--gray-500);">기본 판매가</span><span style="text-decoration:line-through;color:var(--gray-400);">' + (p.base_price||0).toLocaleString() + '원</span><span style="font-weight:600;color:var(--primary);">' + (pc.base_price||0).toLocaleString() + '원</span></div>');
+        if (pc.memo !== undefined) lines.push('<div style="display:grid;grid-template-columns:120px 1fr 1fr;gap:4px 12px;font-size:12px;align-items:center;"><span style="color:var(--gray-500);">메모</span><span style="text-decoration:line-through;color:var(--gray-400);">' + esc(p.memo||'(없음)') + '</span><span style="font-weight:600;color:var(--primary);">' + esc(pc.memo||'(삭제)') + '</span></div>');
+        if (pc.skus) {
+          Object.entries(pc.skus).forEach(([sid, changes]) => {
+            const sku = skus.find(s => s.id === sid);
+            if (!sku) return;
+            const optLabel = sku.option_number === '00' ? '옵션없음' : [1,2,3].map(i => sku['option_'+i+'_name'] ? sku['option_'+i+'_value'] : '').filter(Boolean).join('/');
+            if (changes.price !== undefined) lines.push('<div style="display:grid;grid-template-columns:120px 1fr 1fr;gap:4px 12px;font-size:12px;align-items:center;"><span style="color:var(--gray-500);">판매가 [' + esc(optLabel) + ']</span><span style="text-decoration:line-through;color:var(--gray-400);">' + (sku.price||p.base_price||0).toLocaleString() + '원</span><span style="font-weight:600;color:var(--primary);">' + (changes.price||0).toLocaleString() + '원</span></div>');
+          });
+        }
+        if (!lines.length) return '';
+        return '<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:14px 16px;margin-bottom:16px;">' +
+          '<div style="font-size:13px;font-weight:700;color:#d97706;margin-bottom:10px;">📝 수정 요청 내용 (승인 전 미반영)</div>' +
+          '<div style="display:grid;grid-template-columns:120px 1fr 1fr;gap:0 12px;font-size:11px;color:var(--gray-400);margin-bottom:6px;"><span></span><span>현재값</span><span>요청값</span></div>' +
+          lines.join('') +
+          (pc.requested_at ? '<div style="font-size:11px;color:var(--gray-400);margin-top:8px;">요청일: ' + esc(pc.requested_at) + '</div>' : '') +
+          '</div>';
+      })();
+
       const body =
+        pendingSection +
         '<div style="display:flex;align-items:flex-start;margin-bottom:20px;">' +
         mainImgHTML +
         '<div style="flex:1;background:var(--gray-50);border-radius:10px;padding:16px;">' +
@@ -9732,14 +9779,21 @@
     };
 
     const productRows = (list) => {
-      if (!list.length) return '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--gray-400);">승인 대기 상품이 없습니다.</td></tr>';
-      return list.map(p => '<tr style="cursor:pointer;" onclick="openProductApprovalFromReview(\'' + p.id + '\')">' +
-        '<td>' + statusBadge(p.approval_status) + '</td>' +
-        '<td>' + esc(p.product_name || '-') + '</td>' +
-        '<td>' + esc(p.brand_code || '-') + '</td>' +
-        '<td>' + esc(p.id || '-') + '</td>' +
-        '<td>' + fmtDate(p.created_at) + '</td>' +
-      '</tr>').join('');
+      if (!list.length) return '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--gray-400);">승인 대기 상품이 없습니다.</td></tr>';
+      return list.map(p => {
+        const isEdit = !!(p.pending_changes && p.pending_changes.type === 'edit');
+        const typeTag = isEdit
+          ? '<span class="badge" style="background:#dbeafe;color:#1d4ed8;font-size:10px;">수정 요청</span>'
+          : '<span class="badge" style="background:#f3f4f6;color:#6b7280;font-size:10px;">신규 등록</span>';
+        return '<tr style="cursor:pointer;" onclick="openProductApprovalFromReview(\'' + p.id + '\')">' +
+          '<td>' + statusBadge(p.approval_status) + '</td>' +
+          '<td>' + typeTag + '</td>' +
+          '<td>' + esc(p.product_name || '-') + '</td>' +
+          '<td>' + esc(p.brand_code || '-') + '</td>' +
+          '<td>' + esc(p.id || '-') + '</td>' +
+          '<td>' + fmtDate(p.created_at) + '</td>' +
+        '</tr>';
+      }).join('');
     };
 
     const pendingApps  = apps.filter(a => a.status === '제출됨').length;
@@ -9781,7 +9835,7 @@
       '<div id="tab-product" style="display:' + (activeTab==='product'?'block':'none') + ';">' +
         '<div class="card" style="overflow-x:auto;">' +
           '<table class="data-table"><thead><tr>' +
-            '<th>상태</th><th>상품명</th><th>브랜드코드</th><th>상품ID</th><th>등록일</th>' +
+            '<th>상태</th><th>구분</th><th>상품명</th><th>브랜드코드</th><th>상품ID</th><th>등록일</th>' +
           '</tr></thead><tbody>' + productRows(pendingProducts) + '</tbody></table>' +
         '</div>' +
       '</div>' +
