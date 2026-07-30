@@ -148,6 +148,13 @@
     .badge-blue { background: #ede0ff; color: #7340e0; }
     .badge-green { background: #dcfce7; color: #15803d; }
     .badge-gray { background: var(--gray-100); color: var(--gray-500); }
+    /* 토글 스위치 */
+    .tog { position:relative; display:inline-flex; align-items:center; cursor:pointer; gap:6px; }
+    .tog input { position:absolute; opacity:0; width:0; height:0; }
+    .tog-track { width:34px; height:19px; border-radius:10px; background:var(--gray-300); transition:background .2s; flex-shrink:0; position:relative; }
+    .tog input:checked + .tog-track { background:var(--blue); }
+    .tog-track::after { content:''; position:absolute; left:3px; top:3px; width:13px; height:13px; border-radius:50%; background:#fff; transition:transform .2s; }
+    .tog input:checked + .tog-track::after { transform:translateX(15px); }
     .badge-yellow { background: #fef9c3; color: #854d0e; }
     .badge-red { background: #fee2e2; color: #b91c1c; }
     .badge-orange { background: #fff7ed; color: #ea580c; }
@@ -7099,6 +7106,18 @@
   }
 
   /* ── 안내 페이지 작성 (onboarding_cards) ── */
+  const VENDOR_PAGES = [
+    { key: 'dashboard',        label: '대시보드' },
+    { key: 'brand-info',       label: '브랜드 정보' },
+    { key: 'persons',          label: '담당자 관리' },
+    { key: 'products',         label: '상품 목록' },
+    { key: 'product-register', label: '상품 등록' },
+    { key: 'settlements',      label: '정산 내역' },
+    { key: 'contracts',        label: '계약 관리' },
+    { key: 'inquiries',        label: '문의하기' },
+    { key: 'notices',          label: '공지사항' },
+    { key: 'faq',              label: 'FAQ' },
+  ];
   let _obAudience = 'public'; // 'public' | 'member'
 
   async function renderOnboardingTab(container) {
@@ -7124,43 +7143,59 @@
     await loadCardList();
   };
 
+  function _cardRowHTML(c, i, total, movePageParam) {
+    const mp = movePageParam !== undefined ? ',\'' + movePageParam + '\'' : '';
+    return '<div class="card" style="margin-bottom:8px;display:flex;align-items:flex-start;gap:14px;padding:14px 16px;" data-card-id="' + c.id + '">' +
+      '<div style="display:flex;flex-direction:column;gap:4px;padding-top:4px;">' +
+      (i > 0 ? '<button onclick="moveCard(\'' + c.id + '\',-1' + mp + ')" style="border:none;background:none;cursor:pointer;font-size:16px;padding:0;">▲</button>' : '<span style="font-size:16px;opacity:0;">▲</span>') +
+      (i < total - 1 ? '<button onclick="moveCard(\'' + c.id + '\',1' + mp + ')" style="border:none;background:none;cursor:pointer;font-size:16px;padding:0;">▼</button>' : '<span style="font-size:16px;opacity:0;">▼</span>') +
+      '</div>' +
+      (c.image_url ? '<img src="' + esc(c.image_url) + '" alt="' + esc(c.image_alt || '') + '" style="width:90px;height:51px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200);">' : '<div style="width:90px;height:51px;border-radius:6px;border:1px dashed var(--gray-300);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--gray-400);">이미지 없음</div>') +
+      '<div style="flex:1;min-width:0;">' +
+      '<div style="font-weight:700;font-size:14px;margin-bottom:4px;">' + esc(c.title || '') + '</div>' +
+      '<div style="font-size:12px;color:var(--gray-600);margin-bottom:8px;white-space:pre-wrap;">' + esc((c.body || '').substring(0, 80)) + (c.body && c.body.length > 80 ? '…' : '') + '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+      '<label class="tog" title="클릭하여 활성/비활성 전환">' +
+      '<input type="checkbox" onchange="toggleCardActive(\'' + c.id + '\',this.checked)"' + (c.active ? ' checked' : '') + ' />' +
+      '<span class="tog-track"></span>' +
+      '<span style="font-size:12px;color:var(--gray-600);">' + (c.active ? '활성' : '비활성') + '</span>' +
+      '</label>' +
+      (c.audience === 'member' && c.cta_type && c.cta_type !== 'none' ? '<span class="badge badge-blue" style="background:var(--blue-bg);color:var(--blue);">' + ctaLabel(c.cta_type) + '</span>' : '') +
+      '</div></div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">' +
+      '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openCardModal(\'' + c.id + '\')">수정</button>' +
+      '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--red);" onclick="deleteCard(\'' + c.id + '\')">삭제</button>' +
+      '</div></div>';
+  }
+
   async function loadCardList() {
     const wrap = document.getElementById('ob-card-list');
     if (!wrap) return;
     wrap.innerHTML = '<div class="spinner" style="margin:40px auto;"></div>';
     try {
-      // orderBy 제거 → 복합 인덱스 불필요, 클라이언트에서 정렬
-      const snap = await getDocs(query(
-        collection(db, 'onboarding_cards'),
-        where('audience', '==', _obAudience)
-      ));
+      const snap = await getDocs(query(collection(db, 'onboarding_cards'), where('audience', '==', _obAudience)));
       const cards = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
       if (cards.length === 0) {
         wrap.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🃏</div><div class="empty-state-text">카드가 없습니다. 카드를 추가해보세요.</div></div>';
         return;
       }
-      wrap.innerHTML = cards.map((c, i) =>
-        '<div class="card" style="margin-bottom:10px;display:flex;align-items:flex-start;gap:14px;padding:14px 16px;" data-card-id="' + c.id + '">' +
-        '<div style="display:flex;flex-direction:column;gap:4px;padding-top:4px;">' +
-        (i > 0 ? '<button onclick="moveCard(\'' + c.id + '\',-1)" style="border:none;background:none;cursor:pointer;font-size:16px;padding:0;">▲</button>' : '<span style="font-size:16px;opacity:0;">▲</span>') +
-        (i < cards.length - 1 ? '<button onclick="moveCard(\'' + c.id + '\',1)" style="border:none;background:none;cursor:pointer;font-size:16px;padding:0;">▼</button>' : '<span style="font-size:16px;opacity:0;">▼</span>') +
-        '</div>' +
-        (c.image_url ? '<img src="' + esc(c.image_url) + '" alt="' + esc(c.image_alt || '') + '" style="width:90px;height:51px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200);">' : '<div style="width:90px;height:51px;border-radius:6px;border:1px dashed var(--gray-300);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--gray-400);">이미지 없음</div>') +
-        '<div style="flex:1;min-width:0;">' +
-        '<div style="font-weight:700;font-size:14px;margin-bottom:4px;">' + esc(c.title || '') + '</div>' +
-        '<div style="font-size:12px;color:var(--gray-600);margin-bottom:8px;white-space:pre-wrap;">' + esc((c.body || '').substring(0, 80)) + (c.body && c.body.length > 80 ? '…' : '') + '</div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
-        '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;" title="클릭하여 활성/비활성 전환">' +
-        '<input type="checkbox" onchange="toggleCardActive(\'' + c.id + '\',this.checked)" style="accent-color:var(--blue);width:15px;height:15px;"' + (c.active ? ' checked' : '') + ' />' +
-        '<span class="badge ' + (c.active ? 'badge-green' : 'badge-gray') + '" style="pointer-events:none;">' + (c.active ? '활성' : '비활성') + '</span>' +
-        '</label>' +
-        (c.audience === 'member' ? '<span class="badge badge-blue" style="background:var(--blue-bg);color:var(--blue);">' + ctaLabel(c.cta_type) + '</span>' : '') +
-        '</div></div>' +
-        '<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">' +
-        '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openCardModal(\'' + c.id + '\')">수정</button>' +
-        '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--red);" onclick="deleteCard(\'' + c.id + '\')">삭제</button>' +
-        '</div></div>'
-      ).join('');
+      if (_obAudience === 'member') {
+        // 페이지별로 그룹핑
+        const grouped = {};
+        cards.forEach(c => { const k = c.target_page || ''; if (!grouped[k]) grouped[k] = []; grouped[k].push(c); });
+        const orderedKeys = [...VENDOR_PAGES.map(p => p.key).filter(k => grouped[k]), ...(grouped[''] ? [''] : [])];
+        if (!orderedKeys.length) orderedKeys.push('');
+        wrap.innerHTML = orderedKeys.map(pk => {
+          const grp = grouped[pk] || [];
+          const lbl = pk ? ((VENDOR_PAGES.find(p => p.key === pk) || {}).label || pk) : '페이지 미지정';
+          return '<div style="margin-bottom:24px;">' +
+            '<div style="font-size:11px;font-weight:700;color:var(--gray-500);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--gray-200);">📄 ' + esc(lbl) + ' <span style="font-weight:400;opacity:.7;">(' + grp.length + '개)</span></div>' +
+            grp.map((c, i) => _cardRowHTML(c, i, grp.length, pk)).join('') +
+            '</div>';
+        }).join('');
+      } else {
+        wrap.innerHTML = cards.map((c, i) => _cardRowHTML(c, i, cards.length, undefined)).join('');
+      }
     } catch(e) {
       wrap.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
     }
@@ -7170,13 +7205,14 @@
     return ({ none:'CTA 없음', apply:'입점 신청하기', faq_link:'FAQ 보기', continue:'계속하기' })[type] || '없음';
   }
 
-  window.moveCard = async function(cardId, dir) {
+  window.moveCard = async function(cardId, dir, targetPage) {
     try {
-      const snap = await getDocs(query(
-        collection(db, 'onboarding_cards'),
-        where('audience', '==', _obAudience)
-      ));
-      const cards = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+      const snap = await getDocs(query(collection(db, 'onboarding_cards'), where('audience', '==', _obAudience)));
+      let all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // member 카드는 같은 페이지 그룹 안에서만 정렬
+      const cards = (_obAudience === 'member')
+        ? all.filter(c => (c.target_page || '') === (targetPage || '')).sort((a, b) => (a.order || 0) - (b.order || 0))
+        : all.sort((a, b) => (a.order || 0) - (b.order || 0));
       const idx = cards.findIndex(c => c.id === cardId);
       if (idx < 0) return;
       const swapIdx = idx + dir;
@@ -7192,13 +7228,22 @@
   window.toggleCardActive = async function(cardId, active) {
     try {
       await updateDoc(doc(db, 'onboarding_cards', cardId), { active, updated_at: today() });
-      // 뱃지 텍스트도 즉시 갱신
-      const badge = document.querySelector('[data-card-id="' + cardId + '"] .badge');
-      if (badge) {
-        badge.textContent = active ? '활성' : '비활성';
-        badge.className = 'badge ' + (active ? 'badge-green' : 'badge-gray');
-      }
+      const label = document.querySelector('[data-card-id="' + cardId + '"] .tog span:last-child');
+      if (label) label.textContent = active ? '활성' : '비활성';
     } catch(e) { showToast('변경 실패: ' + e.message, 'error'); await loadCardList(); }
+  };
+
+  window.onCardAudienceChange = function(val) {
+    document.getElementById('card-member-fields').style.display = val === 'member' ? '' : 'none';
+  };
+  window.onCardCtaChange = function(val) {
+    document.getElementById('card-cta-url-group').style.display = val === 'none' ? 'none' : '';
+  };
+  window.clearCardImage = function() {
+    document.getElementById('card-image-url').value = '';
+    document.getElementById('card-image-file').value = '';
+    document.getElementById('card-img-preview').style.display = 'none';
+    document.getElementById('card-img-clear-btn').style.display = 'none';
   };
 
   window.openCardModal = async function(cardId) {
@@ -7209,30 +7254,48 @@
     }
     const isEdit = !!existing;
     const c = existing || { audience: _obAudience, active: true, cta_type: 'none' };
-    const audienceForModal = c.audience || _obAudience;
+    const aud = c.audience || _obAudience;
+    const isMember = aud === 'member';
+    const hasCta = c.cta_type && c.cta_type !== 'none';
+
     const formHTML =
       '<div class="form-group"><label class="form-label">제목 <span style="color:var(--red);">*</span></label>' +
       '<input class="form-input" id="card-title" value="' + esc(c.title || '') + '" placeholder="카드 제목" /></div>' +
       '<div class="form-group"><label class="form-label">본문</label>' +
       '<textarea class="form-input" id="card-body" rows="4" style="resize:vertical;">' + esc(c.body || '') + '</textarea></div>' +
-      '<div class="form-group"><label class="form-label">이미지 (권장 1200×675px, 최대 2MB)</label>' +
-      (c.image_url ? '<img src="' + esc(c.image_url) + '" style="width:100%;max-height:180px;object-fit:cover;border-radius:6px;margin-bottom:8px;" />' : '') +
-      '<input type="file" id="card-image-file" accept="image/*" style="font-size:13px;" />' +
+      '<div class="form-group"><label class="form-label">이미지 <span style="font-size:11px;color:var(--gray-500);">권장 1200×675px, 최대 2MB</span></label>' +
+      '<div id="card-img-preview" style="position:relative;margin-bottom:8px;' + (c.image_url ? '' : 'display:none;') + '">' +
+      '<img src="' + esc(c.image_url || '') + '" style="width:100%;max-height:180px;object-fit:cover;border-radius:6px;" />' +
+      '<button id="card-img-clear-btn" onclick="clearCardImage()" type="button" style="position:absolute;top:6px;right:6px;border:none;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:14px;line-height:1;' + (c.image_url ? '' : 'display:none;') + '">✕</button>' +
+      '</div>' +
+      '<input type="file" id="card-image-file" accept="image/*" style="font-size:13px;" onchange="(function(f){if(!f)return;var r=new FileReader();r.onload=function(e){var p=document.getElementById(\'card-img-preview\');p.style.display=\'\';p.querySelector(\'img\').src=e.target.result;document.getElementById(\'card-img-clear-btn\').style.display=\'\';}; r.readAsDataURL(f);})(this.files[0])" />' +
       '<input type="hidden" id="card-image-url" value="' + esc(c.image_url || '') + '" />' +
       '<input class="form-input" id="card-image-alt" value="' + esc(c.image_alt || '') + '" placeholder="이미지 설명 (alt 텍스트)" style="margin-top:6px;" /></div>' +
-      '<div class="form-group" id="card-cta-group"' + (audienceForModal === 'public' ? ' style="display:none;"' : '') + '><label class="form-label">CTA 버튼</label>' +
-      '<select class="form-input" id="card-cta">' +
-      ['none','apply','faq_link','continue'].map(v =>
-        '<option value="' + v + '"' + (c.cta_type === v ? ' selected' : '') + '>' + ctaLabel(v) + '</option>'
-      ).join('') +
-      '</select></div>' +
       '<div class="form-group"><label class="form-label">대상</label>' +
-      '<select class="form-input" id="card-audience" onchange="document.getElementById(\'card-cta-group\').style.display=this.value===\'public\'?\'none\':\'\'">' +
-      '<option value="public"' + (audienceForModal === 'public' ? ' selected' : '') + '>로그인 전 안내</option>' +
-      '<option value="member"' + (audienceForModal === 'member' ? ' selected' : '') + '>로그인 후 안내</option>' +
+      '<select class="form-input" id="card-audience" onchange="onCardAudienceChange(this.value)">' +
+      '<option value="public"' + (!isMember ? ' selected' : '') + '>로그인 전 안내</option>' +
+      '<option value="member"' + (isMember ? ' selected' : '') + '>로그인 후 안내</option>' +
       '</select></div>' +
-      '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">' +
-      '<input type="checkbox" id="card-active" style="accent-color:var(--blue);"' + (c.active ? ' checked' : '') + ' /> 활성화</label>';
+      '<div id="card-member-fields"' + (!isMember ? ' style="display:none;"' : '') + '>' +
+      '<div class="form-group"><label class="form-label">표시 페이지</label>' +
+      '<select class="form-input" id="card-target-page">' +
+      '<option value="">페이지를 선택하세요...</option>' +
+      VENDOR_PAGES.map(p => '<option value="' + p.key + '"' + (c.target_page === p.key ? ' selected' : '') + '>' + p.label + '</option>').join('') +
+      '</select></div>' +
+      '<div class="form-group"><label class="form-label">CTA 버튼</label>' +
+      '<select class="form-input" id="card-cta" onchange="onCardCtaChange(this.value)">' +
+      ['none','apply','faq_link','continue'].map(v => '<option value="' + v + '"' + (c.cta_type === v ? ' selected' : '') + '>' + ctaLabel(v) + '</option>').join('') +
+      '</select></div>' +
+      '<div id="card-cta-url-group"' + (!hasCta ? ' style="display:none;"' : '') + '>' +
+      '<div class="form-group"><label class="form-label">CTA 버튼 링크</label>' +
+      '<input class="form-input" id="card-cta-url" value="' + esc(c.cta_url || '') + '" placeholder="https://..." /></div>' +
+      '</div></div>' +
+      '<label class="tog" style="margin-top:4px;">' +
+      '<input type="checkbox" id="card-active"' + (c.active ? ' checked' : '') + ' />' +
+      '<span class="tog-track"></span>' +
+      '<span style="font-size:13px;">활성화</span>' +
+      '</label>';
+
     const footerHTML =
       '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
       (isEdit ? '<button class="btn btn-danger" style="margin-right:auto;" onclick="deleteCard(\'' + cardId + '\')">삭제</button>' : '') +
@@ -7251,12 +7314,21 @@
       } catch(e) { showToast('이미지 업로드 실패: ' + e.message, 'error'); return; }
     }
     const audience = document.getElementById('card-audience').value;
+    const isMember = audience === 'member';
+    const ctaEl = document.getElementById('card-cta');
+    const cta_type = isMember && ctaEl ? ctaEl.value : 'none';
+    const ctaUrlEl = document.getElementById('card-cta-url');
+    const cta_url = isMember && cta_type !== 'none' && ctaUrlEl ? ctaUrlEl.value.trim() : '';
+    const tpEl = document.getElementById('card-target-page');
+    const target_page = isMember && tpEl ? tpEl.value : '';
     const data = {
       title,
       body: (document.getElementById('card-body').value || '').trim(),
       image_url: imageUrl,
       image_alt: (document.getElementById('card-image-alt').value || '').trim(),
-      cta_type: audience === 'public' ? 'none' : document.getElementById('card-cta').value,
+      cta_type,
+      cta_url,
+      target_page,
       audience,
       active: document.getElementById('card-active').checked,
       updated_at: today()
