@@ -7075,35 +7075,266 @@
     else if (tabId === 'faq') renderFaqTab(content);
   };
 
+  /* ── 공통 이미지 업로드 헬퍼 ── */
+  async function uploadInfoImage(file, prefix) {
+    const ext = file.name.split('.').pop();
+    const path = prefix + '/' + Date.now() + '.' + ext;
+    const storageRef = ref(storage, path);
+    const snap = await uploadBytes(storageRef, file);
+    return await getDownloadURL(snap.ref);
+  }
+
+  function imageWidgetHTML(imgUrl, fieldPrefix) {
+    return '<div class="form-group"><label class="form-label">이미지 <span style="font-size:11px;color:var(--gray-500);">선택사항, 권장 1200×675px, 최대 2MB</span></label>' +
+      '<div id="' + fieldPrefix + '-img-preview" style="position:relative;margin-bottom:8px;' + (imgUrl ? '' : 'display:none;') + '">' +
+      '<img src="' + esc(imgUrl || '') + '" style="width:100%;max-height:180px;object-fit:cover;border-radius:6px;" />' +
+      '<button id="' + fieldPrefix + '-img-clear-btn" onclick="clearInfoImage(\'' + fieldPrefix + '\')" type="button" style="position:absolute;top:6px;right:6px;border:none;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:14px;line-height:1;">✕</button>' +
+      '</div>' +
+      '<input type="file" id="' + fieldPrefix + '-image-file" accept="image/*" style="font-size:13px;" onchange="previewInfoImage(this,\'' + fieldPrefix + '\')" />' +
+      '<input type="hidden" id="' + fieldPrefix + '-image-url" value="' + esc(imgUrl || '') + '" />' +
+      '</div>';
+  }
+  window.clearInfoImage = function(prefix) {
+    document.getElementById(prefix + '-image-url').value = '';
+    document.getElementById(prefix + '-image-file').value = '';
+    document.getElementById(prefix + '-img-preview').style.display = 'none';
+  };
+  window.previewInfoImage = function(input, prefix) {
+    if (!input.files || !input.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const p = document.getElementById(prefix + '-img-preview');
+      if (!p) return;
+      p.style.display = '';
+      const img = p.querySelector('img');
+      if (img) img.src = e.target.result;
+    };
+    reader.readAsDataURL(input.files[0]);
+  };
+
+  /* ── 카테고리 관리 모달 ── */
+  window.openCategoryMgmtModal = async function(fieldName, label, afterSave) {
+    const snap = await getDoc(doc(db, 'settings', 'config'));
+    const defaults = fieldName === 'notice_categories'
+      ? ['일반','이벤트','시스템','정책']
+      : ['입점신청','상품등록입고','진열판매','정산세무','교환환불회수','시스템이용','정책계약'];
+    const cats = (snap.exists() && snap.data()[fieldName]) ? snap.data()[fieldName] : defaults;
+    const formHTML =
+      '<p style="font-size:13px;color:var(--gray-600);margin-bottom:12px;">줄바꿈으로 구분해서 입력하세요. 순서대로 표시됩니다.</p>' +
+      '<textarea class="form-input" id="cat-mgmt-input" rows="10" style="resize:vertical;">' + cats.join('\n') + '</textarea>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      '<button class="btn btn-primary" onclick="saveCategoryMgmt(\'' + fieldName + '\')">저장</button>';
+    window._catMgmtAfterSave = afterSave;
+    showModal(label + ' 카테고리 관리', formHTML, footerHTML, 'md');
+  };
+  window.saveCategoryMgmt = async function(fieldName) {
+    const text = (document.getElementById('cat-mgmt-input').value || '');
+    const cats = text.split('\n').map(function(s) { return s.trim(); }).filter(Boolean);
+    if (cats.length === 0) { showToast('카테고리를 1개 이상 입력해주세요.', 'error'); return; }
+    try {
+      await updateDoc(doc(db, 'settings', 'config'), { [fieldName]: cats });
+      showToast('카테고리를 저장했습니다.');
+      closeModal();
+      if (typeof window._catMgmtAfterSave === 'function') await window._catMgmtAfterSave();
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
+
+  /* ── 공지사항 (notices) ── */
   async function renderNoticeTab(container) {
     document.getElementById('page-header-actions').innerHTML = '';
     container.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
     try {
-      const snap = await getDocs(query(collection(db, 'notices'), orderBy('created_at', 'desc')));
-      const notices = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const addBtn = '<div style="display:flex;justify-content:flex-end;margin-bottom:14px;"><button class="btn btn-primary" onclick="openNoticeModal(null)">➕ 공지 작성</button></div>';
+      const cfgSnap = await getDoc(doc(db, 'settings', 'config'));
+      const noticeCats = (cfgSnap.exists() && cfgSnap.data().notice_categories) ? cfgSnap.data().notice_categories : ['일반','이벤트','시스템','정책'];
+
+      const snap = await getDocs(collection(db, 'notices'));
+      let notices = snap.docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
+      notices.sort(function(a, b) {
+        if (a.order !== undefined && b.order !== undefined) return (a.order || 0) - (b.order || 0);
+        if (a.order !== undefined) return -1;
+        if (b.order !== undefined) return 1;
+        return (b.created_at || '').localeCompare(a.created_at || '');
+      });
+      window._noticeList = notices;
+
+      const headerHTML =
+        '<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:14px;">' +
+        '<button class="btn btn-secondary" onclick="openCategoryMgmtModal(\'notice_categories\',\'공지\',function(){var c=document.getElementById(\'info-tab-content\');if(c)renderNoticeTab(c);})">⚙️ 카테고리</button>' +
+        '<button class="btn btn-primary" onclick="openNoticeModal(null)">➕ 공지 작성</button>' +
+        '</div>';
+
       if (notices.length === 0) {
-        container.innerHTML = addBtn + '<div class="empty-state"><div class="empty-state-icon">📢</div><div class="empty-state-text">등록된 공지사항이 없습니다.</div></div>';
+        container.innerHTML = headerHTML + '<div class="empty-state"><div class="empty-state-icon">📢</div><div class="empty-state-text">등록된 공지사항이 없습니다.</div></div>';
         return;
       }
-      container.innerHTML = addBtn +
-        '<div class="card"><div class="table-wrap"><table>' +
-        '<thead><tr><th style="width:36px;"></th><th>제목</th><th>상태</th><th>등록일</th><th></th></tr></thead>' +
-        '<tbody>' +
-        notices.map(n =>
-          '<tr style="cursor:pointer;" onclick="openNoticeDetail(\'' + n.id + '\')">' +
-          '<td style="text-align:center;">' + (n.pinned ? '📌' : '') + '</td>' +
-          '<td style="font-weight:600;">' + esc(n.title || '') + '</td>' +
-          '<td>' + (n.status === '공개' ? '<span class="badge badge-green">공개</span>' : '<span class="badge badge-gray">비공개</span>') + '</td>' +
-          '<td style="font-size:12px;color:var(--gray-500);">' + esc(n.created_at || '') + '</td>' +
-          '<td><button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="event.stopPropagation();openNoticeModal(\'' + n.id + '\')">수정</button></td>' +
-          '</tr>'
-        ).join('') +
-        '</tbody></table></div></div>';
+
+      let rows = '';
+      notices.forEach(function(n, idx) {
+        const thumb = n.image_url
+          ? '<img src="' + esc(n.image_url) + '" style="width:90px;height:51px;object-fit:cover;border-radius:5px;flex-shrink:0;" />'
+          : '<div style="width:90px;height:51px;background:var(--gray-100);border-radius:5px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px;">📢</div>';
+        const catBadge = n.category ? '<span class="badge badge-gray" style="font-size:10px;margin-left:6px;">' + esc(n.category) + '</span>' : '';
+        const pinnedBadge = n.pinned ? '<span class="badge badge-yellow" style="font-size:10px;margin-left:4px;">📌 고정</span>' : '';
+        const preview = esc((n.content || '').substring(0, 80)) + (n.content && n.content.length > 80 ? '…' : '');
+        const isPublic = n.status === '공개';
+        const togId = 'notice-tog-' + n.id;
+        rows +=
+          '<div style="display:flex;align-items:center;gap:14px;padding:14px 16px;' + (idx < notices.length - 1 ? 'border-bottom:1px solid var(--gray-100);' : '') + '">' +
+          '<div style="cursor:pointer;" onclick="openNoticeDetail(\'' + n.id + '\')">' + thumb + '</div>' +
+          '<div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0;">' +
+          (idx > 0 ? '<button onclick="moveNotice(\'' + n.id + '\',-1)" style="border:none;background:none;cursor:pointer;font-size:13px;padding:0;line-height:1.2;">▲</button>' : '<span style="font-size:13px;opacity:0;">▲</span>') +
+          (idx < notices.length - 1 ? '<button onclick="moveNotice(\'' + n.id + '\',1)" style="border:none;background:none;cursor:pointer;font-size:13px;padding:0;line-height:1.2;">▼</button>' : '<span style="font-size:13px;opacity:0;">▼</span>') +
+          '</div>' +
+          '<div style="flex:1;min-width:0;cursor:pointer;" onclick="openNoticeDetail(\'' + n.id + '\')">' +
+          '<div style="font-weight:600;font-size:13px;margin-bottom:3px;">' + esc(n.title || '') + catBadge + pinnedBadge + '</div>' +
+          '<div style="font-size:12px;color:var(--gray-500);">' + preview + '</div>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">' +
+          '<label class="tog" style="margin:0;" title="공개/비공개">' +
+          '<input type="checkbox" id="' + togId + '"' + (isPublic ? ' checked' : '') + ' onchange="toggleNoticeStatus(\'' + n.id + '\',this.checked)" />' +
+          '<span class="tog-track"></span>' +
+          '</label>' +
+          '<span id="notice-status-lbl-' + n.id + '" style="font-size:11px;color:' + (isPublic ? 'var(--green)' : 'var(--gray-400)') + ';">' + (isPublic ? '공개' : '비공개') + '</span>' +
+          '<button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="openNoticeModal(\'' + n.id + '\')">수정</button>' +
+          '<button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;color:var(--red);" onclick="deleteNotice(\'' + n.id + '\')">삭제</button>' +
+          '</div>' +
+          '</div>';
+      });
+      container.innerHTML = headerHTML + '<div class="card">' + rows + '</div>';
     } catch(e) {
       container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
     }
   }
+
+  window.toggleNoticeStatus = async function(noticeId, isPublic) {
+    try {
+      await updateDoc(doc(db, 'notices', noticeId), { status: isPublic ? '공개' : '비공개' });
+      const lbl = document.getElementById('notice-status-lbl-' + noticeId);
+      if (lbl) {
+        lbl.textContent = isPublic ? '공개' : '비공개';
+        lbl.style.color = isPublic ? 'var(--green)' : 'var(--gray-400)';
+      }
+    } catch(e) { showToast('상태 변경 실패: ' + e.message, 'error'); }
+  };
+
+  window.moveNotice = async function(noticeId, dir) {
+    try {
+      const notices = window._noticeList || [];
+      const idx = notices.findIndex(function(n) { return n.id === noticeId; });
+      if (idx < 0) return;
+      const swapIdx = idx + dir;
+      if (swapIdx < 0 || swapIdx >= notices.length) return;
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'notices', notices[idx].id), { order: swapIdx });
+      batch.update(doc(db, 'notices', notices[swapIdx].id), { order: idx });
+      await batch.commit();
+      const container = document.getElementById('info-tab-content');
+      if (container) await renderNoticeTab(container);
+    } catch(e) { showToast('순서 변경 실패: ' + e.message, 'error'); }
+  };
+
+  window.openNoticeDetail = async function(noticeId) {
+    const snap = await getDoc(doc(db, 'notices', noticeId));
+    if (!snap.exists()) return;
+    const n = snap.data();
+    const imgHTML = n.image_url
+      ? '<img src="' + esc(n.image_url) + '" style="width:100%;max-height:220px;object-fit:cover;border-radius:8px;margin-bottom:14px;" />'
+      : '';
+    const body =
+      imgHTML +
+      '<div style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">' +
+      (n.pinned ? '📌 상단 고정 · ' : '') +
+      (n.category ? '<span class="badge badge-gray" style="font-size:10px;margin-right:6px;">' + esc(n.category) + '</span>' : '') +
+      esc(n.created_at || '') + ' · ' +
+      (n.status === '공개' ? '<span class="badge badge-green">공개</span>' : '<span class="badge badge-gray">비공개</span>') +
+      '</div>' +
+      '<div style="font-size:14px;line-height:1.7;white-space:pre-wrap;color:var(--gray-800);">' + esc(n.content || '') + '</div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal()">닫기</button>' +
+      '<button class="btn btn-primary" onclick="openNoticeModal(\'' + noticeId + '\')">✏️ 수정</button>';
+    showModal(esc(n.title || ''), body, footerHTML, 'lg');
+  };
+
+  window.openNoticeModal = async function(noticeId) {
+    let existing = null;
+    if (noticeId) {
+      const snap = await getDoc(doc(db, 'notices', noticeId));
+      if (snap.exists()) existing = Object.assign({ id: snap.id }, snap.data());
+    }
+    const cfgSnap = await getDoc(doc(db, 'settings', 'config'));
+    const noticeCats = (cfgSnap.exists() && cfgSnap.data().notice_categories) ? cfgSnap.data().notice_categories : ['일반','이벤트','시스템','정책'];
+    const isEdit = !!existing;
+    const n = existing || {};
+    const curCat = n.category || noticeCats[0] || '';
+    const catOptions = noticeCats.map(function(c) {
+      return '<option value="' + esc(c) + '"' + (c === curCat ? ' selected' : '') + '>' + esc(c) + '</option>';
+    }).join('');
+    const isPublic = n.status !== '비공개';
+    const isPinned = !!n.pinned;
+    const formHTML =
+      '<div class="form-group"><label class="form-label">제목 <span style="color:var(--red);">*</span></label>' +
+      '<input class="form-input" id="notice-title" value="' + esc(n.title || '') + '" placeholder="공지 제목" /></div>' +
+      '<div class="form-group"><label class="form-label">카테고리</label>' +
+      '<select class="form-input" id="notice-category">' + catOptions + '</select></div>' +
+      '<div class="form-group"><label class="form-label">내용</label>' +
+      '<textarea class="form-input" id="notice-content" rows="6" placeholder="공지 내용을 입력하세요" style="resize:vertical;">' + esc(n.content || '') + '</textarea></div>' +
+      imageWidgetHTML(n.image_url || '', 'notice') +
+      '<div style="display:flex;gap:24px;margin-top:8px;">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">' +
+      '<span>상단 고정</span>' +
+      '<label class="tog" style="margin:0;"><input type="checkbox" id="notice-pinned"' + (isPinned ? ' checked' : '') + ' /><span class="tog-track"></span></label>' +
+      '</label>' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">' +
+      '<span>공개</span>' +
+      '<label class="tog" style="margin:0;"><input type="checkbox" id="notice-public"' + (isPublic ? ' checked' : '') + ' /><span class="tog-track"></span></label>' +
+      '</label>' +
+      '</div>';
+    const footerHTML =
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      (isEdit ? '<button class="btn btn-danger" style="margin-right:auto;" onclick="deleteNotice(\'' + noticeId + '\')">삭제</button>' : '') +
+      '<button class="btn btn-primary" onclick="saveNotice(\'' + (noticeId || '') + '\')">' + (isEdit ? '저장' : '등록') + '</button>';
+    showModal(isEdit ? '공지 수정' : '공지 작성', formHTML, footerHTML, 'lg');
+  };
+
+  window.saveNotice = async function(noticeId) {
+    const title = (document.getElementById('notice-title').value || '').trim();
+    if (!title) { showToast('제목을 입력해주세요.', 'error'); return; }
+    const fileInput = document.getElementById('notice-image-file');
+    let imageUrl = (document.getElementById('notice-image-url') || {}).value || '';
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+      try { imageUrl = await uploadInfoImage(fileInput.files[0], 'notices'); } catch(e) { showToast('이미지 업로드 실패: ' + e.message, 'error'); return; }
+    }
+    const data = {
+      title,
+      content: (document.getElementById('notice-content').value || '').trim(),
+      category: (document.getElementById('notice-category') || {}).value || '',
+      image_url: imageUrl,
+      image_alt: '',
+      pinned: document.getElementById('notice-pinned').checked,
+      status: document.getElementById('notice-public').checked ? '공개' : '비공개',
+      created_by: (auth.currentUser || {}).email || '',
+      updated_at: today()
+    };
+    const wasPublic = data.status === '공개';
+    try {
+      if (noticeId) {
+        await updateDoc(doc(db, 'notices', noticeId), data);
+        showToast('공지를 수정했습니다.');
+        if (wasPublic) await sendNoticeEmail(title);
+      } else {
+        const countSnap = await getDocs(collection(db, 'notices'));
+        data.order = countSnap.size;
+        data.created_at = today();
+        await addDoc(collection(db, 'notices'), data);
+        showToast('공지를 등록했습니다.');
+        if (wasPublic) await sendNoticeEmail(title);
+      }
+      closeModal();
+      const container = document.getElementById('info-tab-content');
+      if (container) await renderNoticeTab(container);
+    } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
+  };
 
   /* ── 안내 페이지 작성 (onboarding_cards) ── */
   const VENDOR_PAGES = [
