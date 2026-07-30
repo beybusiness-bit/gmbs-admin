@@ -7105,8 +7105,8 @@
     document.getElementById('page-header-actions').innerHTML = '';
     container.innerHTML =
       '<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;">' +
-      '<button id="ob-tab-public" onclick="switchObAudience(\'public\')" class="btn btn-secondary" style="font-size:13px;">가입 전 안내</button>' +
-      '<button id="ob-tab-member" onclick="switchObAudience(\'member\')" class="btn btn-secondary" style="font-size:13px;">가입 후 안내</button>' +
+      '<button id="ob-tab-public" onclick="switchObAudience(\'public\')" class="btn btn-secondary" style="font-size:13px;">로그인 전 안내</button>' +
+      '<button id="ob-tab-member" onclick="switchObAudience(\'member\')" class="btn btn-secondary" style="font-size:13px;">로그인 후 안내</button>' +
       '<button onclick="openCardModal(null)" class="btn btn-primary" style="margin-left:auto;font-size:13px;">➕ 카드 추가</button>' +
       '</div>' +
       '<div id="ob-card-list"><div class="spinner" style="margin:40px auto;"></div></div>';
@@ -7140,20 +7140,23 @@
         return;
       }
       wrap.innerHTML = cards.map((c, i) =>
-        '<div class="card" style="margin-bottom:10px;display:flex;align-items:flex-start;gap:14px;" data-card-id="' + c.id + '">' +
+        '<div class="card" style="margin-bottom:10px;display:flex;align-items:flex-start;gap:14px;padding:14px 16px;" data-card-id="' + c.id + '">' +
         '<div style="display:flex;flex-direction:column;gap:4px;padding-top:4px;">' +
         (i > 0 ? '<button onclick="moveCard(\'' + c.id + '\',-1)" style="border:none;background:none;cursor:pointer;font-size:16px;padding:0;">▲</button>' : '<span style="font-size:16px;opacity:0;">▲</span>') +
         (i < cards.length - 1 ? '<button onclick="moveCard(\'' + c.id + '\',1)" style="border:none;background:none;cursor:pointer;font-size:16px;padding:0;">▼</button>' : '<span style="font-size:16px;opacity:0;">▼</span>') +
         '</div>' +
         (c.image_url ? '<img src="' + esc(c.image_url) + '" alt="' + esc(c.image_alt || '') + '" style="width:90px;height:51px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200);">' : '<div style="width:90px;height:51px;border-radius:6px;border:1px dashed var(--gray-300);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--gray-400);">이미지 없음</div>') +
-        '<div style="flex:1;">' +
+        '<div style="flex:1;min-width:0;">' +
         '<div style="font-weight:700;font-size:14px;margin-bottom:4px;">' + esc(c.title || '') + '</div>' +
-        '<div style="font-size:12px;color:var(--gray-600);margin-bottom:6px;white-space:pre-wrap;">' + esc((c.body || '').substring(0, 80)) + (c.body && c.body.length > 80 ? '…' : '') + '</div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-        '<span class="badge ' + (c.active ? 'badge-green' : 'badge-gray') + '">' + (c.active ? '활성' : '비활성') + '</span>' +
-        '<span class="badge badge-blue" style="background:var(--blue-bg);color:var(--blue);">' + ctaLabel(c.cta_type) + '</span>' +
+        '<div style="font-size:12px;color:var(--gray-600);margin-bottom:8px;white-space:pre-wrap;">' + esc((c.body || '').substring(0, 80)) + (c.body && c.body.length > 80 ? '…' : '') + '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+        '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;" title="클릭하여 활성/비활성 전환">' +
+        '<input type="checkbox" onchange="toggleCardActive(\'' + c.id + '\',this.checked)" style="accent-color:var(--blue);width:15px;height:15px;"' + (c.active ? ' checked' : '') + ' />' +
+        '<span class="badge ' + (c.active ? 'badge-green' : 'badge-gray') + '" style="pointer-events:none;">' + (c.active ? '활성' : '비활성') + '</span>' +
+        '</label>' +
+        (c.audience === 'member' ? '<span class="badge badge-blue" style="background:var(--blue-bg);color:var(--blue);">' + ctaLabel(c.cta_type) + '</span>' : '') +
         '</div></div>' +
-        '<div style="display:flex;flex-direction:column;gap:6px;">' +
+        '<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">' +
         '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="openCardModal(\'' + c.id + '\')">수정</button>' +
         '<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--red);" onclick="deleteCard(\'' + c.id + '\')">삭제</button>' +
         '</div></div>'
@@ -7186,6 +7189,18 @@
     } catch(e) { showToast('순서 변경 실패: ' + e.message, 'error'); }
   };
 
+  window.toggleCardActive = async function(cardId, active) {
+    try {
+      await updateDoc(doc(db, 'onboarding_cards', cardId), { active, updated_at: today() });
+      // 뱃지 텍스트도 즉시 갱신
+      const badge = document.querySelector('[data-card-id="' + cardId + '"] .badge');
+      if (badge) {
+        badge.textContent = active ? '활성' : '비활성';
+        badge.className = 'badge ' + (active ? 'badge-green' : 'badge-gray');
+      }
+    } catch(e) { showToast('변경 실패: ' + e.message, 'error'); await loadCardList(); }
+  };
+
   window.openCardModal = async function(cardId) {
     let existing = null;
     if (cardId) {
@@ -7194,6 +7209,7 @@
     }
     const isEdit = !!existing;
     const c = existing || { audience: _obAudience, active: true, cta_type: 'none' };
+    const audienceForModal = c.audience || _obAudience;
     const formHTML =
       '<div class="form-group"><label class="form-label">제목 <span style="color:var(--red);">*</span></label>' +
       '<input class="form-input" id="card-title" value="' + esc(c.title || '') + '" placeholder="카드 제목" /></div>' +
@@ -7204,16 +7220,16 @@
       '<input type="file" id="card-image-file" accept="image/*" style="font-size:13px;" />' +
       '<input type="hidden" id="card-image-url" value="' + esc(c.image_url || '') + '" />' +
       '<input class="form-input" id="card-image-alt" value="' + esc(c.image_alt || '') + '" placeholder="이미지 설명 (alt 텍스트)" style="margin-top:6px;" /></div>' +
-      '<div class="form-group"><label class="form-label">CTA 버튼</label>' +
+      '<div class="form-group" id="card-cta-group"' + (audienceForModal === 'public' ? ' style="display:none;"' : '') + '><label class="form-label">CTA 버튼</label>' +
       '<select class="form-input" id="card-cta">' +
       ['none','apply','faq_link','continue'].map(v =>
         '<option value="' + v + '"' + (c.cta_type === v ? ' selected' : '') + '>' + ctaLabel(v) + '</option>'
       ).join('') +
       '</select></div>' +
       '<div class="form-group"><label class="form-label">대상</label>' +
-      '<select class="form-input" id="card-audience">' +
-      '<option value="public"' + (c.audience === 'public' ? ' selected' : '') + '>가입 전 안내</option>' +
-      '<option value="member"' + (c.audience === 'member' ? ' selected' : '') + '>가입 후 안내</option>' +
+      '<select class="form-input" id="card-audience" onchange="document.getElementById(\'card-cta-group\').style.display=this.value===\'public\'?\'none\':\'\'">' +
+      '<option value="public"' + (audienceForModal === 'public' ? ' selected' : '') + '>로그인 전 안내</option>' +
+      '<option value="member"' + (audienceForModal === 'member' ? ' selected' : '') + '>로그인 후 안내</option>' +
       '</select></div>' +
       '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">' +
       '<input type="checkbox" id="card-active" style="accent-color:var(--blue);"' + (c.active ? ' checked' : '') + ' /> 활성화</label>';
@@ -7240,7 +7256,7 @@
       body: (document.getElementById('card-body').value || '').trim(),
       image_url: imageUrl,
       image_alt: (document.getElementById('card-image-alt').value || '').trim(),
-      cta_type: document.getElementById('card-cta').value,
+      cta_type: audience === 'public' ? 'none' : document.getElementById('card-cta').value,
       audience,
       active: document.getElementById('card-active').checked,
       updated_at: today()
