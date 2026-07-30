@@ -2063,7 +2063,9 @@
         showToast('브랜드 정보를 수정했습니다.', 'success');
         openBrandDetail(brandId);
       } else {
-        await addDoc(collection(db, 'brands'), data);
+        const newBrandRef = await addDoc(collection(db, 'brands'), data);
+        // 벤더 포털 합류 신청 시 주관리자 존재 여부 확인을 위해 brand_public_meta 초기화
+        try { await setDoc(doc(db, 'brand_public_meta', newBrandRef.id), { has_main_manager: false, updated_at: today() }); } catch(_) {}
         showToast('브랜드를 등록했습니다.', 'success');
         closeModal();
         const content = document.getElementById('page-content');
@@ -8247,6 +8249,13 @@
         '<div id="firebase-status-area"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
         '</div>' +
 
+        '<div class="card" style="padding:24px;">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:6px;">벤더 포털 연동 초기화</div>' +
+        '<div style="font-size:13px;color:var(--gray-500);margin-bottom:14px;">어드민에서 직접 등록한 브랜드에 <code>brand_public_meta</code> 문서가 없으면 벤더 포털에서 합류 신청 시 주관리자 여부를 잘못 판단합니다. 아래 버튼으로 누락된 문서를 일괄 생성합니다.</div>' +
+        '<button class="btn btn-secondary" onclick="initBrandPublicMeta()">누락된 brand_public_meta 일괄 생성</button>' +
+        '<div id="brand-meta-init-result" style="margin-top:10px;font-size:13px;"></div>' +
+        '</div>' +
+
       '</div>' +
 
       /* ── 탭: API 및 웹훅 ── */
@@ -9666,6 +9675,32 @@
       '<input type="number" id="' + id + '" value="' + val + '" min="' + min + '" max="' + max + '" style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;">' +
       '</div>';
   }
+
+  window.initBrandPublicMeta = async function() {
+    const resultEl = document.getElementById('brand-meta-init-result');
+    if (resultEl) resultEl.textContent = '처리 중...';
+    try {
+      const brandsSnap = await getDocs(collection(db, 'brands'));
+      let created = 0, skipped = 0;
+      for (const bDoc of brandsSnap.docs) {
+        const brandId = bDoc.id;
+        const metaRef = doc(db, 'brand_public_meta', brandId);
+        const metaSnap = await getDoc(metaRef);
+        if (!metaSnap.exists()) {
+          // 실제 managers 서브컬렉션 확인 후 정확한 값으로 생성
+          const mgrSnap = await getDocs(query(collection(db, 'brands', brandId, 'managers'), where('role', '==', '주관리자'), where('active', '==', true)));
+          const hasMain = mgrSnap.docs.length > 0;
+          await setDoc(metaRef, { has_main_manager: hasMain, updated_at: today() });
+          created++;
+        } else {
+          skipped++;
+        }
+      }
+      if (resultEl) resultEl.innerHTML = '<span style="color:var(--green);">✅ 완료: ' + created + '개 생성, ' + skipped + '개 이미 존재 (건너뜀)</span>';
+    } catch(e) {
+      if (resultEl) resultEl.innerHTML = '<span style="color:var(--red);">오류: ' + esc(e.message) + '</span>';
+    }
+  };
 
   async function checkFirebaseStatus() {
     const area = document.getElementById('firebase-status-area');
