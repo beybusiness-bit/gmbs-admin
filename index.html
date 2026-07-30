@@ -10370,6 +10370,18 @@
         const brandId = item.target_brand_id;
         const email = (item.applicant_email || '').toLowerCase();
         const role = item.applicant_role || '부관리자';
+
+        // 주관리자 1명 제한: 이미 승인된 주관리자가 있으면 차단
+        if (role === '주관리자') {
+          const existMgrSnap = await getDocs(query(collection(db, 'brands', brandId, 'managers'), where('role', '==', '주관리자'), where('active', '==', true)));
+          const otherPms = existMgrSnap.docs.filter(d => d.data().login_google_email !== email);
+          if (otherPms.length > 0) {
+            const pmName = otherPms[0].data().name || otherPms[0].data().login_google_email || '';
+            showToast('이미 주관리자(' + pmName + ')가 승인되어 있습니다. 이 신청을 부관리자로 바꿔 승인하거나, 기존 주관리자를 먼저 비활성화해주세요.', 'error');
+            return;
+          }
+        }
+
         // managers/{email} 생성 또는 brand 추가
         const mgrRef = doc(db, 'managers', email);
         const mgrSnap = await getDoc(mgrRef);
