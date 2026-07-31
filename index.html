@@ -9125,13 +9125,36 @@
   /* ── 암호화 키 로드·생성 ── */
   async function loadEncKeyStatus() {
     const el = document.getElementById('enc-key-status');
+    const genBtn = document.querySelector('[onclick="generateEncryptionKey()"]');
     if (!el) return;
     try {
       const snap = await getDoc(doc(db, 'app_configs', 'encryption'));
       if (snap.exists() && snap.data().aes_key_b64) {
-        el.innerHTML = '<span style="color:var(--green);">✅ 암호화 키가 설정되어 있습니다.</span> Admin·Vendor 양쪽에서 동일 키로 암호화/복호화됩니다.';
+        // 암호화된 데이터가 있는지 확인해서 버튼 비활성화 여부 결정
+        let encDataCount = 0;
+        try {
+          const brandsSnap = await getDocs(collection(db, 'brands'));
+          const ENC_FIELDS = ['business_reg_number', 'resident_number', 'account_number'];
+          brandsSnap.docs.forEach(d => {
+            const si = d.data().settlement_info || {};
+            if (ENC_FIELDS.some(f => typeof si[f] === 'string' && si[f].startsWith('ENC:'))) encDataCount++;
+          });
+        } catch(_) {}
+        if (encDataCount > 0) {
+          el.innerHTML = '<span style="color:var(--green);">✅ 암호화 키 설정됨</span> — 암호화된 정산정보가 <b>' + encDataCount + '개 브랜드</b>에 있습니다.';
+          if (genBtn) {
+            genBtn.disabled = true;
+            genBtn.title = '암호화된 데이터가 있는 동안에는 키를 새로 생성할 수 없습니다. 모든 암호화 데이터를 삭제한 후 시도하세요.';
+            genBtn.style.opacity = '0.4';
+            genBtn.style.cursor = 'not-allowed';
+          }
+        } else {
+          el.innerHTML = '<span style="color:var(--green);">✅ 암호화 키 설정됨</span> — 암호화된 정산정보 데이터 없음 (키 교체 가능)';
+          if (genBtn) { genBtn.disabled = false; genBtn.style.opacity = ''; genBtn.style.cursor = ''; }
+        }
       } else {
         el.innerHTML = '<span style="color:var(--red);">⚠ 암호화 키가 없습니다.</span> 아래 버튼으로 키를 생성하세요. 키가 없으면 주민등록번호·계좌번호 저장이 불가합니다.';
+        if (genBtn) { genBtn.disabled = false; genBtn.style.opacity = ''; genBtn.style.cursor = ''; }
       }
     } catch(e) {
       el.textContent = '확인 오류: ' + e.message;
