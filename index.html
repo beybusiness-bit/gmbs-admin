@@ -11246,9 +11246,9 @@
       // 시트가 여러 개면 선택 UI 표시 후 중단 — 선택 완료 후 validateBulkBrandsWithSheet() 재진입
       if (wb.SheetNames.length > 1) {
         var autoSheet = wb.SheetNames.includes('브랜드목록') ? '브랜드목록' : wb.SheetNames[0];
-        var btnHtml = wb.SheetNames.map(function(n) {
+        var btnHtml = wb.SheetNames.map(function(n, i) {
           var active = n === autoSheet;
-          return '<button onclick="validateBulkBrandsWithSheet(' + JSON.stringify(n) + ')" ' +
+          return '<button onclick="validateBulkBrandsWithSheet(window._bulkBrandWb.SheetNames[' + i + '])" ' +
             'style="padding:6px 14px;border-radius:20px;border:1.5px solid ' + (active ? 'var(--primary)' : 'var(--gray-200)') + ';' +
             'background:' + (active ? '#f3eeff' : '#fff') + ';color:' + (active ? 'var(--primary)' : 'var(--gray-700)') + ';' +
             'font-size:13px;cursor:pointer;white-space:nowrap;">' + esc(n) + '</button>';
@@ -11730,9 +11730,9 @@
       // 시트가 여러 개면 선택 UI 표시 후 중단
       if (wb.SheetNames.length > 1) {
         var autoSheet = wb.SheetNames.includes('상품목록') ? '상품목록' : wb.SheetNames[0];
-        var btnHtml = wb.SheetNames.map(function(n) {
+        var btnHtml = wb.SheetNames.map(function(n, i) {
           var active = n === autoSheet;
-          return '<button onclick="validateBulkProductsWithSheet(' + JSON.stringify(n) + ')" ' +
+          return '<button onclick="validateBulkProductsWithSheet(window._bulkProductWb.SheetNames[' + i + '])" ' +
             'style="padding:6px 14px;border-radius:20px;border:1.5px solid ' + (active ? 'var(--primary)' : 'var(--gray-200)') + ';' +
             'background:' + (active ? '#f3eeff' : '#fff') + ';color:' + (active ? 'var(--primary)' : 'var(--gray-700)') + ';' +
             'font-size:13px;cursor:pointer;white-space:nowrap;">' + esc(n) + '</button>';
