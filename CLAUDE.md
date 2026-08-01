@@ -761,7 +761,14 @@ Google Sheets API 대신 Firestore를 쓰므로 서버(Next.js) 없이 **클라�
 
 1~18단계 + 추가 기능 전체 완료. 보안 강화까지 완료. main 직접 push 방식으로 운영 중.
 
-**이번 세션에서 구현한 내용 (계약 취소·유형 제거·자동전환 버그 수정):**
+**이번 세션에서 추가 완료한 내용 (Firestore 보안규칙·암호화·대량등록 시트선택):**
+- Firestore 보안규칙: `brands/{brandId}/managers/{mgr}` read 조건 → `request.auth != null` (주관리자 존재여부 확인 차단 버그 수정) ✅
+- `brand_public_meta/zqJVNAsmyrExlKeJyPOW` 문서 생성 및 누락 브랜드 일괄 생성 ✅
+- 암호화 키 재생성 버튼 비활성화(ENC: 데이터 존재 시) + 진단 기능 추가 ✅
+- 암호화 데이터 복구 완료 ✅
+- 엑셀 대량 등록(브랜드·상품) 시트 선택 UI 추가 (`validateBulkBrandsWithSheet` / `validateBulkProductsWithSheet`) ✅
+
+**이전 세션에서 구현한 내용 (계약 취소·유형 제거·자동전환 버그 수정):**
 - `cancelContract` 함수 구현: 계약취소 상태 전환, ucansign 발송된 경우 `cancelContractCallable` 호출
 - `openCmContractDetail`에 계약ID 복사 버튼 추가, 계약취소 뱃지·취소 버튼 추가
 - `brand_type` 레거시 호환: `loadBrandContracts`에서 단일 문자열→배열 변환 처리
