@@ -11269,7 +11269,7 @@
 
       var headerIdx = -1;
       for (var i = 0; i < Math.min(rows.length, 8); i++) {
-        if (rows[i].some(function(c){ return String(c).includes('브랜드명'); })) { headerIdx = i; break; }
+        if (rows[i].some(function(c){ return String(c).replace('*','').trim() === '브랜드명'; })) { headerIdx = i; break; }
       }
       if (headerIdx < 0) { summaryEl.innerHTML = '헤더 행(브랜드명*)을 찾을 수 없습니다. 양식을 확인해주세요.'; return; }
 
@@ -11383,7 +11383,7 @@
 
       var headerIdx = -1;
       for (var i = 0; i < Math.min(rows.length, 8); i++) {
-        if (rows[i].some(function(c){ return String(c).includes('브랜드명'); })) { headerIdx = i; break; }
+        if (rows[i].some(function(c){ return String(c).replace('*','').trim() === '브랜드명'; })) { headerIdx = i; break; }
       }
       if (headerIdx < 0) { summaryEl.innerHTML = '헤더 행(브랜드명*)을 찾을 수 없습니다. 이 시트가 맞는지 확인해주세요.'; return; }
 
@@ -11753,7 +11753,7 @@
 
       var headerIdx = -1;
       for (var i = 0; i < Math.min(rows.length, 8); i++) {
-        if (rows[i].some(function(c){ return String(c).includes('브랜드코드'); })) { headerIdx = i; break; }
+        if (rows[i].some(function(c){ return String(c).replace('*','').trim() === '브랜드코드'; })) { headerIdx = i; break; }
       }
       if (headerIdx < 0) { summaryEl.innerHTML = '헤더 행(브랜드코드*)을 찾을 수 없습니다.'; return; }
 
@@ -11887,7 +11887,7 @@
 
       var headerIdx = -1;
       for (var i = 0; i < Math.min(rows.length, 8); i++) {
-        if (rows[i].some(function(c){ return String(c).includes('브랜드코드'); })) { headerIdx = i; break; }
+        if (rows[i].some(function(c){ return String(c).replace('*','').trim() === '브랜드코드'; })) { headerIdx = i; break; }
       }
       if (headerIdx < 0) { summaryEl.innerHTML = '헤더 행(브랜드코드*)을 찾을 수 없습니다. 이 시트가 맞는지 확인해주세요.'; return; }
 
