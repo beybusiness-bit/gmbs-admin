@@ -11241,7 +11241,28 @@
       window._bulkBrandImageMap = imageMap;
 
       var wb = XLSX.read(xlsxBuf, {type:'array'});
-      var sheetName = wb.SheetNames.includes('브랜드목록') ? '브랜드목록' : wb.SheetNames[wb.SheetNames.length - 1];
+      window._bulkBrandWb = wb;
+
+      // 시트가 여러 개면 선택 UI 표시 후 중단 — 선택 완료 후 validateBulkBrandsWithSheet() 재진입
+      if (wb.SheetNames.length > 1) {
+        var autoSheet = wb.SheetNames.includes('브랜드목록') ? '브랜드목록' : wb.SheetNames[0];
+        var btnHtml = wb.SheetNames.map(function(n) {
+          var active = n === autoSheet;
+          return '<button onclick="validateBulkBrandsWithSheet(' + JSON.stringify(n) + ')" ' +
+            'style="padding:6px 14px;border-radius:20px;border:1.5px solid ' + (active ? 'var(--primary)' : 'var(--gray-200)') + ';' +
+            'background:' + (active ? '#f3eeff' : '#fff') + ';color:' + (active ? 'var(--primary)' : 'var(--gray-700)') + ';' +
+            'font-size:13px;cursor:pointer;white-space:nowrap;">' + esc(n) + '</button>';
+        }).join('');
+        summaryEl.innerHTML = '<div style="margin-bottom:8px;font-weight:600;">시트를 선택하세요 (' + wb.SheetNames.length + '개 감지됨)</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">' + btnHtml + '</div>' +
+          '<div style="font-size:12px;color:var(--gray-400);">기본 선택: <b>' + esc(autoSheet) + '</b> — 다른 시트를 클릭하면 해당 시트로 검사합니다.</div>';
+        resultWrap.style.display = 'block';
+        tbody.innerHTML = ''; thead.innerHTML = '';
+        return;
+      }
+
+      var sheetName = wb.SheetNames[0];
+      window._bulkBrandWb = null;
       var ws = wb.Sheets[sheetName];
       var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
       if (!rows || rows.length < 2) { summaryEl.innerHTML = '데이터 행이 없습니다. 양식을 확인해주세요.'; return; }
@@ -11341,6 +11362,90 @@
       if (okCount > 0) document.getElementById('btn-do-bulk-brand').style.display = '';
     } catch(e) {
       summaryEl.innerHTML = '파일 읽기 오류: ' + esc(e.message);
+    }
+  };
+
+  window.validateBulkBrandsWithSheet = async function(sheetName) {
+    var wb = window._bulkBrandWb;
+    if (!wb) { showToast('파일을 다시 선택해주세요.', 'error'); return; }
+    var summaryEl = document.getElementById('bulk-brand-summary');
+    var tbody = document.getElementById('bulk-brand-tbody');
+    var thead = document.getElementById('bulk-brand-thead');
+    summaryEl.innerHTML = '<div class="spinner spinner-sm" style="display:inline-block;margin-right:8px;"></div>시트 <b>' + esc(sheetName) + '</b> 검사 중...';
+    tbody.innerHTML = ''; thead.innerHTML = '';
+    document.getElementById('btn-do-bulk-brand').style.display = 'none';
+    window._bulkBrandValidated = null;
+
+    try {
+      var ws = wb.Sheets[sheetName];
+      var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      if (!rows || rows.length < 2) { summaryEl.innerHTML = '데이터 행이 없습니다. 양식을 확인해주세요.'; return; }
+
+      var headerIdx = -1;
+      for (var i = 0; i < Math.min(rows.length, 8); i++) {
+        if (rows[i].some(function(c){ return String(c).includes('브랜드명'); })) { headerIdx = i; break; }
+      }
+      if (headerIdx < 0) { summaryEl.innerHTML = '헤더 행(브랜드명*)을 찾을 수 없습니다. 이 시트가 맞는지 확인해주세요.'; return; }
+
+      // validateBulkBrands의 나머지 검사 로직을 공유하기 위해 임시 저장 후 재호출
+      window._bulkBrandSelectedSheet = sheetName;
+      window._bulkBrandWb = null; // 시트 선택 완료 — 단일 시트처럼 처리
+      // wb.SheetNames를 1개로 줄인 임시 객체로 교체해 validateBulkBrands 재진입
+      var fakeWb = { SheetNames: [sheetName], Sheets: wb.Sheets };
+      window._bulkBrandWb = null;
+      // 직접 파싱 실행 (중복 코드 없이 원본 로직에 위임)
+      // 원본 함수의 wb 이후 로직을 인라인으로 재실행
+      var imageMap = window._bulkBrandImageMap || {};
+      var imgKeys = Object.keys(imageMap);
+
+      var headers = rows[headerIdx].map(function(h){ return String(h).replace('*','').trim(); });
+      var COLS = ['브랜드명','브랜드코드','거래유형','브랜드설명','웹사이트'];
+      thead.innerHTML = '<tr><th>#</th><th>상태</th>' + COLS.map(function(c){return '<th>'+c+'</th>';}).join('') + (imgKeys.length>0?'<th>이미지</th>':'') + '</tr>';
+
+      var dataRows = rows.slice(headerIdx + 1).filter(function(r){ return r.some(function(c){return String(c).trim()!==''; }); });
+      var col = function(name){ return headers.indexOf(name); };
+      var get = function(row, name){ var i=col(name); return i>=0 ? String(row[i]||'').trim() : ''; };
+
+      var existingBrands;
+      try { existingBrands = (await getDocs(collection(db, 'brands'))).docs.map(function(d){ return d.data(); }); } catch(e) { existingBrands = []; }
+      var usedCodes = existingBrands.map(function(b){ return (b.brand_code||'').toUpperCase(); });
+      var usedNames = existingBrands.map(function(b){ return (b.brand_name||'').trim(); });
+      var seenCodes = {}, seenNames = {};
+      var okCount = 0, errCount = 0, matchCount = 0;
+      var validRows = [];
+
+      dataRows.forEach(function(row, idx) {
+        var name = get(row,'브랜드명'), code = (get(row,'브랜드코드')||'').toUpperCase();
+        var type = get(row,'거래유형'), desc = get(row,'브랜드설명'), web = get(row,'웹사이트');
+        var errors = [];
+        if (!name) errors.push('브랜드명 필수');
+        if (!code) errors.push('브랜드코드 필수');
+        else if (!/^[A-Z0-9]{1,10}$/.test(code)) errors.push('브랜드코드: 영문대문자·숫자 1~10자');
+        else if (usedCodes.includes(code)) errors.push('브랜드코드 중복(기존)');
+        else if (seenCodes[code]) errors.push('브랜드코드 중복(파일 내)');
+        if (name && usedNames.includes(name)) errors.push('브랜드명 중복(기존)');
+        if (name && seenNames[name]) errors.push('브랜드명 중복(파일 내)');
+        if (code) seenCodes[code] = true;
+        if (name) seenNames[name] = true;
+        var imgMatch = imgKeys.length > 0 && imageMap[code.toUpperCase()];
+        if (imgMatch) matchCount++;
+        var ok = errors.length === 0;
+        if (ok) okCount++; else errCount++;
+        if (ok) validRows.push({ brand_name:name, brand_code:code, brand_type:type||'기타', brand_desc:desc, website_urls:web?[web]:[], imgKey:code.toUpperCase() });
+        var cls = ok ? 'bulk-row-ok' : 'bulk-row-err';
+        tbody.innerHTML += '<tr class="'+cls+'"><td>'+(idx+1)+'</td><td>'+(ok?'✅':'❌ '+errors.join(' / '))+'</td>' +
+          '<td>'+esc(name)+'</td><td>'+esc(code)+'</td><td>'+esc(type)+'</td><td>'+esc(desc)+'</td><td>'+esc(web)+'</td>' +
+          (imgKeys.length>0?'<td>'+(imgMatch?'✅':'—')+'</td>':'') + '</tr>';
+      });
+
+      window._bulkBrandValidated = validRows;
+      summaryEl.innerHTML = '시트: <b>' + esc(sheetName) + '</b> &nbsp;|&nbsp; 총 <strong>' + dataRows.length + '행</strong> 검사 완료 &nbsp;|&nbsp; ' +
+        '등록 가능: <strong style="color:#16a34a;">' + okCount + '개</strong> &nbsp;|&nbsp; 오류: <strong style="color:#dc2626;">' + errCount + '개</strong>' +
+        (imgKeys.length>0?' &nbsp;|&nbsp; 이미지 매칭: <strong style="color:#7c3aed;">'+matchCount+'/'+okCount+'개</strong>':'') +
+        (errCount>0?'<br><span style="font-size:12px;color:var(--gray-500);">오류 행은 업로드에서 제외됩니다.</span>':'');
+      if (okCount > 0) document.getElementById('btn-do-bulk-brand').style.display = '';
+    } catch(e) {
+      summaryEl.innerHTML = '검사 오류: ' + esc(e.message);
     }
   };
 
@@ -11620,7 +11725,28 @@
       window._bulkProductImageMap = imageMap;
 
       var wb = XLSX.read(xlsxBuf, {type:'array'});
-      var sheetName = wb.SheetNames.includes('상품목록') ? '상품목록' : wb.SheetNames[wb.SheetNames.length - 1];
+      window._bulkProductWb = wb;
+
+      // 시트가 여러 개면 선택 UI 표시 후 중단
+      if (wb.SheetNames.length > 1) {
+        var autoSheet = wb.SheetNames.includes('상품목록') ? '상품목록' : wb.SheetNames[0];
+        var btnHtml = wb.SheetNames.map(function(n) {
+          var active = n === autoSheet;
+          return '<button onclick="validateBulkProductsWithSheet(' + JSON.stringify(n) + ')" ' +
+            'style="padding:6px 14px;border-radius:20px;border:1.5px solid ' + (active ? 'var(--primary)' : 'var(--gray-200)') + ';' +
+            'background:' + (active ? '#f3eeff' : '#fff') + ';color:' + (active ? 'var(--primary)' : 'var(--gray-700)') + ';' +
+            'font-size:13px;cursor:pointer;white-space:nowrap;">' + esc(n) + '</button>';
+        }).join('');
+        summaryEl.innerHTML = '<div style="margin-bottom:8px;font-weight:600;">시트를 선택하세요 (' + wb.SheetNames.length + '개 감지됨)</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">' + btnHtml + '</div>' +
+          '<div style="font-size:12px;color:var(--gray-400);">기본 선택: <b>' + esc(autoSheet) + '</b> — 다른 시트를 클릭하면 해당 시트로 검사합니다.</div>';
+        resultWrap.style.display = 'block';
+        tbody.innerHTML = ''; thead.innerHTML = '';
+        return;
+      }
+
+      var sheetName = wb.SheetNames[0];
+      window._bulkProductWb = null;
       var ws = wb.Sheets[sheetName];
       var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
       if (!rows || rows.length < 2) { summaryEl.innerHTML = '데이터 행이 없습니다.'; return; }
@@ -11740,6 +11866,122 @@
       if (okCount > 0) document.getElementById('btn-do-bulk-product').style.display = '';
     } catch(e) {
       summaryEl.innerHTML = '파일 읽기 오류: ' + esc(e.message);
+    }
+  };
+
+  window.validateBulkProductsWithSheet = async function(sheetName) {
+    var wb = window._bulkProductWb;
+    if (!wb) { showToast('파일을 다시 선택해주세요.', 'error'); return; }
+    var summaryEl = document.getElementById('bulk-product-summary');
+    var tbody = document.getElementById('bulk-product-tbody');
+    var thead = document.getElementById('bulk-product-thead');
+    summaryEl.innerHTML = '<div class="spinner spinner-sm" style="display:inline-block;margin-right:8px;"></div>시트 <b>' + esc(sheetName) + '</b> 검사 중...';
+    tbody.innerHTML = ''; thead.innerHTML = '';
+    document.getElementById('btn-do-bulk-product').style.display = 'none';
+    window._bulkProductValidated = null;
+
+    try {
+      var ws = wb.Sheets[sheetName];
+      var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      if (!rows || rows.length < 2) { summaryEl.innerHTML = '데이터 행이 없습니다. 이 시트가 맞는지 확인해주세요.'; return; }
+
+      var headerIdx = -1;
+      for (var i = 0; i < Math.min(rows.length, 8); i++) {
+        if (rows[i].some(function(c){ return String(c).includes('브랜드코드'); })) { headerIdx = i; break; }
+      }
+      if (headerIdx < 0) { summaryEl.innerHTML = '헤더 행(브랜드코드*)을 찾을 수 없습니다. 이 시트가 맞는지 확인해주세요.'; return; }
+
+      var headers = rows[headerIdx].map(function(h){ return String(h).replace('*','').trim(); });
+      var COLS = ['브랜드코드','상품명','관리방식','기본판매가','옵션1축이름','옵션1값','옵션2축이름','옵션2값','옵션3축이름','옵션3값','SKU판매가','개체수','메모'];
+      var colIdx = {};
+      COLS.forEach(function(k){ colIdx[k] = headers.findIndex(function(h){ return h.includes(k); }); });
+
+      var brandSnap = await getDocs(collection(db, 'brands'));
+      var brandMap = {};
+      brandSnap.docs.forEach(function(d){ brandMap[(d.data().brand_code||'').toUpperCase()] = { id: d.id, brand_name: d.data().brand_name }; });
+
+      var results = [];
+      var okCount = 0; var errCount = 0;
+      var productKeys = new Set();
+      var dataRows = rows.slice(headerIdx + 1).filter(function(r){ return r.some(function(c){ return String(c).trim(); }); });
+
+      dataRows.forEach(function(row, rawIdx) {
+        var firstCell = String(row[0] || '').trim();
+        if (firstCell.startsWith('예)') || firstCell.startsWith('예시') || firstCell.startsWith('(작성')) return;
+        var excelRowNum = headerIdx + 2 + rawIdx;
+        var get = function(key){ var ci = colIdx[key]; return ci >= 0 ? String(row[ci] || '').trim() : ''; };
+        var brandCode = get('브랜드코드').toUpperCase();
+        var productName = get('상품명');
+        var trackingType = get('관리방식');
+        var basePriceRaw = get('기본판매가');
+        var skuPriceRaw = get('SKU판매가');
+        var unitCountRaw = get('개체수');
+        var errors = [];
+
+        if (!brandCode) errors.push('브랜드코드 누락');
+        else if (!brandMap[brandCode]) errors.push('미등록 브랜드: ' + brandCode);
+        if (!productName) errors.push('상품명 누락');
+        if (!trackingType) errors.push('관리방식 누락');
+        else if (!['수량관리','개체관리'].includes(trackingType)) errors.push('관리방식 오류 (수량관리/개체관리)');
+        var basePrice = parseInt(basePriceRaw, 10);
+        if (!basePriceRaw) errors.push('기본판매가 누락');
+        else if (isNaN(basePrice) || basePrice < 0) errors.push('기본판매가는 0 이상 숫자');
+        var skuPrice = skuPriceRaw ? parseInt(skuPriceRaw, 10) : null;
+        if (skuPriceRaw && (isNaN(skuPrice) || skuPrice < 0)) errors.push('SKU판매가 형식 오류');
+        var unitCount = unitCountRaw ? parseInt(unitCountRaw, 10) : null;
+        if (unitCountRaw) {
+          if (isNaN(unitCount) || unitCount < 1) errors.push('개체수는 1 이상 정수');
+          else if (trackingType === '수량관리') errors.push('수량관리 상품에 개체수 불필요');
+        }
+        var o1name = get('옵션1축이름'); var o1val = get('옵션1값');
+        var o2name = get('옵션2축이름'); var o2val = get('옵션2값');
+        var o3name = get('옵션3축이름'); var o3val = get('옵션3값');
+        if ((o1name && !o1val) || (!o1name && o1val)) errors.push('옵션1 축이름·값 쌍으로 입력');
+        if ((o2name || o2val) && !o1name) errors.push('옵션2는 옵션1 있어야 사용 가능');
+        if ((o3name || o3val) && !o2name) errors.push('옵션3은 옵션2 있어야 사용 가능');
+
+        var optSummary = [o1name && (o1name+':'+o1val), o2name && (o2name+':'+o2val), o3name && (o3name+':'+o3val)].filter(Boolean).join(' / ') || '(옵션없음)';
+        var productKey = brandCode + '|' + productName;
+        if (errors.length === 0) { okCount++; productKeys.add(productKey); } else errCount++;
+        results.push({ rowNum: excelRowNum, excelRowNum, brandCode, productName, trackingType,
+          basePrice: isNaN(basePrice) ? basePriceRaw : basePrice,
+          skuPrice, unitCount, optSummary, memo: get('메모'),
+          o1name, o1val, o2name, o2val, o3name, o3val, errors });
+      });
+
+      var productTrackingMap = {};
+      results.forEach(function(r) {
+        if (r.errors.length > 0) return;
+        var key = r.brandCode + '|' + r.productName;
+        if (!productTrackingMap[key]) productTrackingMap[key] = r.trackingType;
+        else if (productTrackingMap[key] !== r.trackingType) {
+          r.errors.push('같은 상품 내 관리방식 불일치'); okCount--; errCount++;
+        }
+      });
+
+      window._bulkProductValidated = results.filter(function(r){ return r.errors.length === 0; });
+
+      thead.innerHTML = '<tr>' + ['행','브랜드','상품명','관리방식','판매가','옵션','개체수','결과'].map(function(h){ return '<th>'+h+'</th>'; }).join('') + '</tr>';
+      tbody.innerHTML = results.map(function(r) {
+        var cls = r.errors.length === 0 ? 'bulk-row-ok' : 'bulk-row-err';
+        var status = r.errors.length === 0
+          ? '<span style="color:#16a34a;font-weight:600;">정상</span>'
+          : '<span style="color:#dc2626;font-size:11px;">' + r.errors.join('<br>') + '</span>';
+        var priceStr = r.skuPrice != null ? (r.skuPrice.toLocaleString()+'원(SKU)') : (isNaN(r.basePrice) ? r.basePrice : r.basePrice.toLocaleString()+'원');
+        return '<tr class="'+cls+'"><td style="color:var(--gray-400);">'+r.rowNum+'</td>' +
+          '<td><code>'+(r.brandCode||'-')+'</code></td><td>'+(r.productName||'-')+'</td>' +
+          '<td>'+(r.trackingType||'-')+'</td><td style="white-space:nowrap;">'+priceStr+'</td>' +
+          '<td style="font-size:11px;">'+r.optSummary+'</td><td style="text-align:center;">'+(r.unitCount||'-')+'</td>' +
+          '<td>'+status+'</td></tr>';
+      }).join('');
+
+      summaryEl.innerHTML = '시트: <b>' + esc(sheetName) + '</b> &nbsp;|&nbsp; 총 <strong>' + dataRows.length + '행</strong> 검사 완료 &nbsp;|&nbsp; ' +
+        '상품: <strong style="color:#16a34a;">' + productKeys.size + '개</strong> &nbsp; SKU: <strong style="color:#16a34a;">' + okCount + '개</strong> &nbsp;|&nbsp; ' +
+        '오류: <strong style="color:#dc2626;">' + errCount + '개</strong>' +
+        (errCount > 0 ? '<br><span style="font-size:12px;color:var(--gray-500);">오류 행은 업로드에서 제외됩니다.</span>' : '');
+      if (okCount > 0) document.getElementById('btn-do-bulk-product').style.display = '';
+    } catch(e) {
+      summaryEl.innerHTML = '검사 오류: ' + esc(e.message);
     }
   };
 
