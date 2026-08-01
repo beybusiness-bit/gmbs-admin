@@ -959,14 +959,16 @@
   ════════════════════════════════ */
   function renderBarcodePage(container) {
     window._bcSelected = {};
+    window._bcBrandNameMap = null;
     if (!window._labelLines) window._labelLines = [
-      [{ id:'image',   label:'상품 사진',      visible:false }],
-      [{ id:'brand',   label:'브랜드명',      visible:true }],
-      [{ id:'product', label:'상품명',         visible:true }],
-      [{ id:'option',  label:'옵션',           visible:true }],
-      [{ id:'price',   label:'가격',           visible:true }],
-      [{ id:'barcode', label:'바코드 이미지',  visible:true }],
-      [{ id:'code',    label:'바코드 문자',    visible:true }],
+      [{ id:'image',     label:'상품 사진',    visible:false }],
+      [{ id:'brandcode', label:'브랜드코드',   visible:true  }],
+      [{ id:'brand',     label:'브랜드명',     visible:false }],
+      [{ id:'product',   label:'상품명',       visible:true  }],
+      [{ id:'option',    label:'옵션',         visible:true  }],
+      [{ id:'price',     label:'가격',         visible:true  }],
+      [{ id:'barcode',   label:'바코드 이미지',visible:true  }],
+      [{ id:'code',      label:'바코드 문자',  visible:true  }],
     ];
     if (!window._labelSize) window._labelSize = { w:200, h:120 };
     if (!window._bcSortKey) window._bcSortKey = 'created_desc';
@@ -1085,11 +1087,19 @@
         return;
       }
 
+      // 브랜드명 매핑 (브랜드코드→브랜드명)
+      if (!window._bcBrandNameMap) {
+        const bSnap = await getDocs(collection(db, 'brands'));
+        window._bcBrandNameMap = {};
+        bSnap.docs.forEach(d => { window._bcBrandNameMap[d.data().brand_code||''] = d.data().brand_name||''; });
+      }
+
       const productBlocks = await Promise.all(products.map(async p => {
         const skusSnap = await getDocs(collection(db, 'products', p.id, 'skus'));
         const skus = skusSnap.docs.map(d=>({id:d.id,...d.data()}));
         skus.sort((a,b)=>(a.option_sort_order??99)-(b.option_sort_order??99));
-        return { p, skus };
+        const brandName = window._bcBrandNameMap[p.brand_code||''] || '';
+        return { p: {...p, brand_name: brandName}, skus };
       }));
 
       window._bcAllItems = {};
@@ -1101,7 +1111,7 @@
           const optLabel = sku.option_number==='00' ? '옵션 없음'
             : [1,2,3].map(i=>sku['option_'+i+'_name']?sku['option_'+i+'_name']+': '+sku['option_'+i+'_value']:'').filter(Boolean).join(' / ');
           const itemKey = sku.id;
-          window._bcAllItems[itemKey] = { barcodeValue: sku.barcode_value, productName: p.product_name, brandCode: p.brand_code, optLabel, price: sku.price||p.base_price||0, type:'sku', productId:p.id, skuId:sku.id, isIndividual, imageUrl: sku.image_url || p.image_url || '' };
+          window._bcAllItems[itemKey] = { barcodeValue: sku.barcode_value, productName: p.product_name, brandCode: p.brand_code, brandName: p.brand_name||'', optLabel, price: sku.price||p.base_price||0, type:'sku', productId:p.id, skuId:sku.id, isIndividual, imageUrl: sku.image_url || p.image_url || '' };
 
           const chkOnchange = isIndividual
             ? 'toggleBcParentSku(\'' + p.id + '\',\'' + sku.id + '\',this.checked);syncProductChk(\'' + p.id + '\')'
@@ -1170,7 +1180,7 @@
     wrap.dataset.loaded = '1';
     wrap.innerHTML = units.map(u => {
       const key = u.id;
-      window._bcAllItems[key] = { barcodeValue: u.barcode_value, productName: skuItem.productName, brandCode: skuItem.brandCode, optLabel: (skuItem.optLabel||'') + ' #' + u.unit_number, price: skuItem.price||0, type:'unit', productId, skuId, unitId:u.id, imageUrl: u.image_url || skuItem.imageUrl || '' };
+      window._bcAllItems[key] = { barcodeValue: u.barcode_value, productName: skuItem.productName, brandCode: skuItem.brandCode, brandName: skuItem.brandName||'', optLabel: (skuItem.optLabel||'') + ' #' + u.unit_number, price: skuItem.price||0, type:'unit', productId, skuId, unitId:u.id, imageUrl: u.image_url || skuItem.imageUrl || '' };
       const unitImg = u.image_url || skuItem.imageUrl || '';
       const unitThumb = unitImg
         ? '<img src="' + esc(unitImg) + '" style="width:36px;height:36px;object-fit:cover;border-radius:5px;border:1px solid var(--gray-200);flex-shrink:0;" />'
@@ -1328,8 +1338,10 @@
     var st = 'text-align:' + a + ';';
     if (cell.id === 'image' && item.imageUrl)
       return '<div style="text-align:center;margin:2px 0;"><img src="' + esc(item.imageUrl) + '" style="max-width:100%;max-height:40px;object-fit:contain;" /></div>';
-    if (cell.id === 'brand' && item.brandCode)
+    if (cell.id === 'brandcode' && item.brandCode)
       return '<div class="label-brand" style="' + st + '">' + esc(item.brandCode) + '</div>';
+    if (cell.id === 'brand' && item.brandName)
+      return '<div class="label-brand" style="' + st + '">' + esc(item.brandName) + '</div>';
     if (cell.id === 'product' && item.productName)
       return '<div class="label-product" style="' + st + '">' + esc(item.productName) + '</div>';
     if (cell.id === 'option' && item.optLabel && item.optLabel !== '옵션 없음')
@@ -1368,9 +1380,13 @@
     if (!cell.visible) return 0;
     var cx = align === 'left' ? 6 : (align === 'right' ? w - 6 : w / 2);
     ctx.textAlign = align === 'right' ? 'right' : (align === 'left' ? 'left' : 'center');
-    if (cell.id === 'brand' && item.brandCode) {
+    if (cell.id === 'brandcode' && item.brandCode) {
       ctx.font = '9px sans-serif'; ctx.fillStyle = '#888';
       ctx.fillText(String(item.brandCode).slice(0,30), cx, y + 9); return 14;
+    }
+    if (cell.id === 'brand' && item.brandName) {
+      ctx.font = '9px sans-serif'; ctx.fillStyle = '#888';
+      ctx.fillText(String(item.brandName).slice(0,30), cx, y + 9); return 14;
     }
     if (cell.id === 'product' && item.productName) {
       ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#000';
