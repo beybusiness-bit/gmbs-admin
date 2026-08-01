@@ -990,7 +990,11 @@
       '</select>' +
       '<button onclick="openBcDefaultSettings()" style="display:flex;align-items:center;gap:5px;padding:7px 12px;border:1px solid var(--gray-200);border-radius:8px;background:#fff;font-size:12px;font-weight:600;color:var(--gray-600);cursor:pointer;white-space:nowrap;">⚙️ 기본 설정</button>' +
       '</div>' +
-      '<div id="bc-count" style="font-size:13px;color:var(--gray-500);margin-bottom:10px;"></div>' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
+      '<input type="checkbox" id="bc-chk-all" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue);" onchange="toggleBcAll(this.checked)" />' +
+      '<label for="bc-chk-all" style="font-size:13px;color:var(--gray-600);cursor:pointer;user-select:none;">현재 목록 전체 선택</label>' +
+      '<span id="bc-count" style="font-size:13px;color:var(--gray-500);"></span>' +
+      '</div>' +
       '<div id="bc-results"></div>' +
       '<div id="bc-action-bar" class="bc-action-bar" style="display:none;">' +
       '<div id="bc-action-count" style="flex:1;font-size:13px;font-weight:600;color:var(--gray-700);"></div>' +
@@ -1071,7 +1075,9 @@
       const totalCount = products.length;
       const bcPageSize = window._bcPageSize || 20;
       const countEl = document.getElementById('bc-count');
-      if (countEl) countEl.innerHTML = '총 <strong>' + totalCount + '</strong>개 상품' + (totalCount > bcPageSize ? ' · 상위 <strong>' + bcPageSize + '</strong>개 표시 (페이지당 개수 선택으로 조정 가능)' : '');
+      if (countEl) countEl.innerHTML = '총 <strong>' + totalCount + '</strong>개 상품' + (totalCount > bcPageSize ? ' · 상위 <strong>' + bcPageSize + '</strong>개 표시' : '');
+      const allChk = document.getElementById('bc-chk-all');
+      if (allChk) { allChk.checked = false; allChk.indeterminate = false; }
       products = products.slice(0, bcPageSize);
 
       if (products.length === 0) {
@@ -1087,8 +1093,10 @@
       }));
 
       window._bcAllItems = {};
+      window._bcProductSkus = {};
       resultsEl.innerHTML = productBlocks.map(({p, skus}) => {
         const isIndividual = p.tracking_type === 'individual';
+        window._bcProductSkus[p.id] = skus.map(s => s.id);
         const skuRows = skus.map(sku => {
           const optLabel = sku.option_number==='00' ? '옵션 없음'
             : [1,2,3].map(i=>sku['option_'+i+'_name']?sku['option_'+i+'_name']+': '+sku['option_'+i+'_value']:'').filter(Boolean).join(' / ');
@@ -1096,8 +1104,8 @@
           window._bcAllItems[itemKey] = { barcodeValue: sku.barcode_value, productName: p.product_name, brandCode: p.brand_code, optLabel, price: sku.price||p.base_price||0, type:'sku', productId:p.id, skuId:sku.id, isIndividual, imageUrl: sku.image_url || p.image_url || '' };
 
           const chkOnchange = isIndividual
-            ? 'toggleBcParentSku(\'' + p.id + '\',\'' + sku.id + '\',this.checked)'
-            : 'toggleBcItem(\'' + itemKey + '\')';
+            ? 'toggleBcParentSku(\'' + p.id + '\',\'' + sku.id + '\',this.checked);syncProductChk(\'' + p.id + '\')'
+            : 'toggleBcItem(\'' + itemKey + '\');syncProductChk(\'' + p.id + '\')';
 
           const skuImg = sku.image_url || p.image_url || '';
           const skuThumb = skuImg
@@ -1124,6 +1132,7 @@
           : '';
         return '<div style="margin-bottom:20px;">' +
           '<div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:8px;display:flex;align-items:center;gap:10px;">' +
+          '<input type="checkbox" id="bc-chk-product-' + p.id + '" style="width:15px;height:15px;cursor:pointer;accent-color:var(--blue);flex-shrink:0;" onchange="toggleBcProduct(\'' + p.id + '\',this.checked)" />' +
           productThumb +
           '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
           '<code style="font-size:11px;background:var(--blue-light);color:var(--blue);padding:2px 6px;border-radius:4px;">' + esc(p.id) + '</code>' +
@@ -1167,7 +1176,7 @@
         ? '<img src="' + esc(unitImg) + '" style="width:36px;height:36px;object-fit:cover;border-radius:5px;border:1px solid var(--gray-200);flex-shrink:0;" />'
         : '<div style="width:36px;height:36px;border-radius:5px;background:var(--gray-200);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">📦</div>';
       return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;">' +
-        '<input type="checkbox" id="bc-chk-' + key + '" onchange="toggleBcItem(\'' + key + '\');syncParentChk(\'' + skuId + '\')" style="width:14px;height:14px;cursor:pointer;accent-color:var(--blue);" />' +
+        '<input type="checkbox" id="bc-chk-' + key + '" onchange="toggleBcItem(\'' + key + '\');syncParentChk(\'' + skuId + '\');syncProductChk(\'' + productId + '\')" style="width:14px;height:14px;cursor:pointer;accent-color:var(--blue);" />' +
         unitThumb +
         '<code style="font-size:11px;color:var(--blue);">' + esc(u.barcode_value) + '</code>' +
         '<span style="font-size:11px;color:var(--gray-500);">#' + u.unit_number + '</span>' +
@@ -1236,6 +1245,69 @@
     bar.style.display = 'flex';
     const totalLabels = Object.values(window._bcSelected).reduce((s,i)=>s+(i.copies||1),0);
     document.getElementById('bc-action-count').textContent = count + '개 선택 · 총 ' + totalLabels + '장';
+  }
+
+  /* 상품 단위 전체 선택/해제 */
+  window.toggleBcProduct = async function(productId, checked) {
+    var skuIds = (window._bcProductSkus || {})[productId] || [];
+    for (var i = 0; i < skuIds.length; i++) {
+      var skuId = skuIds[i];
+      var item = window._bcAllItems[skuId];
+      if (!item) continue;
+      var chk = document.getElementById('bc-chk-' + skuId);
+      if (item.isIndividual) {
+        if (checked) { await toggleBcParentSku(productId, skuId, true); if (chk) chk.checked = true; }
+        else { await toggleBcParentSku(productId, skuId, false); if (chk) chk.checked = false; }
+      } else {
+        if (chk) chk.checked = checked;
+        if (checked) {
+          var qty = document.getElementById('bc-qty-' + skuId);
+          window._bcSelected[skuId] = { ...item, copies: qty ? parseInt(qty.value)||1 : 1 };
+        } else {
+          delete window._bcSelected[skuId];
+        }
+      }
+    }
+    updateBcActionBar();
+    syncAllChk();
+  };
+
+  /* 현재 목록 전체 선택/해제 */
+  window.toggleBcAll = async function(checked) {
+    var productIds = Object.keys(window._bcProductSkus || {});
+    for (var pi = 0; pi < productIds.length; pi++) {
+      var pid = productIds[pi];
+      var productChk = document.getElementById('bc-chk-product-' + pid);
+      if (productChk) productChk.checked = checked;
+      await toggleBcProduct(pid, checked);
+    }
+  };
+
+  /* SKU 개별 토글 후 상품·전체 체크박스 동기화 */
+  function syncProductChk(productId) {
+    var skuIds = (window._bcProductSkus || {})[productId] || [];
+    var chk = document.getElementById('bc-chk-product-' + productId);
+    if (!chk || skuIds.length === 0) return;
+    var checkedCount = skuIds.filter(function(sid) {
+      var el = document.getElementById('bc-chk-' + sid);
+      return el && el.checked;
+    }).length;
+    chk.checked = checkedCount === skuIds.length;
+    chk.indeterminate = checkedCount > 0 && checkedCount < skuIds.length;
+    syncAllChk();
+  }
+
+  function syncAllChk() {
+    var allChk = document.getElementById('bc-chk-all');
+    if (!allChk) return;
+    var productIds = Object.keys(window._bcProductSkus || {});
+    if (productIds.length === 0) { allChk.checked = false; allChk.indeterminate = false; return; }
+    var checkedProducts = productIds.filter(function(pid) {
+      var el = document.getElementById('bc-chk-product-' + pid);
+      return el && el.checked;
+    }).length;
+    allChk.checked = checkedProducts === productIds.length;
+    allChk.indeterminate = checkedProducts > 0 && checkedProducts < productIds.length;
   }
 
   /* ── 최근 생성 탭 ── */
