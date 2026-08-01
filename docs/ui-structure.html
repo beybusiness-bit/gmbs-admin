@@ -1,0 +1,567 @@
+<title>GMBS Admin — UI 구조 참고 문서</title>
+<style>
+  :root {
+    --accent: #8c52ff;
+    --accent-light: #f0eaff;
+    --accent-2: #9dff20;
+    --bg: #ffffff;
+    --surface: #f8f8fb;
+    --border: #e8e4f0;
+    --text: #1a1625;
+    --text-2: #4b4463;
+    --text-3: #8b80a8;
+    --code-bg: #f0eaff;
+    --code-text: #5b2dbd;
+    --tag-bg: #ede9f8;
+    --tag-text: #6d3fd4;
+    --toc-w: 220px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #13101e; --surface: #1e1a2e; --border: #2e2845;
+      --text: #f0ecff; --text-2: #b8aed8; --text-3: #6b6085;
+      --code-bg: #2a1f4a; --code-text: #c4a6ff;
+      --accent-light: #2a1f4a; --tag-bg: #231a40; --tag-text: #b08fff;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #13101e; --surface: #1e1a2e; --border: #2e2845;
+    --text: #f0ecff; --text-2: #b8aed8; --text-3: #6b6085;
+    --code-bg: #2a1f4a; --code-text: #c4a6ff;
+    --accent-light: #2a1f4a; --tag-bg: #231a40; --tag-text: #b08fff;
+  }
+  :root[data-theme="light"] {
+    --bg: #ffffff; --surface: #f8f8fb; --border: #e8e4f0;
+    --text: #1a1625; --text-2: #4b4463; --text-3: #8b80a8;
+    --code-bg: #f0eaff; --code-text: #5b2dbd;
+    --accent-light: #f0eaff; --tag-bg: #ede9f8; --tag-text: #6d3fd4;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .layout {
+    display: flex;
+    min-height: 100vh;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px;
+    gap: 48px;
+  }
+
+  .toc {
+    width: var(--toc-w);
+    flex-shrink: 0;
+    padding: 48px 0;
+  }
+  .toc-inner { position: sticky; top: 32px; }
+  .toc-title {
+    font-size: 10px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--text-3); margin-bottom: 12px;
+  }
+  .toc a {
+    display: block; font-size: 12.5px; color: var(--text-2);
+    text-decoration: none; padding: 3px 0 3px 10px;
+    border-left: 2px solid var(--border); line-height: 1.4;
+    transition: color .15s, border-color .15s;
+  }
+  .toc a:hover { color: var(--accent); border-color: var(--accent); }
+  .toc a.sub { padding-left: 20px; font-size: 12px; color: var(--text-3); }
+
+  .main { flex: 1; min-width: 0; padding: 48px 0 80px; }
+
+  .doc-header {
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 20px; margin-bottom: 40px;
+  }
+  .doc-badge {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-light);
+    padding: 3px 8px; border-radius: 4px; margin-bottom: 10px;
+  }
+  .doc-header h1 {
+    font-size: 26px; font-weight: 800; color: var(--text);
+    line-height: 1.2; margin-bottom: 8px;
+  }
+  .doc-header p { color: var(--text-2); font-size: 13.5px; }
+
+  .section { margin-bottom: 52px; }
+  .section-title {
+    font-size: 18px; font-weight: 700; color: var(--text);
+    margin-bottom: 6px; display: flex; align-items: center; gap: 10px;
+  }
+  .section-title::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+  .section-lead { font-size: 13.5px; color: var(--text-2); margin-bottom: 20px; }
+  .subsection { margin-bottom: 28px; }
+  .subsection-title {
+    font-size: 13px; font-weight: 700; color: var(--text-2);
+    letter-spacing: .04em; text-transform: uppercase; margin-bottom: 10px;
+  }
+
+  code {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px; background: var(--code-bg); color: var(--code-text);
+    padding: 1px 5px; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px 18px; overflow-x: auto;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px; color: var(--code-text); line-height: 1.6; margin: 12px 0;
+  }
+
+  .callout {
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+    padding: 12px 16px; font-size: 13px; color: var(--text-2); margin: 12px 0;
+  }
+  .callout strong { color: var(--text); }
+
+  .menu-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .menu-table th {
+    text-align: left; font-size: 11px; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--text-3);
+    padding: 6px 12px 8px; border-bottom: 1px solid var(--border);
+  }
+  .menu-table td {
+    padding: 9px 12px; border-bottom: 1px solid var(--border);
+    color: var(--text-2); vertical-align: top;
+  }
+  .menu-table td:first-child { color: var(--text); font-weight: 500; }
+  .menu-table tr:last-child td { border-bottom: none; }
+  .menu-table .group-row td {
+    background: var(--surface); font-size: 10.5px; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--accent);
+    padding: 5px 12px; border-bottom: 1px solid var(--border);
+  }
+  .menu-table .sub td:first-child {
+    padding-left: 24px; font-size: 12.5px; color: var(--text-2); font-weight: 400;
+  }
+
+  .tag {
+    display: inline-block; font-size: 10.5px; font-weight: 600;
+    padding: 1px 7px; border-radius: 20px;
+    background: var(--tag-bg); color: var(--tag-text);
+  }
+  .tag.gray { background: var(--surface); color: var(--text-3); }
+
+  .pattern-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px; margin: 12px 0;
+  }
+  .pattern-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .pattern-card-title {
+    font-size: 12px; font-weight: 700; color: var(--text);
+    margin-bottom: 4px; display: flex; align-items: center; gap: 6px;
+  }
+  .pattern-card p { font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
+
+  .sidebar-mock {
+    background: #1e1b2e; border-radius: 10px; padding: 16px 0;
+    font-size: 12.5px; color: #94a3b8; overflow: hidden; max-width: 200px;
+  }
+  .sidebar-mock .sm-logo {
+    padding: 0 14px 12px; font-weight: 700; font-size: 13px; color: #fff;
+    border-bottom: 1px solid #2e2845; margin-bottom: 8px;
+  }
+  .sidebar-mock .sm-section {
+    font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase;
+    color: #4b4568; padding: 8px 14px 3px; font-weight: 700;
+  }
+  .sidebar-mock .sm-item {
+    padding: 6px 14px; display: flex; align-items: center; gap: 7px;
+  }
+  .sidebar-mock .sm-item.active {
+    background: #8c52ff22; color: #c4a6ff;
+    border-left: 3px solid #8c52ff; padding-left: 11px;
+  }
+  .sidebar-mock .sm-item.sub { padding-left: 28px; font-size: 11.5px; color: #6b6085; }
+  .sidebar-mock .sm-footer {
+    margin-top: 12px; padding: 12px 14px 0;
+    border-top: 1px solid #2e2845; font-size: 11px; color: #6b6085;
+  }
+
+  .flow {
+    display: flex; align-items: center; gap: 0; flex-wrap: wrap; margin: 10px 0;
+  }
+  .flow-step {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 7px; padding: 7px 12px; font-size: 12.5px;
+    color: var(--text-2); white-space: nowrap;
+  }
+  .flow-step.accent {
+    background: var(--accent-light); border-color: var(--accent);
+    color: var(--accent); font-weight: 600;
+  }
+  .flow-arrow { padding: 0 6px; color: var(--text-3); font-size: 14px; }
+
+  p { margin-bottom: 8px; }
+  ul, ol { padding-left: 20px; color: var(--text-2); font-size: 13.5px; }
+  li { margin-bottom: 4px; }
+  li strong { color: var(--text); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
+
+  @media (max-width: 700px) {
+    .layout { flex-direction: column; padding: 0 16px; gap: 0; }
+    .toc { display: none; }
+    .main { padding-top: 32px; }
+  }
+</style>
+
+<div class="layout">
+  <aside class="toc">
+    <div class="toc-inner">
+      <div class="toc-title">목차</div>
+      <a href="#overview">앱 개요</a>
+      <a href="#tech">기술 스택</a>
+      <a href="#auth">구글 로그인 규칙</a>
+      <a href="#sidebar">사이드바 구성</a>
+      <a href="#layout">레이아웃 구조</a>
+      <a href="#pages">메뉴 페이지 패턴</a>
+      <a href="#pages" class="sub">목록 페이지</a>
+      <a href="#modal" class="sub">모달 패턴</a>
+      <a href="#components">UI 컴포넌트</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="doc-header">
+      <div class="doc-badge">UI 구조 참고 문서</div>
+      <h1>GMBS Admin<br>앱 구조 가이드</h1>
+      <p>사이드바 구성, 로그인 규칙, 페이지 패턴 등 UI 구조를 다른 프로젝트에서 참고할 수 있도록 정리한 문서입니다.</p>
+    </div>
+
+    <!-- 개요 -->
+    <section class="section" id="overview">
+      <div class="section-title">앱 개요</div>
+      <p class="section-lead">GMBS 소품샵의 브랜드·상품·바코드·정산을 관리하는 내부 관리자 전용 웹앱.</p>
+      <ul>
+        <li><strong>접속 방법:</strong> Vercel 배포 URL — 특정 Google 계정으로만 로그인 가능</li>
+        <li><strong>사용자:</strong> 허가된 2개 계정만 (동일 권한, 역할 구분 없음)</li>
+        <li><strong>배포:</strong> GitHub main 브랜치 push → Vercel 프로덕션 자동 배포</li>
+        <li><strong>데이터:</strong> Firebase Firestore (프로젝트 ID: <code>beyhome-admin</code>)</li>
+      </ul>
+    </section>
+
+    <!-- 기술 스택 -->
+    <section class="section" id="tech">
+      <div class="section-title">기술 스택</div>
+      <div class="pattern-grid">
+        <div class="pattern-card">
+          <div class="pattern-card-title">📄 단일 HTML 파일</div>
+          <p>프레임워크 없음. <code>index.html</code> 하나에 CSS·JS·HTML 전체 포함. 빌드 과정 불필요.</p>
+        </div>
+        <div class="pattern-card">
+          <div class="pattern-card-title">🔥 Firebase v10 (ESM CDN)</div>
+          <p>Auth / Firestore / Storage / Functions. <code>type="module"</code> script에서 직접 import.</p>
+        </div>
+        <div class="pattern-card">
+          <div class="pattern-card-title">📦 외부 라이브러리 (CDN)</div>
+          <p>JsBarcode (바코드 생성), jsPDF (PDF), JSZip (일괄 다운로드), SheetJS (엑셀 파싱)</p>
+        </div>
+        <div class="pattern-card">
+          <div class="pattern-card-title">📱 PWA</div>
+          <p>Service Worker + manifest.json. 홈 화면 설치 가능. 오프라인 기본 캐싱.</p>
+        </div>
+      </div>
+      <pre>/* Firebase 초기화 패턴 */
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, GoogleAuthProvider, onAuthStateChanged } from '...firebase-auth.js';
+import { getFirestore, collection, getDocs, runTransaction } from '...firebase-firestore.js';
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db   = getFirestore(app);
+window._db = db;  // 전역으로 노출 (onclick 핸들러에서 접근)</pre>
+    </section>
+
+    <!-- 구글 로그인 -->
+    <section class="section" id="auth">
+      <div class="section-title">구글 로그인 규칙</div>
+      <p class="section-lead">Google OAuth + 허용 이메일 목록으로 접근을 제한합니다.</p>
+
+      <div class="subsection">
+        <div class="subsection-title">허용 이메일 상수</div>
+        <pre>const ALLOWED_EMAILS = [
+  'itsbeybusiness@gmail.com',
+  'baekeun0@gmail.com'
+];
+// 이 목록에 없는 계정은 로그인 즉시 강제 로그아웃</pre>
+      </div>
+
+      <div class="subsection">
+        <div class="subsection-title">인증 흐름</div>
+        <div class="flow">
+          <div class="flow-step">앱 로드</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step accent">onAuthStateChanged 감지</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">이메일 허용 여부 확인</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">허용 → 앱 표시</div>
+        </div>
+        <div class="flow" style="margin-top:6px;">
+          <div class="flow-step" style="opacity:0;pointer-events:none;">앱 로드</div>
+          <div class="flow-arrow" style="opacity:0;">→</div>
+          <div class="flow-step" style="opacity:0;pointer-events:none;">onAuthStateChanged 감지</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">미로그인 → 로그인 화면 표시</div>
+        </div>
+        <div class="flow" style="margin-top:6px;">
+          <div class="flow-step" style="opacity:0;pointer-events:none;">앱 로드</div>
+          <div class="flow-arrow" style="opacity:0;">→</div>
+          <div class="flow-step" style="opacity:0;pointer-events:none;">onAuthStateChanged 감지</div>
+          <div class="flow-arrow" style="opacity:0;">→</div>
+          <div class="flow-step" style="opacity:0;pointer-events:none;">이메일 허용</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">불허 이메일 → 즉시 강제 로그아웃</div>
+        </div>
+      </div>
+
+      <div class="subsection">
+        <div class="subsection-title">구현 패턴</div>
+        <pre>onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    showLoginScreen();
+    return;
+  }
+  if (!ALLOWED_EMAILS.includes(user.email)) {
+    await fbSignOut(auth);  // 즉시 로그아웃
+    showToast('접근 권한이 없는 계정입니다.', 'error');
+    return;
+  }
+  window._currentUser = user;
+  showApp();
+});</pre>
+      </div>
+
+      <div class="callout">
+        <strong>Firestore 보안 규칙도 동일하게 이중 차단:</strong><br>
+        <code>request.auth.token.email in ['itsbeybusiness@gmail.com', 'baekeun0@gmail.com']</code><br>
+        클라이언트 우회 시도를 서버 규칙이 최종 차단합니다.
+      </div>
+    </section>
+
+    <!-- 사이드바 -->
+    <section class="section" id="sidebar">
+      <div class="section-title">사이드바 구성</div>
+      <p class="section-lead">고정 사이드바 + 메인 영역 구조. 모바일에서는 햄버거 버튼으로 토글.</p>
+
+      <div style="display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap;margin:16px 0;">
+        <div class="sidebar-mock">
+          <div class="sm-logo">🛍 GMBS 관리</div>
+          <div class="sm-item active">📊 대시보드</div>
+          <div class="sm-section">브랜드 관리</div>
+          <div class="sm-item">🏬 브랜드</div>
+          <div class="sm-item">👤 담당자</div>
+          <div class="sm-item">✅ 승인</div>
+          <div class="sm-item">📝 입점 계약 관리</div>
+          <div class="sm-section">상품·정산</div>
+          <div class="sm-item">📦 상품</div>
+          <div class="sm-item sub">↳ 위탁판매 상품</div>
+          <div class="sm-item sub">↳ PB 상품</div>
+          <div class="sm-item sub">↳ 매입 상품</div>
+          <div class="sm-item">💰 정산</div>
+          <div class="sm-item">🔍 바코드</div>
+          <div class="sm-section">고객 지원</div>
+          <div class="sm-item">🛎️ 고객 CS</div>
+          <div class="sm-item">💬 브랜드 문의</div>
+          <div class="sm-item">📋 안내</div>
+          <div class="sm-item">✉️ 이메일 알림</div>
+          <div class="sm-footer">베이 · itsbeybusiness@…<br>로그아웃 &nbsp;⚙️</div>
+        </div>
+
+        <div style="flex:1;min-width:280px;">
+          <table class="menu-table">
+            <thead><tr><th>페이지 키</th><th>메뉴명</th><th>비고</th></tr></thead>
+            <tbody>
+              <tr><td>dashboard</td><td>📊 대시보드</td><td><span class="tag">단독</span></td></tr>
+              <tr class="group-row"><td colspan="3">브랜드 관리</td></tr>
+              <tr><td>brand-list</td><td>🏬 브랜드</td><td></td></tr>
+              <tr><td>persons-list</td><td>👤 담당자</td><td></td></tr>
+              <tr><td>application-review</td><td>✅ 승인</td><td></td></tr>
+              <tr><td>contract-management</td><td>📝 입점 계약 관리</td><td></td></tr>
+              <tr class="group-row"><td colspan="3">상품·정산</td></tr>
+              <tr><td>product-list</td><td>📦 상품</td><td></td></tr>
+              <tr class="sub"><td>product-consignment</td><td>↳ 위탁판매 상품</td><td><span class="tag gray">하위</span></td></tr>
+              <tr class="sub"><td>product-pb</td><td>↳ PB 상품</td><td><span class="tag gray">하위</span></td></tr>
+              <tr class="sub"><td>product-purchase</td><td>↳ 매입 상품</td><td><span class="tag gray">하위</span></td></tr>
+              <tr><td>settlement-list</td><td>💰 정산</td><td></td></tr>
+              <tr><td>barcode</td><td>🔍 바코드</td><td></td></tr>
+              <tr class="group-row"><td colspan="3">고객 지원</td></tr>
+              <tr><td>customer-cs</td><td>🛎️ 고객 CS</td><td></td></tr>
+              <tr><td>inquiry-list</td><td>💬 브랜드 문의</td><td></td></tr>
+              <tr><td>info-management</td><td>📋 안내</td><td></td></tr>
+              <tr><td>email-settings</td><td>✉️ 이메일 알림</td><td></td></tr>
+              <tr class="group-row"><td colspan="3">하단 (사이드바 푸터)</td></tr>
+              <tr><td>settings</td><td>⚙️ 설정</td><td><span class="tag gray">아이콘 버튼</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="subsection" style="margin-top:20px;">
+        <div class="subsection-title">네비게이션 구현</div>
+        <pre>// 페이지 이동 — SPA 방식 (실제 URL 변경 없음)
+function navigate(pageKey) {
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === pageKey);
+  });
+  document.getElementById('page-header-title').textContent = PAGE_TITLES[pageKey];
+  const container = document.getElementById('page-content');
+  renderFunctions[pageKey](container);
+}
+
+// 각 페이지는 render 함수로 정의
+function renderBrandList(container) {
+  container.innerHTML = '...';   // HTML 직접 주입
+  loadBrands();                  // 데이터 로드
+}</pre>
+      </div>
+    </section>
+
+    <!-- 레이아웃 -->
+    <section class="section" id="layout">
+      <div class="section-title">레이아웃 구조</div>
+      <pre>body
+└── #app-wrapper (display: flex)
+    ├── &lt;nav&gt; .sidebar          ← 고정 사이드바 (width: 220px, dark 배경)
+    │   ├── .sidebar-header     ← 앱 로고 + 햄버거 버튼 (모바일)
+    │   ├── .sidebar-nav        ← 메뉴 항목들
+    │   └── .sidebar-footer     ← 유저 정보 + 로그아웃 + 설정 버튼
+    └── &lt;main&gt; #main            ← 가변 너비 메인 영역
+        ├── .page-header        ← 페이지 제목 + 우측 액션 버튼 영역
+        └── .page-content       ← 각 페이지의 실제 콘텐츠 (render 함수가 여기에 주입)
+
+// 전역 오버레이 요소 (body 직속)
+#toast-container   ← 토스트 알림
+#modal-container   ← 모달 다이얼로그
+#print-area        ← 바코드 인쇄용 숨겨진 영역</pre>
+
+      <div class="callout">
+        <strong>모바일 햄버거:</strong> <code>.sidebar</code>에 <code>.open</code> 클래스를 토글해 슬라이드인/아웃. 사이드바 바깥 영역 클릭 시 자동으로 닫힘.
+      </div>
+    </section>
+
+    <!-- 페이지 패턴 -->
+    <section class="section" id="pages">
+      <div class="section-title">메뉴 페이지 패턴</div>
+
+      <div class="subsection">
+        <div class="subsection-title">목록 페이지 공통 구조</div>
+        <pre>[ 검색창 ] [ 필터 드롭다운 ] [ 버튼들 ]     ← 상단 툴바
+총 N개 결과                                  ← 카운트 텍스트
+┌─────────────────────────────────────────┐
+│ 항목 카드 또는 테이블 행                  │  ← .card 또는 table
+│  · 클릭 → 상세 모달 열기                 │
+│  · 체크박스 → 일괄 작업                  │
+└─────────────────────────────────────────┘
+[ 페이지네이션 ] 또는 더 보기 버튼</pre>
+        <div class="callout">
+          <strong>Firestore 조회 방식:</strong> 대부분 <code>getDocs(collection(db, '컬렉션명'))</code>으로 전체 로드 후 클라이언트에서 필터·정렬. 데이터가 많지 않은 내부 관리 도구에 적합한 단순한 방식.
+        </div>
+      </div>
+
+      <div class="subsection" id="modal">
+        <div class="subsection-title">모달 패턴</div>
+        <pre>// 모달 열기
+showModal(title, bodyHTML, footerHTML, size);
+// size: 'sm' | 'md' | 'lg' | 'xl'
+
+// 모달 닫기
+closeModal();
+
+// 확인 다이얼로그
+showConfirm(title, message, onConfirm);
+
+// 모달 내부에서 다른 모달 열기 (스택)
+// → 현재 구현은 단일 모달. 중첩 필요 시 별도 처리 필요.</pre>
+      </div>
+
+      <div class="subsection">
+        <div class="subsection-title">페이지별 데이터 정리 방법</div>
+        <table class="menu-table">
+          <thead><tr><th>페이지</th><th>목록 구성</th><th>상세 접근</th></tr></thead>
+          <tbody>
+            <tr><td>브랜드</td><td>카드형 그리드 — 브랜드코드 배지 + 상태 배지</td><td>클릭 → 상세 모달 (담당자·계약·이력 탭)</td></tr>
+            <tr><td>담당자</td><td>테이블형 — 브랜드별 그룹</td><td>인라인 수정</td></tr>
+            <tr><td>승인</td><td>탭(브랜드 입점 / 상품 등록) + 상태 필터</td><td>클릭 → 승인/거절 처리 모달</td></tr>
+            <tr><td>상품</td><td>상품 단위 묶음 표시 — 하위 SKU 접기/펼치기</td><td>클릭 → 수정 모달</td></tr>
+            <tr><td>정산</td><td>기간별 테이블 — 지급 상태 배지</td><td>클릭 → 상세 모달</td></tr>
+            <tr><td>바코드</td><td>상품 단위 그룹 + SKU 체크박스 — 선택 후 인쇄/다운로드</td><td>라벨 미리보기 모달</td></tr>
+            <tr><td>문의</td><td>답변 상태 필터 + 브랜드명 표시</td><td>클릭 → 답변 작성 모달</td></tr>
+            <tr><td>안내</td><td>탭(공지사항 / 안내 카드 / FAQ)</td><td>인라인 편집 또는 모달</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- UI 컴포넌트 -->
+    <section class="section" id="components">
+      <div class="section-title">UI 컴포넌트</div>
+      <div class="pattern-grid">
+        <div class="pattern-card">
+          <div class="pattern-card-title">🟣 버튼</div>
+          <p><code>.btn.btn-primary</code> — 보라 (#8c52ff)<br>
+          <code>.btn.btn-secondary</code> — 아웃라인<br>
+          <code>.btn.btn-danger</code> — 빨강 (삭제·경고)</p>
+        </div>
+        <div class="pattern-card">
+          <div class="pattern-card-title">🏷 배지 (Badge)</div>
+          <p><code>.badge-blue</code> 수량관리<br>
+          <code>.badge-yellow</code> 개체관리<br>
+          <code>.badge-green</code> 활성·승인<br>
+          <code>.badge-gray</code> 비활성·종료</p>
+        </div>
+        <div class="pattern-card">
+          <div class="pattern-card-title">🔔 토스트</div>
+          <p><code>showToast(msg, type)</code><br>
+          type: <code>'success'</code> / <code>'error'</code> / <code>'info'</code><br>
+          우측 상단에 3초 후 자동 사라짐</p>
+        </div>
+        <div class="pattern-card">
+          <div class="pattern-card-title">🃏 카드</div>
+          <p><code>.card</code> — 흰 배경, 라운드, 그림자<br>
+          리스트 항목을 카드 안에 담는 방식이 기본</p>
+        </div>
+        <div class="pattern-card">
+          <div class="pattern-card-title">📋 폼 필드</div>
+          <p><code>.form-input</code> — text/select 공통 스타일<br>
+          <code>.form-group</code> — label + input 묶음<br>
+          required 필드는 레이블에 * 표시</p>
+        </div>
+        <div class="pattern-card">
+          <div class="pattern-card-title">🔄 스피너</div>
+          <p><code>&lt;div class="spinner"&gt;&lt;/div&gt;</code><br>
+          <code>.spinner-sm</code> — 인라인 소형<br>
+          로딩 중 콘텐츠 영역에 중앙 배치</p>
+        </div>
+      </div>
+
+      <div class="subsection" style="margin-top:20px;">
+        <div class="subsection-title">키 컬러</div>
+        <pre>/* 앱 전체 키 컬러 */
+--primary:       #8c52ff;   /* 보라 — 버튼·강조·액티브 */
+--primary-light: #f0eaff;   /* 보라 연한 — 배지·하이라이트 배경 */
+--accent-2:      #9dff20;   /* 형광 연두 — 포인트 (sparingly) */
+--blue:          #3b82f6;   /* 링크·바코드 코드 */
+--green:         #16a34a;   /* 성공·판매중 */
+--red:           #dc2626;   /* 경고·삭제·오류 */</pre>
+      </div>
+    </section>
+
+  </main>
+</div>
