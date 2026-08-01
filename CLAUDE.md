@@ -787,23 +787,22 @@ Google Sheets API 대신 Firestore를 쓰므로 서버(Next.js) 없이 **클라�
 - `[계약서 없음]` 태그 표시
 - 계약 상세 모달에서 brandName 빈 문자열 전달 버그
 
-**다음 세션 기획 (승인 대기 중):**
-아래 내용을 사용자가 다음 세션에서 승인 후 구현 시작 예정.
+**🔵 보류 중 (전자계약 기능 전체 나중에 재개 예정):**
 
-단계 A (즉시 수정):
+단계 A (계약 관련 버그 — 보류):
 1. `saveNewContract` → `autoPromoteContractIfReady` 연결
 2. no_contract 레거시 판별: `start_date`있고 `signed_at`·`ucansign_document_id`·`file_url` 모두 없고 `contract_status==='계약완료'`이면 계약서 없이 추가된 것으로 간주
 3. 브랜드 상세에서 계약 상세 열 때 brandName 올바르게 전달
 4. 모달 스택: 계약 상세 닫기 → 브랜드 상세로 복귀
 5. no_contract 계약 아이템에 `[계약서 없음]` 태그 표시
 
-단계 B (핵심 기획):
+단계 B (핵심 기획 — 보류):
 - 유형별 필수 브랜드 정보 설정 (`settings/contract_field_rules` 컬렉션)
 - 입점계약관리 또는 설정 페이지에서 유형별 체크박스로 관리
 - `autoPromoteContractIfReady`가 이 설정 기반으로 동적 검증
 - 필수 항목 후보: 사업자 여부, 사업자등록번호, 주민등록번호, 계좌정보, 사업장 주소 등
 
-단계 C (gmbs-vendor 별도 세션):
+단계 C (gmbs-vendor 별도 세션 — 보류):
 - 벤더 포털 "계약정보입력" 버튼 → 현재 계약 기간 폼(잘못됨) → 누락된 필수 브랜드 정보 폼으로 교체
 
 **DB 스키마 추가:**
