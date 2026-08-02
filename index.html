@@ -6555,9 +6555,6 @@
     if (isConsignment && commissionRate === 0) { showToast('위탁상품은 판매수수료를 입력해주세요.', 'error'); return; }
     if (basePrice <= 0) { showToast('판매가격을 입력해주세요.', 'error'); return; }
 
-    const transactionTypeEl = document.getElementById('p-transaction-type');
-    const transactionType = transactionTypeEl ? transactionTypeEl.value : (brandTypes[0] || '');
-
     const trackingType = (document.querySelector('input[name="tracking"]:checked') || {}).value || 'quantity';
     const stockManaged = trackingType === 'quantity' && !!window._stockManaged;
     const optionMode = (document.querySelector('input[name="opt-mode"]:checked') || {}).value || 'none';
