@@ -239,10 +239,7 @@
     .label-code { font-size:8px; font-family:monospace; color:#555; text-align:center; margin-top:2px; }
     .label-svg { max-width:100%; }
     .bc-action-bar { position:sticky; bottom:16px; background:#fff; border:1px solid var(--gray-200); border-radius:12px; padding:12px 20px; box-shadow:0 4px 20px rgba(0,0,0,0.12); display:flex; align-items:center; gap:10px; margin-top:20px; }
-    .label-preview-grid { display:flex; flex-wrap:wrap; gap:12px; padding:8px; }
-    .label-preview-grid.cols-1 .barcode-label { width:100% !important; }
-    .label-preview-grid.cols-2 .barcode-label { width:calc(50% - 6px) !important; }
-    .label-preview-grid.cols-3 .barcode-label { width:calc(33.333% - 8px) !important; }
+    .label-preview-grid { display:grid; grid-template-columns: repeat(1, auto); gap:12px; padding:8px; justify-content:start; }
     /* ── 인쇄 ── */
     @media print {
       body > *:not(#print-area) { display:none !important; }
@@ -1614,8 +1611,8 @@
     window._labelCols = n;
     const grid = document.getElementById('label-preview-grid');
     if (grid) {
-      grid.classList.remove('cols-1','cols-2','cols-3');
-      grid.classList.add('cols-' + n);
+      const w = parseInt((document.getElementById('lbl-w')||{}).value || (window._labelSize||{}).w || 200, 10);
+      grid.style.gridTemplateColumns = 'repeat(' + n + ', ' + w + 'px)';
     }
     [1,2,3].forEach(function(i) {
       const btn = document.getElementById('lbl-cols-' + i);
@@ -1632,8 +1629,7 @@
     const h = parseInt((document.getElementById('lbl-h')||{}).value || window._labelSize.h, 10);
     window._labelSize = { w, h };
     const cols = window._labelCols || 1;
-    grid.classList.remove('cols-1','cols-2','cols-3');
-    grid.classList.add('cols-' + cols);
+    grid.style.gridTemplateColumns = 'repeat(' + cols + ', ' + w + 'px)';
     const layout = window._labelLines;
 
     const items = Object.values(window._bcSelected);
