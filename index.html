@@ -239,7 +239,7 @@
     .label-code { font-size:8px; font-family:monospace; color:#555; text-align:center; margin-top:2px; }
     .label-svg { max-width:100%; }
     .bc-action-bar { position:sticky; bottom:16px; background:#fff; border:1px solid var(--gray-200); border-radius:12px; padding:12px 20px; box-shadow:0 4px 20px rgba(0,0,0,0.12); display:flex; align-items:center; gap:10px; margin-top:20px; }
-    .label-preview-grid { display:grid; grid-template-columns: repeat(1, auto); gap:12px; padding:8px; justify-content:start; }
+    .label-preview-grid { display:flex; flex-wrap:wrap; gap:12px; padding:8px; }
     /* ── 인쇄 ── */
     @media print {
       body > *:not(#print-area) { display:none !important; }
@@ -1359,11 +1359,17 @@
       if (vis.length === 0) return;
       if (vis.length === 1) {
         html += labelItemHTML(item, vis[0], idPrefix, i, 'center');
-      } else {
-        /* 2개: 왼쪽 좌측정렬, 오른쪽 우측정렬 */
+      } else if (vis.length === 2) {
         html += '<div style="display:flex;width:100%;align-items:baseline;">' +
           '<div style="flex:1;">' + labelItemHTML(item, vis[0], idPrefix, i, 'left') + '</div>' +
           '<div style="flex:1;">' + labelItemHTML(item, vis[1], idPrefix, i, 'right') + '</div>' +
+          '</div>';
+      } else {
+        /* 3개: 좌/중/우 */
+        html += '<div style="display:flex;width:100%;align-items:baseline;">' +
+          '<div style="flex:1;">' + labelItemHTML(item, vis[0], idPrefix, i, 'left') + '</div>' +
+          '<div style="flex:1;">' + labelItemHTML(item, vis[1], idPrefix, i, 'center') + '</div>' +
+          '<div style="flex:1;">' + labelItemHTML(item, vis[2], idPrefix, i, 'right') + '</div>' +
           '</div>';
       }
     });
@@ -1426,11 +1432,15 @@
       var dy = 0;
       if (vis.length === 1) {
         dy = drawCellToCanvas(ctx, item, vis[0], w, y, 'center');
-      } else {
-        /* 2개: 왼쪽 절반 좌측정렬, 오른쪽 절반 우측정렬 */
+      } else if (vis.length === 2) {
         var dy0 = drawCellToCanvas(ctx, item, vis[0], w, y, 'left');
         var dy1 = drawCellToCanvas(ctx, item, vis[1], w, y, 'right');
         dy = Math.max(dy0, dy1);
+      } else {
+        var dy0 = drawCellToCanvas(ctx, item, vis[0], w, y, 'left');
+        var dy1 = drawCellToCanvas(ctx, item, vis[1], w, y, 'center');
+        var dy2 = drawCellToCanvas(ctx, item, vis[2], w, y, 'right');
+        dy = Math.max(dy0, dy1, dy2);
       }
       y += dy;
     });
@@ -1509,13 +1519,18 @@
       }).join('<span style="font-size:11px;color:var(--gray-400);padding:0 4px;">|</span>');
 
       var mergeBtn = '', splitBtn = '';
-      if (line.length === 1) {
-        /* 아래 줄과 합치기 (두 줄 모두 단일 셀일 때만) */
-        if (li < lines.length - 1 && lines[li+1].length === 1) {
+      var cols = window._labelCols || 1;
+      if (cols >= 2) {
+        if (line.length === 1 && li < lines.length - 1 && lines[li+1].length === 1) {
+          // 단일 셀 두 줄 → 2셀로 합치기
+          mergeBtn = '<button onclick="mergeLines(' + li + ')" title="아래 줄과 합치기(→)" style="' + btnSt + '">→</button>';
+        } else if (cols >= 3 && line.length === 2 && li < lines.length - 1 && lines[li+1].length === 1) {
+          // 2셀 줄 + 단일 셀 → 3셀로 합치기 (3열 모드만)
           mergeBtn = '<button onclick="mergeLines(' + li + ')" title="아래 줄과 합치기(→)" style="' + btnSt + '">→</button>';
         }
-      } else {
-        splitBtn = '<button onclick="splitLine(' + li + ')" title="분리(↔)" style="' + btnSt + '">↔</button>';
+        if (line.length >= 2) {
+          splitBtn = '<button onclick="splitLine(' + li + ')" title="분리(↔)" style="' + btnSt + '">↔</button>';
+        }
       }
 
       const upBtn   = li > 0               ? '<button onclick="moveLine(' + li + ',-1)" title="위로" style="' + btnSt + '">↑</button>' : '<span style="width:22px;display:inline-block;"></span>';
@@ -1542,20 +1557,29 @@
     rerenderLabels();
   };
 
-  /* 같은 줄 두 단일 셀을 하나의 2-셀 줄로 합치기 */
+  /* 아래 줄과 합치기: 1셀+1셀→2셀, 2셀+1셀→3셀 */
   window.mergeLines = function(li) {
-    const arr = window._labelLines;
-    if (li >= arr.length - 1 || arr[li].length !== 1 || arr[li+1].length !== 1) return;
-    arr.splice(li, 2, [arr[li][0], arr[li+1][0]]);
+    var arr = window._labelLines;
+    if (li >= arr.length - 1) return;
+    var cur = arr[li], nxt = arr[li+1];
+    if (cur.length === 1 && nxt.length === 1) {
+      arr.splice(li, 2, [cur[0], nxt[0]]);
+    } else if (cur.length === 2 && nxt.length === 1) {
+      arr.splice(li, 2, [cur[0], cur[1], nxt[0]]);
+    } else return;
     renderLayoutEditor();
     rerenderLabels();
   };
 
-  /* 2-셀 줄을 두 줄로 분리 */
+  /* 분리: 3셀→2셀+1셀, 2셀→1셀+1셀 */
   window.splitLine = function(li) {
-    const arr = window._labelLines;
-    if (arr[li].length < 2) return;
-    arr.splice(li, 1, [arr[li][0]], [arr[li][1]]);
+    var arr = window._labelLines;
+    var line = arr[li];
+    if (line.length === 3) {
+      arr.splice(li, 1, [line[0], line[1]], [line[2]]);
+    } else if (line.length === 2) {
+      arr.splice(li, 1, [line[0]], [line[1]]);
+    } else return;
     renderLayoutEditor();
     rerenderLabels();
   };
@@ -1609,17 +1633,22 @@
 
   window.setLabelCols = function(n) {
     window._labelCols = n;
-    const grid = document.getElementById('label-preview-grid');
-    if (grid) {
-      const w = parseInt((document.getElementById('lbl-w')||{}).value || (window._labelSize||{}).w || 200, 10);
-      grid.style.gridTemplateColumns = 'repeat(' + n + ', ' + w + 'px)';
+    // 1열로 전환 시 합쳐진 줄을 모두 분리
+    if (n === 1) {
+      var newLines = [];
+      window._labelLines.forEach(function(line) {
+        line.forEach(function(cell) { newLines.push([cell]); });
+      });
+      window._labelLines = newLines;
     }
     [1,2,3].forEach(function(i) {
-      const btn = document.getElementById('lbl-cols-' + i);
+      var btn = document.getElementById('lbl-cols-' + i);
       if (!btn) return;
       if (i === n) { btn.style.background = 'var(--blue)'; btn.style.color = '#fff'; }
       else { btn.style.background = '#fff'; btn.style.color = 'var(--gray-700)'; }
     });
+    renderLayoutEditor();
+    rerenderLabels();
   };
 
   window.rerenderLabels = function() {
@@ -1628,8 +1657,6 @@
     const w = parseInt((document.getElementById('lbl-w')||{}).value || window._labelSize.w, 10);
     const h = parseInt((document.getElementById('lbl-h')||{}).value || window._labelSize.h, 10);
     window._labelSize = { w, h };
-    const cols = window._labelCols || 1;
-    grid.style.gridTemplateColumns = 'repeat(' + cols + ', ' + w + 'px)';
     const layout = window._labelLines;
 
     const items = Object.values(window._bcSelected);
