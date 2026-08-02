@@ -5461,6 +5461,7 @@
   ════════════════════════════════ */
   async function renderProductListFiltered(container, transactionType) {
     window._currentTransactionTypeFilter = transactionType;
+    window._renderingFiltered = true;
     await renderProductList(container);
   }
 
@@ -5468,6 +5469,10 @@
      상품 목록
   ════════════════════════════════ */
   async function renderProductList(container) {
+    if (window._currentTransactionTypeFilter === undefined) window._currentTransactionTypeFilter = null;
+    // 전체 상품 페이지 진입 시 유형 필터 초기화
+    if (!window._renderingFiltered) window._currentTransactionTypeFilter = null;
+    window._renderingFiltered = false;
     window._productSelected = window._productSelected || new Set();
     window._productPageSize = window._productPageSize || 20;
     window._productPage = 1;
