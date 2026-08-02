@@ -850,7 +850,7 @@
       const approvedBrands  = brands.filter(b => b.onboarding_status === '승인').length;
       const approvedProducts = products.filter(p => p.approval_status === '승인').length;
       const pendingProducts = products.filter(p => p.approval_status === '승인대기').length;
-      const indivProducts  = products.filter(p => p.tracking_type === 'individual').length;
+      const indivProducts  = products.filter(p => p.tracking_type === 'individual' || p.tracking_type === '개체관리').length;
 
       /* SKU 수: 모든 상품의 skus 서브컬렉션을 병렬로 조회 */
       const skuCounts = await Promise.all(
@@ -1105,7 +1105,7 @@
       window._bcAllItems = {};
       window._bcProductSkus = {};
       resultsEl.innerHTML = productBlocks.map(({p, skus}) => {
-        const isIndividual = p.tracking_type === 'individual';
+        const isIndividual = p.tracking_type === 'individual' || p.tracking_type === '개체관리';
         window._bcProductSkus[p.id] = skus.map(s => s.id);
         const skuRows = skus.map(sku => {
           const optLabel = sku.option_number==='00' ? '옵션 없음'
@@ -5581,7 +5581,7 @@
           '<td style="font-size:13px;">' + esc(optLabel) + '</td>' +
           '<td>' + (s.price || p.base_price || 0).toLocaleString() + '원</td>' +
           '<td><span class="badge ' + (s.sku_status === '판매중' ? 'badge-green' : 'badge-gray') + '">' + esc(s.sku_status) + '</span></td>' +
-          (p.tracking_type === 'individual' ? '<td><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;" onclick="openUnitList(\'' + productId + '\',\'' + s.id + '\')">개체 보기</button></td>' : '') +
+          ((p.tracking_type === 'individual' || p.tracking_type === '개체관리') ? '<td><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;" onclick="openUnitList(\'' + productId + '\',\'' + s.id + '\')">개체 보기</button></td>' : '') +
           '</tr>';
       }).join('');
 
@@ -5651,7 +5651,7 @@
         '</div>' +
         '<div class="table-wrap"><table>' +
         '<thead><tr><th style="width:40px;"></th><th>바코드</th><th>옵션</th><th>판매가</th><th>상태</th>' +
-        (p.tracking_type === 'individual' ? '<th></th>' : '') + '</tr></thead>' +
+        ((p.tracking_type === 'individual' || p.tracking_type === '개체관리') ? '<th></th>' : '') + '</tr></thead>' +
         '<tbody>' + skuRows + '</tbody></table></div>' +
         '<input type="file" id="sku-img-input" accept="image/*" style="display:none;" />';
 
@@ -11992,7 +11992,7 @@
       if (headerIdx < 0) { summaryEl.innerHTML = '헤더 행(브랜드코드*)을 찾을 수 없습니다. 이 시트가 맞는지 확인해주세요.'; return; }
 
       var headers = rows[headerIdx].map(function(h){ return String(h).replace('*','').trim(); });
-      var COLS = ['브랜드코드','상품명','관리방식','공급가격','위탁판매수수료','기본판매가','옵션1축이름','옵션1값','옵션2축이름','옵션2값','옵션3축이름','옵션3값','SKU판매가','개체수','메모'];
+      var COLS = ['브랜드코드','상품명','관리방식','공급가격','위탁수수료','기본판매가','옵션1축이름','옵션1값','옵션2축이름','옵션2값','옵션3축이름','옵션3값','SKU판매가','개체수','메모'];
       var colIdx = {};
       COLS.forEach(function(k){ colIdx[k] = headers.findIndex(function(h){ return h.includes(k); }); });
 
@@ -12014,7 +12014,7 @@
         var productName = get('상품명');
         var trackingType = get('관리방식');
         var supplyPriceRaw = get('공급가격');
-        var commissionRaw = get('위탁판매수수료');
+        var commissionRaw = get('위탁수수료');
         var basePriceRaw = get('기본판매가');
         var skuPriceRaw = get('SKU판매가');
         var unitCountRaw = get('개체수');
@@ -12028,7 +12028,7 @@
         var supplyPrice = supplyPriceRaw ? parseInt(supplyPriceRaw, 10) : null;
         if (supplyPriceRaw && (isNaN(supplyPrice) || supplyPrice < 0)) errors.push('공급가격은 0 이상 숫자');
         var commissionRate = commissionRaw ? parseFloat(commissionRaw) : null;
-        if (commissionRaw && (isNaN(commissionRate) || commissionRate < 0 || commissionRate > 100)) errors.push('위탁판매수수료는 0~100 숫자');
+        if (commissionRaw && (isNaN(commissionRate) || commissionRate < 0 || commissionRate > 100)) errors.push('위탁수수료는 0~100 숫자');
         var basePrice = parseInt(basePriceRaw, 10);
         if (!basePriceRaw) errors.push('기본판매가 누락');
         else if (isNaN(basePrice) || basePrice < 0) errors.push('기본판매가는 0 이상 숫자');
@@ -12139,7 +12139,7 @@
         });
 
         var productId = first.brandCode + '-' + newProductNumber;
-        var trackingType = first.trackingType;
+        var trackingType = (first.trackingType === '개체관리') ? 'individual' : 'quantity';
         var productRef = doc(db, 'products', productId);
 
         // 상품 대표 이미지: 첫 번째 SKU 행 번호로 조회
@@ -12198,7 +12198,7 @@
           });
           totalSkus++;
 
-          if (trackingType === '개체관리' && skuItem.unitCount) {
+          if (trackingType === 'individual' && skuItem.unitCount) {
             for (var u = 1; u <= skuItem.unitCount; u++) {
               var unitCode = pad(u, unitDigits);
               await setDoc(doc(db, 'products', productId, 'skus', skuId, 'units', skuId + '-' + unitCode), {
