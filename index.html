@@ -5377,25 +5377,28 @@
   window.bulkChangeProductStatus = function() {
     const ids = [...(window._productSelected || new Set())];
     if (!ids.length) return;
-    const approvalOpts = ['승인대기', '승인', '거절', '판매중지'];
+
+    function row(chkId, label, control) {
+      return '<div class="form-group" style="margin-bottom:14px;padding:12px 14px;border:1px solid var(--gray-200);border-radius:8px;">' +
+        '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px;cursor:pointer;">' +
+        '<input type="checkbox" id="' + chkId + '" style="width:15px;height:15px;accent-color:var(--blue);" onchange="this.closest(\'.form-group\').querySelector(\'.bulk-ctrl\').disabled=!this.checked" />' +
+        label + '</label>' + control + '</div>';
+    }
+
     const formHTML =
-      '<p style="font-size:13px;color:var(--gray-600);margin-bottom:16px;">선택된 <strong>' + ids.length + '</strong>개 상품에 적용할 항목을 선택하세요. 체크한 항목만 변경됩니다.</p>' +
-      '<div class="form-group" style="margin-bottom:16px;">' +
-      '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px;cursor:pointer;">' +
-      '<input type="checkbox" id="bulk-chk-approval" style="width:15px;height:15px;accent-color:var(--blue);" onchange="document.getElementById(\'bulk-approval-select\').disabled=!this.checked" />' +
-      '승인상태 변경' +
-      '</label>' +
-      '<select class="form-input" id="bulk-approval-select" disabled>' +
-      approvalOpts.map(o => '<option value="' + o + '">' + o + '</option>').join('') +
-      '</select>' +
-      '</div>' +
-      '<div class="form-group">' +
-      '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px;cursor:pointer;">' +
-      '<input type="checkbox" id="bulk-chk-rejection" style="width:15px;height:15px;accent-color:var(--blue);" onchange="document.getElementById(\'bulk-rejection-reason\').disabled=!this.checked" />' +
-      '거절 사유 입력/수정' +
-      '</label>' +
-      '<input class="form-input" id="bulk-rejection-reason" placeholder="거절 사유" disabled />' +
-      '</div>';
+      '<p style="font-size:13px;color:var(--gray-600);margin-bottom:14px;">선택된 <strong>' + ids.length + '</strong>개 상품에 적용할 항목을 체크하세요.</p>' +
+      row('bulk-chk-status', '판매 상태 변경',
+        '<select class="form-input bulk-ctrl" id="bulk-p-status" disabled>' +
+        ['판매중', '판매중지'].map(o => '<option>' + o + '</option>').join('') + '</select>') +
+      row('bulk-chk-txtype', '거래 유형 변경',
+        '<select class="form-input bulk-ctrl" id="bulk-p-txtype" disabled>' +
+        ['위탁', 'PB', '매입'].map(o => '<option>' + o + '</option>').join('') + '</select>') +
+      row('bulk-chk-tracking', '관리 방식 변경 <span style="font-size:11px;font-weight:400;color:var(--orange);">※ 바코드 구조가 달라질 수 있음</span>',
+        '<select class="form-input bulk-ctrl" id="bulk-p-tracking" disabled>' +
+        [['quantity','수량 관리'],['individual','개체 관리']].map(([v,l]) => '<option value="' + v + '">' + l + '</option>').join('') + '</select>') +
+      row('bulk-chk-memo', '메모 일괄 입력',
+        '<input class="form-input bulk-ctrl" id="bulk-p-memo" placeholder="내부 메모 (기존 값 덮어씀)" disabled />');
+
     const footerHTML =
       '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
       '<button class="btn btn-primary" onclick="applyBulkProductStatus()">변경 적용</button>';
@@ -5404,22 +5407,24 @@
 
   window.applyBulkProductStatus = async function() {
     const ids = [...(window._productSelected || new Set())];
-    const chkApproval = document.getElementById('bulk-chk-approval');
-    const chkRejection = document.getElementById('bulk-chk-rejection');
     const updateData = { updated_at: today() };
-    if (chkApproval && chkApproval.checked) {
-      updateData.approval_status = document.getElementById('bulk-approval-select').value;
-    }
-    if (chkRejection && chkRejection.checked) {
-      updateData.rejection_reason = (document.getElementById('bulk-rejection-reason').value || '').trim();
-    }
+
+    if ((document.getElementById('bulk-chk-status') || {}).checked)
+      updateData.status = document.getElementById('bulk-p-status').value;
+    if ((document.getElementById('bulk-chk-txtype') || {}).checked)
+      updateData.transaction_type = document.getElementById('bulk-p-txtype').value;
+    if ((document.getElementById('bulk-chk-tracking') || {}).checked)
+      updateData.tracking_type = document.getElementById('bulk-p-tracking').value;
+    if ((document.getElementById('bulk-chk-memo') || {}).checked)
+      updateData.memo = (document.getElementById('bulk-p-memo').value || '').trim();
+
     if (Object.keys(updateData).length <= 1) { showToast('변경할 항목을 하나 이상 선택하세요.', 'error'); return; }
     try {
       await Promise.all(ids.map(id => updateDoc(doc(db, 'products', id), updateData)));
       showToast(ids.length + '개 상품 일괄 변경 완료.');
       window._productSelected = new Set();
       closeModal();
-      navigate('product-list');
+      await renderProductList(document.getElementById('page-content'));
     } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
   };
 
