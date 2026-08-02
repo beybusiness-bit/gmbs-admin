@@ -1176,7 +1176,8 @@
     wrap.dataset.loaded = '1';
     wrap.innerHTML = units.map(u => {
       const key = u.id;
-      window._bcAllItems[key] = { barcodeValue: u.barcode_value, productName: skuItem.productName, brandCode: skuItem.brandCode, brandName: skuItem.brandName||'', optLabel: (skuItem.optLabel||'') + ' #' + u.unit_number, price: skuItem.price||0, type:'unit', productId, skuId, unitId:u.id, imageUrl: u.image_url || skuItem.imageUrl || '' };
+      const baseOpt = (skuItem.optLabel||'') === '옵션 없음' ? '' : (skuItem.optLabel||'');
+      window._bcAllItems[key] = { barcodeValue: u.barcode_value, productName: skuItem.productName, brandCode: skuItem.brandCode, brandName: skuItem.brandName||'', optLabel: (baseOpt ? baseOpt + ' ' : '') + '#' + u.unit_number, price: skuItem.price||0, type:'unit', productId, skuId, unitId:u.id, imageUrl: u.image_url || skuItem.imageUrl || '' };
       const unitImg = u.image_url || skuItem.imageUrl || '';
       const unitThumb = unitImg
         ? '<img src="' + esc(unitImg) + '" style="width:36px;height:36px;object-fit:cover;border-radius:5px;border:1px solid var(--gray-200);flex-shrink:0;" />'
@@ -1340,7 +1341,7 @@
       return '<div class="label-brand" style="' + st + '">' + esc(item.brandName) + '</div>';
     if (cell.id === 'product' && item.productName)
       return '<div class="label-product" style="' + st + '">' + esc(item.productName) + '</div>';
-    if (cell.id === 'option' && item.optLabel && item.optLabel !== '옵션 없음')
+    if (cell.id === 'option' && item.optLabel && item.optLabel !== '옵션 없음' && !item.optLabel.startsWith('옵션 없음'))
       return '<div class="label-brand" style="' + st + '">' + esc(item.optLabel) + '</div>';
     if (cell.id === 'price' && item.price)
       return '<div class="label-price" style="' + st + '">' + item.price.toLocaleString() + '원</div>';
@@ -1394,7 +1395,7 @@
       ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#000';
       ctx.fillText(String(item.productName).slice(0,30), cx, y + 12); return 17;
     }
-    if (cell.id === 'option' && item.optLabel && item.optLabel !== '옵션 없음') {
+    if (cell.id === 'option' && item.optLabel && item.optLabel !== '옵션 없음' && !item.optLabel.startsWith('옵션 없음')) {
       ctx.font = '9px sans-serif'; ctx.fillStyle = '#555';
       ctx.fillText(String(item.optLabel).slice(0,30), cx, y + 9); return 13;
     }
