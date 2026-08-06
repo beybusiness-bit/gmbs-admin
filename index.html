@@ -927,7 +927,7 @@
             '<tr style="cursor:pointer;" onclick="navigate(\'product-list\');setTimeout(()=>openProductDetail(\'' + p.id + '\'),400)">' +
             '<td class="td-code">' + esc(p.id) + '</td>' +
             '<td style="font-weight:600;">' + esc(p.product_name) + '</td>' +
-            '<td>' + esc(p.brand_code) + '</td>' +
+            '<td>' + esc(p.brand_name || p.brand_code) + '</td>' +
             '<td>' + (p.base_price || 0).toLocaleString() + '원</td>' +
             '<td style="color:var(--gray-400);font-size:12px;">' + (p.created_at ? p.created_at.slice(0,10) : '-') + '</td>' +
             '</tr>'
@@ -5615,7 +5615,7 @@
         '<td style="padding:8px;">' + thumb + '</td>' +
         '<td class="td-code">' + esc(p.id) + '</td>' +
         '<td style="font-weight:600;">' + esc(p.product_name) + '</td>' +
-        '<td>' + esc(p.brand_code) + '</td>' +
+        '<td>' + esc(p.brand_name || p.brand_code) + '</td>' +
         '<td>' + (trackingLabel[p.tracking_type] || p.tracking_type) + '</td>' +
         '<td>' + (p.base_price || 0).toLocaleString() + '원</td>' +
         '<td>' + (approvalLabel[p.approval_status] || '<span class="badge badge-gray">미설정</span>') + '</td>' +
