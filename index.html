@@ -5771,8 +5771,13 @@
             const path = 'products/' + pid + '/skus/' + sid + '/img_' + Date.now();
             const snap = await uploadBytes(ref(storage, path), file);
             const url = await getDownloadURL(snap.ref);
-            await updateDoc(doc(db, 'products', pid, 'skus', sid), { image_url: url, updated_at: new Date().toISOString() });
-            showToast('사진이 저장됐습니다.', 'success');
+            const now = new Date().toISOString();
+            await updateDoc(doc(db, 'products', pid, 'skus', sid), { image_url: url, updated_at: now });
+            /* SKU가 1개(옵션 없음)이면 상품 대표 사진도 동일하게 갱신 */
+            if (skus.length === 1) {
+              await updateDoc(doc(db, 'products', pid), { image_url: url, updated_at: now });
+            }
+            showToast('사진이 저장됐습니다.' + (skus.length === 1 ? ' (상품 대표 사진도 함께 갱신)' : ''), 'success');
             await openProductDetail(pid);
           } catch(e) { showToast('사진 업로드 실패: ' + e.message, 'error'); }
         };
@@ -6033,12 +6038,17 @@
       await updateDoc(doc(db, 'products', productId), updates);
 
       /* SKU 가격 + 순서 일괄 업데이트 */
-      await Promise.all(window._editSkus.map(async (s, i) => {
+      const editSkus = window._editSkus || [];
+      await Promise.all(editSkus.map(async (s, i) => {
         const skuUpdates = {
           price: window._editSkuPrices[s.id] || basePrice,
           option_sort_order: window._editSkuOrder.indexOf(s.id),
           updated_at: now
         };
+        /* SKU 1개(옵션 없음)이고 상품 대표 사진을 변경했으면 SKU 사진도 동기화 */
+        if (editSkus.length === 1 && updates.image_url) {
+          skuUpdates.image_url = updates.image_url;
+        }
         await updateDoc(doc(db, 'products', productId, 'skus', s.id), skuUpdates);
       }));
 
