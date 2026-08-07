@@ -1949,7 +1949,14 @@
     const allChk = document.getElementById('bl-chk-all');
     if (allChk) allChk.checked = pageItems.length > 0 && pageItems.every(b => (window._brandSelected||new Set()).has(b.id));
 
-    if (countEl) countEl.innerHTML = '총 <strong>' + (window._allBrands || []).length + '</strong>개 중 <strong>' + total + '</strong>개 · 선택 <strong>' + (window._brandSelected||new Set()).size + '</strong>개';
+    (function(){
+      const allLen = (window._allBrands || []).length;
+      const startN = total === 0 ? 0 : (pg - 1) * ps + 1;
+      const endN = Math.min(pg * ps, total);
+      const filterInfo = allLen !== total ? '중 <strong>' + total + '</strong>개 검색결과 · ' : '';
+      const rangeInfo = total > ps ? startN + '–' + endN + '번째 표시 · ' : '';
+      if (countEl) countEl.innerHTML = '총 <strong>' + allLen + '</strong>개 ' + filterInfo + rangeInfo + '선택 <strong>' + (window._brandSelected||new Set()).size + '</strong>개';
+    })();
 
     if (paginEl) {
       if (totalPages <= 1) { paginEl.innerHTML = ''; }
@@ -2757,7 +2764,14 @@
     const allChk = document.getElementById('pers-chk-all');
     if (allChk) allChk.checked = pageItems.length > 0 && pageItems.every(p => (window._personSelected||new Set()).has(p.id));
 
-    if (countEl) countEl.innerHTML = '총 <strong>' + (window._allPersonsData || []).length + '</strong>개 중 <strong>' + total + '</strong>개 · 선택 <strong>' + (window._personSelected||new Set()).size + '</strong>개';
+    (function(){
+      const allLen = (window._allPersonsData || []).length;
+      const startN = total === 0 ? 0 : (pg - 1) * ps + 1;
+      const endN = Math.min(pg * ps, total);
+      const filterInfo = allLen !== total ? '중 <strong>' + total + '</strong>개 검색결과 · ' : '';
+      const rangeInfo = total > ps ? startN + '–' + endN + '번째 표시 · ' : '';
+      if (countEl) countEl.innerHTML = '총 <strong>' + allLen + '</strong>개 ' + filterInfo + rangeInfo + '선택 <strong>' + (window._personSelected||new Set()).size + '</strong>개';
+    })();
 
     if (paginEl) {
       if (totalPages <= 1) { paginEl.innerHTML = ''; }
@@ -5546,7 +5560,7 @@
         '<div class="card"><div class="table-wrap"><table id="pl-table">' +
         '<thead><tr>' +
         '<th style="width:36px;padding-left:16px;"><input type="checkbox" id="pl-chk-all" onchange="toggleAllProducts(this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></th>' +
-        '<th style="width:80px;"></th><th>상품 ID</th><th>상품명</th><th>브랜드</th><th>관리방식</th><th>판매가</th><th>승인상태</th><th>등록일</th>' +
+        '<th style="width:80px;"></th><th>상품 ID</th><th>브랜드</th><th>상품명</th><th>관리방식</th><th>판매가</th><th>승인상태</th><th>등록일</th>' +
         '</tr></thead>' +
         '<tbody id="pl-tbody"></tbody></table></div></div>';
 
@@ -5644,8 +5658,8 @@
         '<td style="padding-left:16px;" onclick="event.stopPropagation()"><input type="checkbox" id="pl-chk-' + p.id + '"' + checked + ' onchange="toggleProductSelect(\'' + p.id + '\',this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></td>' +
         '<td style="padding:8px;">' + thumb + '</td>' +
         '<td class="td-code">' + esc(p.id) + '</td>' +
-        '<td style="font-weight:600;">' + esc(p.product_name) + '</td>' +
         '<td>' + esc(p.brand_name || p.brand_code) + '</td>' +
+        '<td style="font-weight:600;">' + esc(p.product_name) + '</td>' +
         '<td>' + (trackingLabel[p.tracking_type] || p.tracking_type) + '</td>' +
         '<td>' + (p.base_price || 0).toLocaleString() + '원</td>' +
         '<td>' + (approvalLabel[p.approval_status] || '<span class="badge badge-gray">미설정</span>') + '</td>' +
@@ -5657,7 +5671,14 @@
     const allChk = document.getElementById('pl-chk-all');
     if (allChk) allChk.checked = pageItems.length > 0 && pageItems.every(p => (window._productSelected||new Set()).has(p.id));
 
-    if (countEl) countEl.innerHTML = '총 <strong>' + (window._allProducts || []).length + '</strong>개 중 <strong>' + total + '</strong>개 · 선택 <strong>' + (window._productSelected||new Set()).size + '</strong>개';
+    (function(){
+      const allLen = (window._allProducts || []).length;
+      const startN = total === 0 ? 0 : (pg - 1) * ps + 1;
+      const endN = Math.min(pg * ps, total);
+      const filterInfo = allLen !== total ? '중 <strong>' + total + '</strong>개 검색결과 · ' : '';
+      const rangeInfo = total > ps ? startN + '–' + endN + '번째 표시 · ' : '';
+      if (countEl) countEl.innerHTML = '총 <strong>' + allLen + '</strong>개 ' + filterInfo + rangeInfo + '선택 <strong>' + (window._productSelected||new Set()).size + '</strong>개';
+    })();
 
     if (paginEl) {
       if (totalPages <= 1) { paginEl.innerHTML = ''; }
@@ -5877,14 +5898,21 @@
           : qty + '개';
         const reasonLabel = (LOSS_REASONS.find(r => r.value === t.reason) || {}).label || t.reason || '-';
         const date = (t.created_at || '').slice(0, 10);
-        return '<div style="display:grid;grid-template-columns:90px 1fr 1fr 1fr;gap:4px 12px;font-size:12px;padding:7px 0;border-bottom:1px solid var(--gray-100);align-items:center;">' +
+        const photos = t.photo_urls && t.photo_urls.length
+          ? '<div style="display:flex;gap:4px;margin-top:4px;">' +
+            t.photo_urls.map(u => '<a href="' + esc(u) + '" target="_blank" rel="noopener"><img src="' + esc(u) + '" style="width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid var(--gray-200);" /></a>').join('') +
+            '</div>' : '';
+        return '<div style="padding:7px 0;border-bottom:1px solid var(--gray-100);">' +
+          '<div style="display:grid;grid-template-columns:90px 1fr 1fr 1fr;gap:4px 12px;font-size:12px;align-items:start;">' +
           '<span style="color:var(--gray-400);">' + esc(date) + '</span>' +
           '<span style="font-family:monospace;color:var(--blue);font-size:11px;">' + esc(t.sku_id || '') + '</span>' +
           '<span><span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-size:11px;">' + esc(reasonLabel) + '</span>' +
           ' <span style="color:var(--gray-600);">' + esc(unitsLabel) + '</span>' +
           (t.memo ? ' <span style="color:var(--gray-400);">— ' + esc(t.memo) + '</span>' : '') +
+          photos +
           '</span>' +
           '<span style="color:var(--gray-400);font-size:11px;">' + esc(t.processed_by || '') + '</span>' +
+          '</div>' +
           '</div>';
       }).join('');
       sec.innerHTML = '<div style="display:grid;grid-template-columns:90px 1fr 1fr 1fr;gap:0 12px;font-size:11px;color:var(--gray-400);padding-bottom:4px;border-bottom:1px solid var(--gray-200);margin-bottom:2px;">' +
@@ -5929,15 +5957,22 @@
         '<option value="">— 선택 —</option>' + reasonOptions +
         '</select>' +
       '</div>' +
-      '<div class="form-group" style="margin-bottom:4px;">' +
+      '<div class="form-group" style="margin-bottom:14px;">' +
         '<label class="form-label" id="loss-memo-label">메모 <span style="color:var(--gray-400);font-weight:400;">(선택)</span></label>' +
         '<textarea class="form-input" id="loss-memo" rows="2" placeholder="추가 설명 (선택)" style="resize:vertical;"></textarea>' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom:4px;">' +
+        '<label class="form-label">사진 첨부 <span style="color:var(--gray-400);font-weight:400;">(선택 · 최대 3장)</span></label>' +
+        '<div id="loss-photo-preview" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;"></div>' +
+        '<button type="button" class="btn btn-secondary" style="font-size:12px;padding:5px 12px;" onclick="addLossPhoto()">📷 사진 추가</button>' +
+        '<input type="file" id="loss-photo-input" accept="image/*" style="display:none;" />' +
       '</div>';
 
     const footer =
       '<button class="btn btn-secondary" onclick="openProductDetail(\'' + productId + '\')">← 취소</button>' +
       '<button class="btn btn-danger" onclick="saveLossRecord(\'' + productId + '\')">⚠️ 불용 처리 완료</button>';
 
+    window._lossPendingFiles = [];
     showModal('불용 처리 — ' + esc(productName), body, footer, 'md');
   };
 
@@ -5994,6 +6029,48 @@
     document.querySelectorAll('.loss-unit-chk').forEach(chk => { chk.checked = checked; });
   };
 
+  // 사진 첨부 관리
+  window._lossPendingFiles = [];
+
+  window.addLossPhoto = function() {
+    if (window._lossPendingFiles.length >= 3) { showToast('사진은 최대 3장까지 첨부 가능합니다.', 'error'); return; }
+    const input = document.getElementById('loss-photo-input');
+    if (!input) return;
+    input.onchange = function() {
+      const file = this.files[0];
+      if (!file) return;
+      if (window._lossPendingFiles.length >= 3) { showToast('사진은 최대 3장까지입니다.', 'error'); return; }
+      const idx = window._lossPendingFiles.length;
+      window._lossPendingFiles.push(file);
+      const preview = document.getElementById('loss-photo-preview');
+      if (preview) {
+        const url = URL.createObjectURL(file);
+        preview.insertAdjacentHTML('beforeend',
+          '<div style="position:relative;width:72px;height:72px;" id="loss-photo-thumb-' + idx + '">' +
+          '<img src="' + url + '" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200);" />' +
+          '<button onclick="removeLossPhoto(' + idx + ')" style="position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:11px;cursor:pointer;line-height:1;">✕</button>' +
+          '</div>');
+      }
+      input.value = '';
+    };
+    input.click();
+  };
+
+  window.removeLossPhoto = function(idx) {
+    window._lossPendingFiles.splice(idx, 1);
+    const thumb = document.getElementById('loss-photo-thumb-' + idx);
+    if (thumb) thumb.remove();
+    // 나머지 썸네일 ID 재정렬
+    const preview = document.getElementById('loss-photo-preview');
+    if (preview) {
+      preview.querySelectorAll('[id^="loss-photo-thumb-"]').forEach((el, i) => {
+        el.id = 'loss-photo-thumb-' + i;
+        const btn = el.querySelector('button');
+        if (btn) btn.setAttribute('onclick', 'removeLossPhoto(' + i + ')');
+      });
+    }
+  };
+
   // 불용 처리 저장
   window.saveLossRecord = async function(productId) {
     const isIndividual = (window._lossTrackingType === 'individual' || window._lossTrackingType === '개체관리');
@@ -6037,6 +6114,16 @@
       const now = new Date().toISOString();
       const actorEmail = (window._currentUser && window._currentUser.email) || 'admin';
 
+      // 첨부 사진 Storage 업로드
+      const photoFiles = window._lossPendingFiles || [];
+      const photoUrls = [];
+      for (let i = 0; i < photoFiles.length; i++) {
+        const path = 'inventory_loss/' + productId + '/' + skuId + '/' + Date.now() + '_' + i;
+        const snap = await uploadBytes(ref(storage, path), photoFiles[i]);
+        const url = await getDownloadURL(snap.ref);
+        photoUrls.push(url);
+      }
+
       // inventory_transactions 기록
       await addDoc(collection(db, 'inventory_transactions'), {
         product_id: productId,
@@ -6047,6 +6134,7 @@
         memo: memo || '',
         unit_ids: isIndividual ? unitIds : null,
         unit_numbers: isIndividual ? unitNumbers : null,
+        photo_urls: photoUrls.length > 0 ? photoUrls : null,
         processed_by: actorEmail,
         created_at: now,
       });
