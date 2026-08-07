@@ -7063,15 +7063,10 @@
       '</label>',
       '</div>',
       '</div>',
-      '<div id="stock-toggle-wrap" style="display:none;">',
-      '<div class="form-group">',
-      '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;">',
-      '<input type="checkbox" id="p-stock-managed" style="width:16px;height:16px;accent-color:var(--blue);" onchange="window._stockManaged=this.checked;if(window._combos&&window._combos.length)renderComboTable(document.getElementById(\'combo-table-wrap\'));" />',
-      '<div>',
-      '<div style="font-weight:600;font-size:13px;">재고 수량 관리</div>',
-      '<div style="font-size:11px;color:var(--gray-400);">체크하면 옵션 조합별 초기 재고 수량을 입력할 수 있습니다</div>',
-      '</div>',
-      '</label>',
+      '<div id="stock-toggle-wrap" style="">',
+      '<div class="form-group" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;">',
+      '<div style="font-weight:600;font-size:13px;color:#15803d;margin-bottom:4px;">📦 초기 재고</div>',
+      '<div style="font-size:11px;color:var(--gray-500);">아래 옵션 조합 확인 단계에서 SKU별 초기 재고 수량을 입력할 수 있습니다.</div>',
       '</div>',
       '</div>',
       '<div class="form-group">',
@@ -7233,7 +7228,7 @@
     window._pBrands = brands;
     window._optTags = { 1: [], 2: [], 3: [] };
     window._activeAxes = 1;
-    window._stockManaged = false;
+    window._stockManaged = true; // 수량관리는 항상 재고 입력
 
     /* 가격 섹션 기본값 초기화 */
     window._pricingMode = 'supply';
@@ -7259,7 +7254,8 @@
         document.getElementById('lbl-ind').style.borderColor = isQty ? 'var(--gray-300)' : 'var(--blue)';
         const stWrap = document.getElementById('stock-toggle-wrap');
         if (stWrap) { stWrap.style.display = isQty ? '' : 'none'; }
-        if (!isQty) { window._stockManaged = false; const cb = document.getElementById('p-stock-managed'); if (cb) cb.checked = false; if (window._combos && window._combos.length) renderComboTable(document.getElementById('combo-table-wrap')); }
+        window._stockManaged = isQty;
+        if (window._combos && window._combos.length) renderComboTable(document.getElementById('combo-table-wrap'));
       });
     });
 
@@ -13125,7 +13121,7 @@
       if (headerIdx < 0) { summaryEl.innerHTML = '헤더 행(브랜드코드*)을 찾을 수 없습니다.'; return; }
 
       var headers = rows[headerIdx].map(function(h){ return String(h).replace('*','').trim(); });
-      var COLS = ['브랜드코드','상품명','관리방식','기본판매가','옵션1축이름','옵션1값','옵션2축이름','옵션2값','옵션3축이름','옵션3값','SKU판매가','개체수','메모'];
+      var COLS = ['브랜드코드','상품명','관리방식','기본판매가','초기재고','옵션1축이름','옵션1값','옵션2축이름','옵션2값','옵션3축이름','옵션3값','SKU판매가','개체수','메모'];
       var colIdx = {};
       COLS.forEach(function(k){ colIdx[k] = headers.findIndex(function(h){ return h.includes(k); }); });
 
@@ -13147,6 +13143,7 @@
         var productName = get('상품명');
         var trackingType = get('관리방식');
         var basePriceRaw = get('기본판매가');
+        var initialStockRaw = get('초기재고');
         var skuPriceRaw = get('SKU판매가');
         var unitCountRaw = get('개체수');
         var errors = [];
@@ -13163,6 +13160,9 @@
         var skuPrice = skuPriceRaw ? parseInt(skuPriceRaw, 10) : null;
         if (skuPriceRaw && (isNaN(skuPrice) || skuPrice < 0)) errors.push('SKU판매가 형식 오류');
 
+        var initialStock = initialStockRaw ? parseInt(initialStockRaw, 10) : 0;
+        if (initialStockRaw && (isNaN(initialStock) || initialStock < 0)) errors.push('초기재고는 0 이상 정수');
+        if (initialStockRaw && trackingType === '개체관리') errors.push('개체관리 상품에 초기재고 불필요 (개체수 열 사용)');
         var unitCount = unitCountRaw ? parseInt(unitCountRaw, 10) : null;
         if (unitCountRaw) {
           if (isNaN(unitCount) || unitCount < 1) errors.push('개체수는 1 이상 정수');
@@ -13184,6 +13184,7 @@
 
         results.push({ rowNum: excelRowNum, excelRowNum, brandCode, productName, trackingType,
           basePrice: isNaN(basePrice) ? basePriceRaw : basePrice,
+          initialStock: isNaN(initialStock) ? 0 : initialStock,
           skuPrice, unitCount, optSummary, memo: get('메모'),
           o1name, o1val, o2name, o2val, o3name, o3val, errors });
       });
@@ -13259,7 +13260,7 @@
       if (headerIdx < 0) { summaryEl.innerHTML = '헤더 행(브랜드코드*)을 찾을 수 없습니다. 이 시트가 맞는지 확인해주세요.'; return; }
 
       var headers = rows[headerIdx].map(function(h){ return String(h).replace('*','').trim(); });
-      var COLS = ['브랜드코드','상품명','거래유형','관리방식','공급가격','위탁수수료','기본판매가','옵션1축이름','옵션1값','옵션2축이름','옵션2값','옵션3축이름','옵션3값','SKU판매가','개체수','메모'];
+      var COLS = ['브랜드코드','상품명','거래유형','관리방식','공급가격','위탁수수료','기본판매가','초기재고','옵션1축이름','옵션1값','옵션2축이름','옵션2값','옵션3축이름','옵션3값','SKU판매가','개체수','메모'];
       var colIdx = {};
       COLS.forEach(function(k){ colIdx[k] = headers.findIndex(function(h){ return h.includes(k); }); });
 
@@ -13284,6 +13285,7 @@
         var supplyPriceRaw = get('공급가격');
         var commissionRaw = get('위탁수수료');
         var basePriceRaw = get('기본판매가');
+        var initialStockRaw = get('초기재고');
         var skuPriceRaw = get('SKU판매가');
         var unitCountRaw = get('개체수');
         var errors = [];
@@ -13305,6 +13307,9 @@
         var basePrice = parseInt(basePriceRaw, 10);
         if (!basePriceRaw) errors.push('기본판매가 누락');
         else if (isNaN(basePrice) || basePrice < 0) errors.push('기본판매가는 0 이상 숫자');
+        var initialStock = initialStockRaw ? parseInt(initialStockRaw, 10) : 0;
+        if (initialStockRaw && (isNaN(initialStock) || initialStock < 0)) errors.push('초기재고는 0 이상 정수');
+        if (initialStockRaw && trackingType === '개체관리') errors.push('개체관리 상품에 초기재고 불필요 (개체수 열 사용)');
         var skuPrice = skuPriceRaw ? parseInt(skuPriceRaw, 10) : null;
         if (skuPriceRaw && (isNaN(skuPrice) || skuPrice < 0)) errors.push('SKU판매가 형식 오류');
         var unitCount = unitCountRaw ? parseInt(unitCountRaw, 10) : null;
@@ -13326,6 +13331,7 @@
           supplyPrice: (isConsignment && !isNaN(supplyPrice)) ? supplyPrice : null,
           commissionRate: (isConsignment && !isNaN(commissionRate)) ? commissionRate : null,
           basePrice: isNaN(basePrice) ? basePriceRaw : basePrice,
+          initialStock: isNaN(initialStock) ? 0 : initialStock,
           skuPrice, unitCount, optSummary, memo: get('메모'),
           o1name, o1val, o2name, o2val, o3name, o3val, errors });
       });
@@ -13461,6 +13467,7 @@
             } catch(e) { console.warn('SKU 이미지 업로드 실패:', e.message); }
           }
 
+          var isQtyTracking = (first.trackingType !== '개체관리');
           await setDoc(doc(db, 'products', productId, 'skus', skuId), {
             option_number: optCode, option_sort_order: optNum,
             option_1_name: skuItem.o1name || '', option_1_value: skuItem.o1val || '',
@@ -13469,6 +13476,8 @@
             price: skuItem.skuPrice != null ? skuItem.skuPrice : skuItem.basePrice,
             barcode_value: barcodeValue, sku_status: '판매중',
             image_url: skuImgUrl,
+            initial_stock: isQtyTracking ? (skuItem.initialStock || 0) : 0,
+            stock_managed: isQtyTracking,
             last_unit_number: pad(0, unitDigits), created_at: now, updated_at: now
           });
           totalSkus++;
