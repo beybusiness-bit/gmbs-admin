@@ -5728,11 +5728,9 @@
           ? '<img src="' + esc(p.image_url) + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);cursor:zoom-in;" onclick="openLightbox(\'' + esc(p.image_url) + '\',\'' + esc(p.product_name) + '\')" title="클릭해서 크게 보기" />'
           : '<div style="width:72px;height:72px;border-radius:8px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:22px;">📦</div>';
         const checked = (window._productSelected || new Set()).has(p.id) ? ' checked' : '';
-        const stockBtnStyle = 'display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;font-size:11px;color:var(--gray-600);cursor:pointer;white-space:nowrap;';
         const stockCell = '<td onclick="event.stopPropagation()">' +
-          '<div id="pl-stock-' + p.id + '" style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--gray-600);">' +
-          '<button style="' + stockBtnStyle + '" onclick="loadPlStock(\'' + p.id + '\')" title="클릭해서 재고 확인">📦 재고 확인</button>' +
-          '</div></td>';
+          '<div id="pl-stock-' + p.id + '" style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--gray-400);">로드 중...</div>' +
+          '</td>';
         return '<tr style="cursor:pointer;" onclick="openProductDetail(\'' + p.id + '\')">' +
         '<td style="padding-left:16px;" onclick="event.stopPropagation()"><input type="checkbox" id="pl-chk-' + p.id + '"' + checked + ' onchange="toggleProductSelect(\'' + p.id + '\',this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></td>' +
         '<td style="padding:8px;">' + thumb + '</td>' +
@@ -5750,6 +5748,9 @@
 
     const allChk = document.getElementById('pl-chk-all');
     if (allChk) allChk.checked = pageItems.length > 0 && pageItems.every(p => (window._productSelected||new Set()).has(p.id));
+
+    // 재고 자동 로드 (페이지 항목 전체, 병렬)
+    pageItems.forEach(p => { loadPlStock(p.id); });
 
     (function(){
       const allLen = (window._allProducts || []).length;
