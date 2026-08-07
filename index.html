@@ -1030,7 +1030,7 @@
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">' +
       '<input class="form-input" id="bc-search-input" placeholder="상품명, 상품ID, 브랜드코드 검색..." style="flex:1;min-width:200px;" onkeydown="if(event.key===\'Enter\')runBcSearch()" />' +
       '<button class="btn btn-primary" onclick="runBcSearch()">검색</button>' +
-      '<select id="bc-sort-sel" onchange="window._bcSortKey=this.value;runBcSearch()" style="border:1px solid var(--gray-200);border-radius:8px;padding:7px 10px;font-size:13px;background:#fff;cursor:pointer;">' +
+      '<select id="bc-sort-sel" onchange="window._bcSortKey=this.value;window._bcPage=1;runBcSearch()" style="border:1px solid var(--gray-200);border-radius:8px;padding:7px 10px;font-size:13px;background:#fff;cursor:pointer;">' +
       '<option value="created_desc">등록 최신순</option>' +
       '<option value="created_asc">등록 오래된순</option>' +
       '<option value="name_asc">상품명 ㄱ→ㅎ</option>' +
@@ -1040,7 +1040,7 @@
       '<option value="brand_asc">브랜드코드 A→Z</option>' +
       '<option value="brand_desc">브랜드코드 Z→A</option>' +
       '</select>' +
-      '<select id="bc-page-size" onchange="window._bcPageSize=parseInt(this.value);runBcSearch()" style="border:1px solid var(--gray-200);border-radius:8px;padding:7px 10px;font-size:13px;background:#fff;cursor:pointer;">' +
+      '<select id="bc-page-size" onchange="window._bcPageSize=parseInt(this.value);window._bcPage=1;window._bcAllProducts=null;runBcSearch()" style="border:1px solid var(--gray-200);border-radius:8px;padding:7px 10px;font-size:13px;background:#fff;cursor:pointer;">' +
       '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
       '</select>' +
       '<button onclick="openBcDefaultSettings()" style="display:flex;align-items:center;gap:5px;padding:7px 12px;border:1px solid var(--gray-200);border-radius:8px;background:#fff;font-size:12px;font-weight:600;color:var(--gray-600);cursor:pointer;white-space:nowrap;">⚙️ 기본 설정</button>' +
@@ -1050,7 +1050,9 @@
       '<label for="bc-chk-all" style="font-size:13px;color:var(--gray-600);cursor:pointer;user-select:none;">현재 목록 전체 선택</label>' +
       '<span id="bc-count" style="font-size:13px;color:var(--gray-500);"></span>' +
       '</div>' +
+      '<div id="bc-pagination-top"></div>' +
       '<div id="bc-results"></div>' +
+      '<div id="bc-pagination-bottom"></div>' +
       '<div id="bc-action-bar" class="bc-action-bar" style="display:none;">' +
       '<div id="bc-action-count" style="flex:1;font-size:13px;font-weight:600;color:var(--gray-700);"></div>' +
       '<button class="btn btn-secondary" onclick="openLabelPreview()">🔍 미리보기 · 인쇄</button>' +
@@ -1102,14 +1104,36 @@
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
 
+  /* 바코드 페이지 — 전체 products 캐시 (검색/정렬 시 재로드, 페이지 이동 시 재사용) */
+  window._bcAllProducts = null;
+
   window.runBcSearch = async function(all) {
     const term = all ? '' : ((document.getElementById('bc-search-input')||{}).value||'').trim().toLowerCase();
     const resultsEl = document.getElementById('bc-results');
     if (!resultsEl) return;
+    /* 검색어 바뀌거나 전체 새로고침이면 캐시 무효화 */
+    if (all) window._bcAllProducts = null;
+    window._bcPage = 1; /* 검색·정렬 시 1페이지로 리셋 */
+    await _bcRender(term);
+  };
+
+  window._bcGotoPage = async function(pg) {
+    window._bcPage = pg;
+    const term = ((document.getElementById('bc-search-input')||{}).value||'').trim().toLowerCase();
+    await _bcRender(term);
+  };
+
+  async function _bcRender(term) {
+    const resultsEl = document.getElementById('bc-results');
+    if (!resultsEl) return;
     resultsEl.innerHTML = '<div class="spinner" style="margin:40px auto;"></div>';
     try {
-      const snap = await getDocs(collection(db, 'products'));
-      let products = snap.docs.map(d=>({id:d.id,...d.data()}));
+      /* 전체 products 캐시 — 검색어/정렬 기준이 같으면 재사용 */
+      if (!window._bcAllProducts) {
+        const snap = await getDocs(collection(db, 'products'));
+        window._bcAllProducts = snap.docs.map(d=>({id:d.id,...d.data()}));
+      }
+      let products = window._bcAllProducts.slice();
       if (term) products = products.filter(p =>
         p.id.toLowerCase().includes(term) ||
         (p.product_name||'').toLowerCase().includes(term) ||
@@ -1124,18 +1148,39 @@
         if (sortKey === 'id_desc')    return b.id.localeCompare(a.id);
         if (sortKey === 'brand_asc')  return (a.brand_code||'').localeCompare(b.brand_code||'');
         if (sortKey === 'brand_desc') return (b.brand_code||'').localeCompare(a.brand_code||'');
-        return (b.created_at||'').localeCompare(a.created_at||''); // created_desc
+        return (b.created_at||'').localeCompare(a.created_at||'');
       });
 
       const totalCount = products.length;
       const bcPageSize = window._bcPageSize || 20;
+      const pg = window._bcPage || 1;
+      const totalPages = Math.max(1, Math.ceil(totalCount / bcPageSize));
+      const curPage = Math.min(pg, totalPages);
+      window._bcPage = curPage;
+      const pageProducts = products.slice((curPage - 1) * bcPageSize, curPage * bcPageSize);
+
       const countEl = document.getElementById('bc-count');
-      if (countEl) countEl.innerHTML = '총 <strong>' + totalCount + '</strong>개 상품' + (totalCount > bcPageSize ? ' · 상위 <strong>' + bcPageSize + '</strong>개 표시' : '');
+      const startN = totalCount === 0 ? 0 : (curPage - 1) * bcPageSize + 1;
+      const endN = Math.min(curPage * bcPageSize, totalCount);
+      const rangeInfo = totalCount > bcPageSize ? ' · ' + startN + '–' + endN + '번째 표시' : '';
+      if (countEl) countEl.innerHTML = '총 <strong>' + totalCount + '</strong>개 상품' + rangeInfo;
+
       const allChk = document.getElementById('bc-chk-all');
       if (allChk) { allChk.checked = false; allChk.indeterminate = false; }
-      products = products.slice(0, bcPageSize);
 
-      if (products.length === 0) {
+      /* 페이지네이션 HTML */
+      const paginHTML = totalPages <= 1 ? '' :
+        '<div style="display:flex;align-items:center;gap:6px;font-size:13px;padding:8px 0;">' +
+        '<button onclick="window._bcGotoPage(Math.max(1,window._bcPage-1))" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (curPage<=1?' disabled':'') + '>이전</button>' +
+        '<span style="color:var(--gray-500);">' + curPage + ' / ' + totalPages + '</span>' +
+        '<button onclick="window._bcGotoPage(Math.min(' + totalPages + ',window._bcPage+1))" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (curPage>=totalPages?' disabled':'') + '>다음</button>' +
+        '</div>';
+      const paginTopEl = document.getElementById('bc-pagination-top');
+      const paginBotEl = document.getElementById('bc-pagination-bottom');
+      if (paginTopEl) paginTopEl.innerHTML = paginHTML;
+      if (paginBotEl) paginBotEl.innerHTML = paginHTML;
+
+      if (pageProducts.length === 0) {
         resultsEl.innerHTML = '<div class="empty-state"><div class="empty-state-text">검색 결과가 없습니다.</div></div>';
         return;
       }
@@ -1147,7 +1192,7 @@
         bSnap.docs.forEach(d => { window._bcBrandNameMap[d.data().brand_code||''] = d.data().brand_name||''; });
       }
 
-      const productBlocks = await Promise.all(products.map(async p => {
+      const productBlocks = await Promise.all(pageProducts.map(async p => {
         const skusSnap = await getDocs(collection(db, 'products', p.id, 'skus'));
         const skus = skusSnap.docs.map(d=>({id:d.id,...d.data()}));
         skus.sort((a,b)=>(a.option_sort_order??99)-(b.option_sort_order??99));
