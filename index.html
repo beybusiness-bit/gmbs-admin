@@ -6329,6 +6329,14 @@
         '<div class="form-group" style="margin:0;"><label class="form-label" for="edit-p-name">상품명 <span class="required">*</span></label>' +
         '<input class="form-input" id="edit-p-name" type="text" value="' + esc(p.product_name) + '" /></div>' +
         '</div></div>' +
+        /* 관리방식 */
+        '<div class="form-group"><label class="form-label">관리방식</label>' +
+        '<select class="form-input" id="edit-p-tracking">' +
+        '<option value="quantity"' + (p.tracking_type === 'quantity' || p.tracking_type === '수량관리' ? ' selected' : '') + '>수량관리 (일반 상품)</option>' +
+        '<option value="individual"' + (p.tracking_type === 'individual' || p.tracking_type === '개체관리' ? ' selected' : '') + '>개체관리 (수공예품·빈티지 등)</option>' +
+        '</select>' +
+        '<div style="font-size:11px;color:var(--gray-400);margin-top:4px;">⚠️ 변경 시 기존 데이터에 영향을 줄 수 있습니다. 신중하게 사용하세요.</div>' +
+        '</div>' +
         /* 거래 유형 */
         '<div class="form-group"><label class="form-label">거래 유형</label>' +
         '<select class="form-input" id="edit-p-tx-type" onchange="toggleEditPriceSection(this.value)">' +
@@ -6447,8 +6455,39 @@
     const memo = (document.getElementById('edit-p-memo').value || '').trim();
     const now = new Date().toISOString();
 
+    /* 관리방식 변경 처리 */
+    const trackingEl = document.getElementById('edit-p-tracking');
+    const newTracking = trackingEl ? trackingEl.value : null;
+    const prevTracking = (window._editProductData || {}).tracking_type || 'quantity';
+    const prevIsIndividual = prevTracking === 'individual' || prevTracking === '개체관리';
+    const newIsIndividual = newTracking === 'individual';
+
+    if (newTracking && prevIsIndividual && !newIsIndividual) {
+      // 개체관리 → 수량관리: 등록된 개체 수 확인
+      const skuList = window._editSkus || [];
+      let totalUnits = 0;
+      try {
+        const unitCounts = await Promise.all(skuList.map(s =>
+          getDocs(collection(db, 'products', productId, 'skus', s.id, 'units')).then(snap => snap.size)
+        ));
+        totalUnits = unitCounts.reduce((a, b) => a + b, 0);
+      } catch(e) { /* 조회 실패 시 그냥 진행 */ }
+
+      if (totalUnits > 0) {
+        const ok = confirm(
+          '⚠️ 관리방식 변경 확인\n\n' +
+          '현재 등록된 개체가 ' + totalUnits + '개 있습니다.\n' +
+          '수량관리로 전환하면 개체 데이터는 삭제되지 않지만\n' +
+          '화면에서 더 이상 보이지 않게 됩니다.\n\n' +
+          '계속하시겠습니까?'
+        );
+        if (!ok) return;
+      }
+    }
+
     try {
       const updates = { product_name: name, base_price: basePrice, memo, updated_at: now };
+      if (newTracking) updates.tracking_type = newTracking;
       if (transactionType) updates.transaction_type = transactionType;
       if (supplyPrice !== undefined) updates.supply_price = supplyPrice;
       if (commissionRate !== undefined) updates.commission_rate = commissionRate;
