@@ -6125,7 +6125,10 @@
       }
 
       // inventory_transactions 기록
+      const lossProductSnap = await getDoc(doc(db, 'products', productId));
+      const lossProductBrandId = lossProductSnap.exists() ? (lossProductSnap.data().brand_id || '') : '';
       await addDoc(collection(db, 'inventory_transactions'), {
+        brand_id: lossProductBrandId,
         product_id: productId,
         sku_id: skuId,
         transaction_type: '불용처리',
@@ -6246,16 +6249,24 @@
       const commRate = p.commission_rate !== undefined ? p.commission_rate : '';
       const basePrice = p.base_price || 0;
 
-      /* SKU 행 */
+      /* SKU 행 — A안: 추가금액(addon) 방식 표시 */
       const skuRows = skus.map((s, i) => {
         const optLabel = s.option_number === '00' ? '옵션 없음'
           : [1,2,3].map(j => s['option_' + j + '_name'] ? s['option_' + j + '_name'] + ': ' + s['option_' + j + '_value'] : '').filter(Boolean).join(' / ');
+        const addon = (s.price || basePrice) - basePrice;
+        const finalPrice = basePrice + addon;
         return '<tr>' +
           '<td style="font-size:11px;font-family:monospace;">' + esc(s.barcode_value) + '</td>' +
           '<td style="font-size:12px;">' + esc(optLabel) + '</td>' +
-          '<td><input type="number" min="0" step="100" value="' + (s.price || basePrice) + '" ' +
-            'style="width:100px;border:1px solid var(--gray-300);border-radius:6px;padding:4px 7px;font-size:12px;" ' +
-            'onchange="window._editSkuPrices[\'' + s.id + '\']=parseInt(this.value)||0" /></td>' +
+          '<td>' +
+            '<div style="display:flex;align-items:center;gap:6px;">' +
+            '<input type="number" step="100" value="' + addon + '" ' +
+              'style="width:90px;border:1px solid var(--gray-300);border-radius:6px;padding:4px 7px;font-size:12px;" ' +
+              'id="edit-sku-addon-' + s.id + '" ' +
+              'onchange="(function(el,sid){var bp=parseInt((document.getElementById(\'edit-p-price\')||{}).value||\'0\')||0;var a=parseInt(el.value)||0;window._editSkuPrices[sid]=bp+a;document.getElementById(\'edit-sku-final-\'+sid).textContent=(bp+a).toLocaleString()+\'원\';})(this,\'' + s.id + '\')" />' +
+            '<span style="font-size:11px;color:var(--gray-400);">= <span id="edit-sku-final-' + s.id + '" style="color:var(--gray-700);font-weight:600;">' + finalPrice.toLocaleString() + '원</span></span>' +
+            '</div>' +
+          '</td>' +
           '<td style="text-align:center;">' +
             (i > 0 ? '<button onclick="moveEditSku(' + i + ',-1)" style="border:none;background:var(--gray-100);border-radius:4px;padding:2px 6px;cursor:pointer;">↑</button> ' : '') +
             (i < skus.length - 1 ? '<button onclick="moveEditSku(' + i + ',1)" style="border:none;background:var(--gray-100);border-radius:4px;padding:2px 6px;cursor:pointer;">↓</button>' : '') +
@@ -6299,17 +6310,17 @@
         '<div class="form-group"><label class="form-label" for="edit-p-commission">위탁판매수수료 (%)</label>' +
         '<input class="form-input" id="edit-p-commission" type="number" min="0" max="100" step="0.1" value="' + commRate + '" oninput="calcEditSalePrice()" /></div>' +
         '</div></div>' +
-        '<div class="form-group"><label class="form-label">판매가격 <span style="font-size:11px;color:var(--gray-400);font-weight:400;">' + (p.transaction_type === '위탁' ? '(자동 계산 또는 직접 입력)' : '') + '</span></label>' +
-        '<input class="form-input" id="edit-p-price" type="number" min="0" step="100" value="' + basePrice + '" /></div>' +
+        '<div class="form-group"><label class="form-label">판매가격 (기준가) <span style="font-size:11px;color:var(--gray-400);font-weight:400;">' + (p.transaction_type === '위탁' ? '(자동 계산 또는 직접 입력)' : '') + '</span></label>' +
+        '<input class="form-input" id="edit-p-price" type="number" min="0" step="100" value="' + basePrice + '" oninput="recalcEditSkuFinals()" /></div>' +
         '<div class="form-group"><label class="form-label" for="edit-p-memo">메모</label>' +
         '<input class="form-input" id="edit-p-memo" type="text" value="' + esc(p.memo || '') + '" /></div>' +
         /* SKU 가격 + 순서: 옵션 있는 상품(2개 이상 SKU)만 표시 */
         (skus.length > 1 ?
           '<div style="background:var(--blue-light);border:1px solid #bfdbfe;border-radius:10px;padding:16px;">' +
-          '<div style="font-size:13px;font-weight:700;color:var(--blue);margin-bottom:4px;">📋 SKU별 판매가 · 표시 순서</div>' +
-          '<div style="font-size:12px;color:var(--gray-500);margin-bottom:12px;">옵션별 가격을 개별 조정하고 목록 표시 순서를 바꿀 수 있습니다.</div>' +
+          '<div style="font-size:13px;font-weight:700;color:var(--blue);margin-bottom:4px;">📋 SKU별 추가금액 · 표시 순서</div>' +
+          '<div style="font-size:12px;color:var(--gray-500);margin-bottom:12px;">기준가에 더해지는 옵션별 추가금액을 입력하세요. 추가금액이 없으면 0으로 두세요. 최종 판매가 = 기준가 + 추가금액.</div>' +
           '<div id="edit-sku-table-wrap" class="table-wrap"><table>' +
-          '<thead><tr><th>바코드</th><th>옵션</th><th>판매가</th><th>순서</th></tr></thead>' +
+          '<thead><tr><th>바코드</th><th>옵션</th><th>추가금액 → 최종가</th><th>순서</th></tr></thead>' +
           '<tbody id="edit-sku-tbody">' + skuRows + '</tbody></table></div></div>' : '') +
         '</div>';
 
@@ -6331,6 +6342,20 @@
     if (sec) sec.style.display = (type === '위탁') ? '' : 'none';
   };
 
+  /* 기준가 변경 시 SKU 최종가 재계산 */
+  window.recalcEditSkuFinals = function() {
+    const bp = parseInt((document.getElementById('edit-p-price') || {}).value || '0') || 0;
+    (window._editSkus || []).forEach(function(s) {
+      var addonEl = document.getElementById('edit-sku-addon-' + s.id);
+      var finalEl = document.getElementById('edit-sku-final-' + s.id);
+      if (!addonEl || !finalEl) return;
+      var addon = parseInt(addonEl.value) || 0;
+      var finalPrice = bp + addon;
+      window._editSkuPrices[s.id] = finalPrice;
+      finalEl.textContent = finalPrice.toLocaleString() + '원';
+    });
+  };
+
   /* 수정 화면 판매가 역산 */
   window.calcEditSalePrice = function() {
     const supply = parseFloat((document.getElementById('edit-p-supply') || {}).value || '');
@@ -6338,7 +6363,7 @@
     if (!isNaN(supply) && !isNaN(commission) && commission < 100) {
       const salePrice = Math.round(supply / (1 - commission / 100));
       const el = document.getElementById('edit-p-price');
-      if (el) el.value = salePrice;
+      if (el) { el.value = salePrice; recalcEditSkuFinals(); }
     }
   };
 
@@ -6353,12 +6378,20 @@
     const skuRows = arr.map((s, idx) => {
       const optLabel = s.option_number === '00' ? '옵션 없음'
         : [1,2,3].map(k => s['option_' + k + '_name'] ? s['option_' + k + '_name'] + ': ' + s['option_' + k + '_value'] : '').filter(Boolean).join(' / ');
+      const skuFinalPrice = window._editSkuPrices[s.id] !== undefined ? window._editSkuPrices[s.id] : basePrice;
+      const addon = skuFinalPrice - basePrice;
       return '<tr>' +
         '<td style="font-size:11px;font-family:monospace;">' + esc(s.barcode_value) + '</td>' +
         '<td style="font-size:12px;">' + esc(optLabel) + '</td>' +
-        '<td><input type="number" min="0" step="100" value="' + (window._editSkuPrices[s.id] || basePrice) + '" ' +
-          'style="width:100px;border:1px solid var(--gray-300);border-radius:6px;padding:4px 7px;font-size:12px;" ' +
-          'onchange="window._editSkuPrices[\'' + s.id + '\']=parseInt(this.value)||0" /></td>' +
+        '<td>' +
+          '<div style="display:flex;align-items:center;gap:6px;">' +
+          '<input type="number" step="100" value="' + addon + '" ' +
+            'style="width:90px;border:1px solid var(--gray-300);border-radius:6px;padding:4px 7px;font-size:12px;" ' +
+            'id="edit-sku-addon-' + s.id + '" ' +
+            'onchange="(function(el,sid){var bp=parseInt((document.getElementById(\'edit-p-price\')||{}).value||\'0\')||0;var a=parseInt(el.value)||0;window._editSkuPrices[sid]=bp+a;document.getElementById(\'edit-sku-final-\'+sid).textContent=(bp+a).toLocaleString()+\'원\';})(this,\'' + s.id + '\')" />' +
+          '<span style="font-size:11px;color:var(--gray-400);">= <span id="edit-sku-final-' + s.id + '" style="color:var(--gray-700);font-weight:600;">' + skuFinalPrice.toLocaleString() + '원</span></span>' +
+          '</div>' +
+        '</td>' +
         '<td style="text-align:center;">' +
           (idx > 0 ? '<button onclick="moveEditSku(' + idx + ',-1)" style="border:none;background:var(--gray-100);border-radius:4px;padding:2px 6px;cursor:pointer;">↑</button> ' : '') +
           (idx < arr.length - 1 ? '<button onclick="moveEditSku(' + idx + ',1)" style="border:none;background:var(--gray-100);border-radius:4px;padding:2px 6px;cursor:pointer;">↓</button>' : '') +
