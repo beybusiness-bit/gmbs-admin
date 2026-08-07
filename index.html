@@ -12777,7 +12777,7 @@
       var okCount = 0; var errCount = 0;
 
       dataRows.forEach(function(row, i) {
-        var get = function(key){ var ci = colIdx[key]; return ci >= 0 ? String(row[ci] || '').trim() : ''; };
+        var get = function(key){ var ci = colIdx[key]; if (ci < 0) return ''; var v = row[ci]; return (v != null && v !== '') ? String(v).trim() : ''; };
         var brandName = get('브랜드명');
         var brandCode = get('브랜드코드').toUpperCase();
         var brandType = get('거래유형');
@@ -13256,7 +13256,7 @@
         var firstCell = String(row[0] || '').trim();
         if (firstCell.startsWith('예)') || firstCell.startsWith('예시') || firstCell.startsWith('(작성')) return; // 안내 행
         var excelRowNum = headerIdx + 2 + rawIdx; // 실제 엑셀 행 번호 (1부터)
-        var get = function(key){ var ci = colIdx[key]; return ci >= 0 ? String(row[ci] || '').trim() : ''; };
+        var get = function(key){ var ci = colIdx[key]; if (ci < 0) return ''; var v = row[ci]; return (v != null && v !== '') ? String(v).trim() : ''; };
         var brandCode = get('브랜드코드').toUpperCase();
         var productName = get('상품명');
         var trackingType = get('관리방식');
@@ -13320,7 +13320,7 @@
 
       window._bulkProductValidated = results.filter(function(r){ return r.errors.length === 0; });
 
-      thead.innerHTML = '<tr>' + ['행','브랜드','상품명','관리방식','판매가','옵션','개체수','결과'].map(function(h){
+      thead.innerHTML = '<tr>' + ['행','브랜드','상품명','관리방식','판매가','초기재고','옵션','개체수','결과'].map(function(h){
         return '<th>' + h + '</th>';
       }).join('') + '</tr>';
 
@@ -13332,12 +13332,14 @@
         var priceStr = r.skuPrice != null
           ? (r.skuPrice.toLocaleString() + '원(SKU)')
           : (isNaN(r.basePrice) ? r.basePrice : r.basePrice.toLocaleString() + '원');
+        var stockStr = r.trackingType === '개체관리' ? '-' : (r.initialStock > 0 ? '<b style="color:#16a34a;">' + r.initialStock + '개</b>' : '<span style="color:var(--gray-400);">0개</span>');
         return '<tr class="' + cls + '">' +
           ['<td style="color:var(--gray-400);">' + r.rowNum + '</td>',
            '<td><code>' + (r.brandCode||'-') + '</code></td>',
            '<td>' + (r.productName||'-') + '</td>',
            '<td>' + (r.trackingType||'-') + '</td>',
            '<td style="white-space:nowrap;">' + priceStr + '</td>',
+           '<td style="text-align:center;">' + stockStr + '</td>',
            '<td style="font-size:11px;">' + r.optSummary + '</td>',
            '<td style="text-align:center;">' + (r.unitCount||'-') + '</td>',
            '<td>' + status + '</td>'].join('') + '</tr>';
@@ -13395,7 +13397,7 @@
         var firstCell = String(row[0] || '').trim();
         if (firstCell.startsWith('예)') || firstCell.startsWith('예시') || firstCell.startsWith('(작성')) return;
         var excelRowNum = headerIdx + 2 + rawIdx;
-        var get = function(key){ var ci = colIdx[key]; return ci >= 0 ? String(row[ci] || '').trim() : ''; };
+        var get = function(key){ var ci = colIdx[key]; if (ci < 0) return ''; var v = row[ci]; return (v != null && v !== '') ? String(v).trim() : ''; };
         var brandCode = get('브랜드코드').toUpperCase();
         var productName = get('상품명');
         var transactionType = get('거래유형');
@@ -13466,17 +13468,19 @@
 
       window._bulkProductValidated = results.filter(function(r){ return r.errors.length === 0; });
 
-      thead.innerHTML = '<tr>' + ['행','브랜드','상품명','거래유형','관리방식','판매가','옵션','개체수','결과'].map(function(h){ return '<th>'+h+'</th>'; }).join('') + '</tr>';
+      thead.innerHTML = '<tr>' + ['행','브랜드','상품명','거래유형','관리방식','판매가','초기재고','옵션','개체수','결과'].map(function(h){ return '<th>'+h+'</th>'; }).join('') + '</tr>';
       tbody.innerHTML = results.map(function(r) {
         var cls = r.errors.length === 0 ? 'bulk-row-ok' : 'bulk-row-err';
         var status = r.errors.length === 0
           ? '<span style="color:#16a34a;font-weight:600;">정상</span>'
           : '<span style="color:#dc2626;font-size:11px;">' + r.errors.join('<br>') + '</span>';
         var priceStr = r.skuPrice != null ? (r.skuPrice.toLocaleString()+'원(SKU)') : (isNaN(r.basePrice) ? r.basePrice : r.basePrice.toLocaleString()+'원');
+        var stockStr = r.trackingType === '개체관리' ? '-' : (r.initialStock > 0 ? '<b style="color:#16a34a;">'+r.initialStock+'개</b>' : '<span style="color:var(--gray-400);">0개</span>');
         return '<tr class="'+cls+'"><td style="color:var(--gray-400);">'+r.rowNum+'</td>' +
           '<td><code>'+(r.brandCode||'-')+'</code></td><td>'+(r.productName||'-')+'</td>' +
           '<td>'+(r.transactionType||'-')+'</td><td>'+(r.trackingType||'-')+'</td>' +
           '<td style="white-space:nowrap;">'+priceStr+'</td>' +
+          '<td style="text-align:center;">'+stockStr+'</td>' +
           '<td style="font-size:11px;">'+r.optSummary+'</td><td style="text-align:center;">'+(r.unitCount||'-')+'</td>' +
           '<td>'+status+'</td></tr>';
       }).join('');
@@ -13595,6 +13599,7 @@
             barcode_value: barcodeValue, sku_status: '판매중',
             image_url: skuImgUrl,
             initial_stock: isQtyTracking ? (skuItem.initialStock || 0) : 0,
+            current_stock: isQtyTracking ? (skuItem.initialStock || 0) : 0,
             stock_managed: isQtyTracking,
             last_unit_number: pad(0, unitDigits), created_at: now, updated_at: now
           });
