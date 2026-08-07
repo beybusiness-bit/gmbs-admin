@@ -1469,9 +1469,9 @@
     if (cell.id === 'barcode') {
       try {
         var bcCanvas = document.createElement('canvas');
-        /* 바코드 높이를 라벨 높이 대비 비율로 맞춤 (미리보기와 동일: max(30, h*0.32)) */
+        /* 바코드 높이를 라벨 높이 대비 비율로 맞춤 (미리보기와 동일: max(40, h*0.55)) */
         var bcH = Math.max(30, Math.floor(ctx.canvas.height / ctx._scale / 0.032) * 0.032);
-        bcH = Math.max(30, Math.floor(ctx.canvas.height / ctx._scale * 0.32));
+        bcH = Math.max(30, Math.floor(ctx.canvas.height / ctx._scale * 0.55));
         JsBarcode(bcCanvas, item.barcodeValue, { format:'CODE128', width:1, height:bcH, displayValue:false, margin:4, background:'#ffffff', lineColor:'#000000' });
         /* 너비를 cellW 기준으로 맞춤 */
         var bw = Math.min(cellW - PAD * 2, bcCanvas.width);
@@ -1789,7 +1789,7 @@
     allLabels.forEach(function(item, i) {
       try {
         JsBarcode('#lbl-svg-' + i, item.barcodeValue, {
-          format: 'CODE128', width: 1, height: Math.max(30, Math.floor(h * 0.32)),
+          format: 'CODE128', width: 1, height: Math.max(40, Math.floor(h * 0.55)),
           displayValue: false, margin: 4, background: '#ffffff', lineColor: '#000000'
         });
       } catch(e) { console.warn('바코드 생성 실패:', e); }
@@ -1817,7 +1817,7 @@
       }).join('') + '</div>';
 
     allLabels.forEach(function(item, i) {
-      try { JsBarcode('#plbl-svg-' + i, item.barcodeValue, { format:'CODE128', width:1, height:Math.max(30,Math.floor(h*0.32)), displayValue:false, margin:4 }); } catch(e) {}
+      try { JsBarcode('#plbl-svg-' + i, item.barcodeValue, { format:'CODE128', width:1, height:Math.max(40,Math.floor(h*0.55)), displayValue:false, margin:4 }); } catch(e) {}
     });
 
     setTimeout(async function() {
