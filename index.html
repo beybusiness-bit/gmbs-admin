@@ -6512,9 +6512,10 @@
           '<span style="color:var(--gray-400);font-size:11px;white-space:nowrap;">' + baseSkuPrice.toLocaleString() + '원 +</span>' +
           '<input type="number" value="' + (extraPrice !== '' ? extraPrice : '0') + '" placeholder="0" ' +
           'style="width:80px;border:1px solid var(--gray-200);border-radius:6px;padding:3px 6px;font-size:12px;" ' +
-          'oninput="(function(el,fid,bp){var a=parseInt(el.value)||0;document.getElementById(fid).textContent=\'= \'+(bp+a).toLocaleString()+\'원\';})(this,\'' + finalId + '\',' + baseSkuPrice + ')" ' +
-          'onchange="saveUnitExtraPrice(\'' + productId + '\',\'' + skuId + '\',\'' + u.id + '\',this.value)" />' +
+          'oninput="(function(el,fid,bp){var a=parseInt(el.value)||0;document.getElementById(fid).textContent=\'= \'+(bp+a).toLocaleString()+\'원\';document.getElementById(fid+\'-ok\').style.display=\'none\';})(this,\'' + finalId + '\',' + baseSkuPrice + ')" ' +
+          'onchange="saveUnitExtraPrice(\'' + productId + '\',\'' + skuId + '\',\'' + u.id + '\',this.value,\'' + finalId + '\')" />' +
           '<span id="' + finalId + '" style="color:var(--gray-600);font-size:12px;font-weight:600;white-space:nowrap;">= ' + finalPrice.toLocaleString() + '원</span>' +
+          '<span id="' + finalId + '-ok" style="display:none;color:var(--green);font-size:13px;" title="저장됨">✓</span>' +
           '</div>' +
           '</td>' +
           '<td><span class="badge ' + (statusColors[u.unit_status] || 'badge-gray') + '">' + esc(u.unit_status) + '</span></td>' +
@@ -6572,13 +6573,23 @@
     } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
   };
 
-  window.saveUnitExtraPrice = async function(productId, skuId, unitId, rawValue) {
+  window.saveUnitExtraPrice = async function(productId, skuId, unitId, rawValue, finalId) {
     try {
       const parsed = rawValue === '' ? null : parseInt(rawValue, 10);
       if (rawValue !== '' && (isNaN(parsed) || parsed < 0)) { showToast('추가 가격은 0 이상의 숫자로 입력해주세요.', 'error'); return; }
       const fieldVal = parsed === null ? deleteField() : parsed;
       await updateDoc(doc(db, 'products', productId, 'skus', skuId, 'units', unitId), { unit_extra_price: fieldVal, updated_at: new Date().toISOString() });
-      showToast('추가 가격을 저장했습니다.', 'success');
+      // 저장 완료 시각적 피드백
+      if (finalId) {
+        const okEl = document.getElementById(finalId + '-ok');
+        const finalEl = document.getElementById(finalId);
+        if (okEl) { okEl.style.display = 'inline'; }
+        if (finalEl) {
+          finalEl.style.transition = 'color 0.15s';
+          finalEl.style.color = 'var(--green)';
+          setTimeout(function() { finalEl.style.color = 'var(--gray-600)'; }, 1500);
+        }
+      }
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
 
