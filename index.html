@@ -7269,6 +7269,8 @@
       if (wrap) wrap.style.display = isNone ? '' : 'none';
       if (hint) hint.style.display = isNone ? 'none' : '';
     }
+    /* 초기 상태: 수량관리 선택됨 + 옵션 없음 선택됨 → 재고 입력칸 바로 표시 */
+    syncStockInputVisibility(true);
     document.getElementById('p-opt-none').addEventListener('change', () => {
       document.getElementById('opt-builder').style.display = 'none';
       document.getElementById('combo-section').style.display = 'none';
