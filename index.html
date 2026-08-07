@@ -8480,6 +8480,13 @@
         '<div id="brand-meta-init-result" style="margin-top:10px;font-size:13px;"></div>' +
         '</div>' +
 
+        '<div class="card" style="padding:24px;">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:6px;">입점 상태 일괄 점검</div>' +
+        '<div style="font-size:13px;color:var(--gray-500);margin-bottom:14px;">계약이 완료되어 <code>brand_types</code>가 있음에도 <code>onboarding_status</code>가 <code>심사중</code>으로 남아있는 브랜드를 찾아 <code>승인</code>으로 수정합니다.</div>' +
+        '<button class="btn btn-secondary" onclick="fixApprovedOnboardingStatus()">입점 상태 불일치 브랜드 수정</button>' +
+        '<div id="fix-onboarding-result" style="margin-top:10px;font-size:13px;"></div>' +
+        '</div>' +
+
       '</div>' +
 
       /* ── 탭: API 및 웹훅 ── */
@@ -10012,6 +10019,39 @@
     }
   };
 
+  window.fixApprovedOnboardingStatus = async function() {
+    const resultEl = document.getElementById('fix-onboarding-result');
+    if (resultEl) resultEl.textContent = '처리 중...';
+    try {
+      const brandsSnap = await getDocs(collection(db, 'brands'));
+      let fixed = 0, skipped = 0;
+      const fixedNames = [];
+      for (const bDoc of brandsSnap.docs) {
+        const d = bDoc.data();
+        // brand_types 배열이 있거나(계약 완료), onboarding_status가 심사중인데 실제로 승인됐어야 할 경우
+        const hasTypes = Array.isArray(d.brand_types) && d.brand_types.length > 0;
+        if (d.onboarding_status === '심사중' && hasTypes) {
+          await updateDoc(doc(db, 'brands', bDoc.id), {
+            onboarding_status: '승인',
+            onboarding_status_changed_at: today(),
+            updated_at: today()
+          });
+          fixedNames.push((d.brand_name || bDoc.id) + ' (' + bDoc.id + ')');
+          fixed++;
+        } else {
+          skipped++;
+        }
+      }
+      if (fixed === 0) {
+        if (resultEl) resultEl.innerHTML = '<span style="color:var(--gray-500);">불일치 브랜드 없음 (' + skipped + '개 정상)</span>';
+      } else {
+        if (resultEl) resultEl.innerHTML = '<span style="color:var(--green);">✅ ' + fixed + '개 수정 완료:<br>' + fixedNames.map(n => '• ' + esc(n)).join('<br>') + '</span>';
+      }
+    } catch(e) {
+      if (resultEl) resultEl.innerHTML = '<span style="color:var(--red);">오류: ' + esc(e.message) + '</span>';
+    }
+  };
+
   async function checkFirebaseStatus() {
     const area = document.getElementById('firebase-status-area');
     if (!area) return;
@@ -10801,7 +10841,8 @@
           website_urls: item.website_urls || [],
           settlement_info: item.settlement_info || {},
           fee_info: { commission_rate: adminCommission },
-          onboarding_status: '심사중',
+          onboarding_status: '승인',
+          onboarding_status_changed_at: today(),
           brand_types: [],
           ...(item.brand_photo_url ? { logo_url: item.brand_photo_url, brand_photo_url: item.brand_photo_url } : {}),
           created_at: today(), updated_at: today()
