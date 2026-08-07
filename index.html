@@ -1840,7 +1840,11 @@
         '<th style="width:36px;padding-left:16px;"><input type="checkbox" id="bl-chk-all" onchange="toggleAllBrands(this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></th>' +
         '<th style="width:80px;"></th><th>브랜드코드</th><th>브랜드명</th><th>거래유형</th><th>입점 상태</th><th>마지막 상품번호</th>' +
         '</tr></thead>' +
-        '<tbody id="bl-tbody"></tbody></table></div></div>';
+        '<tbody id="bl-tbody"></tbody></table></div></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">' +
+        '<div id="bl-count-bottom" style="font-size:13px;color:var(--gray-500);"></div>' +
+        '<div id="bl-pagination-bottom"></div>' +
+        '</div>';
 
       filterBrandList();
     } catch (e) {
@@ -1926,7 +1930,9 @@
 
     const tbody = document.getElementById('bl-tbody');
     const countEl = document.getElementById('bl-count');
+    const countElB = document.getElementById('bl-count-bottom');
     const paginEl = document.getElementById('bl-pagination');
+    const paginElB = document.getElementById('bl-pagination-bottom');
     if (!tbody) return;
 
     if (pageItems.length === 0) {
@@ -1968,20 +1974,19 @@
       const endN = Math.min(pg * ps, total);
       const filterInfo = allLen !== total ? '중 <strong>' + total + '</strong>개 검색결과 · ' : '';
       const rangeInfo = total > ps ? startN + '–' + endN + '번째 표시 · ' : '';
-      if (countEl) countEl.innerHTML = '총 <strong>' + allLen + '</strong>개 ' + filterInfo + rangeInfo + '선택 <strong>' + (window._brandSelected||new Set()).size + '</strong>개';
+      const countHTML = '총 <strong>' + allLen + '</strong>개 ' + filterInfo + rangeInfo + '선택 <strong>' + (window._brandSelected||new Set()).size + '</strong>개';
+      if (countEl) countEl.innerHTML = countHTML;
+      if (countElB) countElB.innerHTML = countHTML;
     })();
 
-    if (paginEl) {
-      if (totalPages <= 1) { paginEl.innerHTML = ''; }
-      else {
-        paginEl.innerHTML =
-          '<div style="display:flex;align-items:center;gap:6px;font-size:13px;">' +
-          '<button onclick="window._brandPage=Math.max(1,window._brandPage-1);filterBrandList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg<=1?' disabled':'') + '>이전</button>' +
-          '<span style="color:var(--gray-500);">' + pg + ' / ' + totalPages + '</span>' +
-          '<button onclick="window._brandPage=Math.min(' + totalPages + ',window._brandPage+1);filterBrandList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg>=totalPages?' disabled':'') + '>다음</button>' +
-          '</div>';
-      }
-    }
+    const paginHTML = totalPages <= 1 ? '' :
+      '<div style="display:flex;align-items:center;gap:6px;font-size:13px;">' +
+      '<button onclick="window._brandPage=Math.max(1,window._brandPage-1);filterBrandList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg<=1?' disabled':'') + '>이전</button>' +
+      '<span style="color:var(--gray-500);">' + pg + ' / ' + totalPages + '</span>' +
+      '<button onclick="window._brandPage=Math.min(' + totalPages + ',window._brandPage+1);filterBrandList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg>=totalPages?' disabled':'') + '>다음</button>' +
+      '</div>';
+    if (paginEl) paginEl.innerHTML = paginHTML;
+    if (paginElB) paginElB.innerHTML = paginHTML;
 
     updateBrandExportBtn();
   };
@@ -2651,6 +2656,10 @@
         '<th>이름</th><th>역할</th><th>연락처 이메일</th><th>구글 로그인 이메일</th><th>담당 브랜드</th><th>상태</th><th>등록일</th><th>비고</th>' +
         '</tr></thead>' +
         '<tbody id="pers-tbody"></tbody></table></div></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">' +
+        '<div id="pers-count-bottom" style="font-size:13px;color:var(--gray-500);"></div>' +
+        '<div id="pers-pagination-bottom"></div>' +
+        '</div>' +
         '</div>';
 
       filterPersonsList();
@@ -2740,7 +2749,9 @@
 
     const tbody = document.getElementById('pers-tbody');
     const countEl = document.getElementById('pers-count');
+    const countElB = document.getElementById('pers-count-bottom');
     const paginEl = document.getElementById('pers-pagination');
+    const paginElB = document.getElementById('pers-pagination-bottom');
     if (!tbody) return;
 
     if (pageItems.length === 0) {
@@ -2783,20 +2794,19 @@
       const endN = Math.min(pg * ps, total);
       const filterInfo = allLen !== total ? '중 <strong>' + total + '</strong>개 검색결과 · ' : '';
       const rangeInfo = total > ps ? startN + '–' + endN + '번째 표시 · ' : '';
-      if (countEl) countEl.innerHTML = '총 <strong>' + allLen + '</strong>개 ' + filterInfo + rangeInfo + '선택 <strong>' + (window._personSelected||new Set()).size + '</strong>개';
+      const countHTML = '총 <strong>' + allLen + '</strong>개 ' + filterInfo + rangeInfo + '선택 <strong>' + (window._personSelected||new Set()).size + '</strong>개';
+      if (countEl) countEl.innerHTML = countHTML;
+      if (countElB) countElB.innerHTML = countHTML;
     })();
 
-    if (paginEl) {
-      if (totalPages <= 1) { paginEl.innerHTML = ''; }
-      else {
-        paginEl.innerHTML =
-          '<div style="display:flex;align-items:center;gap:6px;font-size:13px;">' +
-          '<button onclick="window._personPage=Math.max(1,window._personPage-1);filterPersonsList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg<=1?' disabled':'') + '>이전</button>' +
-          '<span style="color:var(--gray-500);">' + pg + ' / ' + totalPages + '</span>' +
-          '<button onclick="window._personPage=Math.min(' + totalPages + ',window._personPage+1);filterPersonsList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg>=totalPages?' disabled':'') + '>다음</button>' +
-          '</div>';
-      }
-    }
+    const paginHTMLPers = totalPages <= 1 ? '' :
+      '<div style="display:flex;align-items:center;gap:6px;font-size:13px;">' +
+      '<button onclick="window._personPage=Math.max(1,window._personPage-1);filterPersonsList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg<=1?' disabled':'') + '>이전</button>' +
+      '<span style="color:var(--gray-500);">' + pg + ' / ' + totalPages + '</span>' +
+      '<button onclick="window._personPage=Math.min(' + totalPages + ',window._personPage+1);filterPersonsList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg>=totalPages?' disabled':'') + '>다음</button>' +
+      '</div>';
+    if (paginEl) paginEl.innerHTML = paginHTMLPers;
+    if (paginElB) paginElB.innerHTML = paginHTMLPers;
 
     updatePersonBulkActions();
   };
@@ -5575,7 +5585,11 @@
         '<th style="width:36px;padding-left:16px;"><input type="checkbox" id="pl-chk-all" onchange="toggleAllProducts(this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></th>' +
         '<th style="width:80px;"></th><th>상품 ID</th><th>브랜드</th><th>상품명</th><th>관리방식</th><th>판매가</th><th>승인상태</th><th>등록일</th>' +
         '</tr></thead>' +
-        '<tbody id="pl-tbody"></tbody></table></div></div>';
+        '<tbody id="pl-tbody"></tbody></table></div></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">' +
+        '<div id="pl-count-bottom" style="font-size:13px;color:var(--gray-500);"></div>' +
+        '<div id="pl-pagination-bottom"></div>' +
+        '</div>';
 
       filterProductList();
     } catch(e) {
@@ -5657,7 +5671,9 @@
 
     const tbody = document.getElementById('pl-tbody');
     const countEl = document.getElementById('pl-count');
+    const countElB = document.getElementById('pl-count-bottom');
     const paginEl = document.getElementById('pl-pagination');
+    const paginElB = document.getElementById('pl-pagination-bottom');
     if (!tbody) return;
 
     if (pageItems.length === 0) {
@@ -5691,20 +5707,19 @@
       const endN = Math.min(pg * ps, total);
       const filterInfo = allLen !== total ? '중 <strong>' + total + '</strong>개 검색결과 · ' : '';
       const rangeInfo = total > ps ? startN + '–' + endN + '번째 표시 · ' : '';
-      if (countEl) countEl.innerHTML = '총 <strong>' + allLen + '</strong>개 ' + filterInfo + rangeInfo + '선택 <strong>' + (window._productSelected||new Set()).size + '</strong>개';
+      const countHTML = '총 <strong>' + allLen + '</strong>개 ' + filterInfo + rangeInfo + '선택 <strong>' + (window._productSelected||new Set()).size + '</strong>개';
+      if (countEl) countEl.innerHTML = countHTML;
+      if (countElB) countElB.innerHTML = countHTML;
     })();
 
-    if (paginEl) {
-      if (totalPages <= 1) { paginEl.innerHTML = ''; }
-      else {
-        paginEl.innerHTML =
-          '<div style="display:flex;align-items:center;gap:6px;font-size:13px;">' +
-          '<button onclick="window._productPage=Math.max(1,window._productPage-1);filterProductList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg<=1?' disabled':'') + '>이전</button>' +
-          '<span style="color:var(--gray-500);">' + pg + ' / ' + totalPages + '</span>' +
-          '<button onclick="window._productPage=Math.min(' + totalPages + ',window._productPage+1);filterProductList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg>=totalPages?' disabled':'') + '>다음</button>' +
-          '</div>';
-      }
-    }
+    const paginHTMLProd = totalPages <= 1 ? '' :
+      '<div style="display:flex;align-items:center;gap:6px;font-size:13px;">' +
+      '<button onclick="window._productPage=Math.max(1,window._productPage-1);filterProductList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg<=1?' disabled':'') + '>이전</button>' +
+      '<span style="color:var(--gray-500);">' + pg + ' / ' + totalPages + '</span>' +
+      '<button onclick="window._productPage=Math.min(' + totalPages + ',window._productPage+1);filterProductList()" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;cursor:pointer;"' + (pg>=totalPages?' disabled':'') + '>다음</button>' +
+      '</div>';
+    if (paginEl) paginEl.innerHTML = paginHTMLProd;
+    if (paginElB) paginElB.innerHTML = paginHTMLProd;
 
     updateProductExportBtn();
   };
@@ -6470,8 +6485,7 @@
       }));
 
       showToast('상품이 수정됐습니다.', 'success');
-      closeModal();
-      await renderProductList(document.getElementById('page-content'));
+      await openProductDetail(productId);  // 목록 새로고침 없이 상세 모달로 바로 복귀
     } catch(e) { showToast('저장 실패: ' + e.message, 'error'); }
   };
 
