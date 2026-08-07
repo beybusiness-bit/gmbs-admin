@@ -353,10 +353,7 @@
         <span class="icon">💰</span><span class="nav-label"> 정산</span>
       </div>
       <div class="nav-item" data-page="barcode" onclick="navigate('barcode')">
-        <span class="icon">🔍</span><span class="nav-label"> 바코드</span>
-      </div>
-      <div class="nav-item" data-page="toss-export" onclick="navigate('toss-export')">
-        <span class="icon">📤</span><span class="nav-label"> 토스플레이스 내보내기</span>
+        <span class="icon">📤</span><span class="nav-label"> 내보내기</span>
       </div>
 
       <div class="nav-section-label">고객 지원</div>
@@ -836,8 +833,8 @@
     else if (page === 'info-management') await renderInfoManagement(content);
     else if (page === 'inquiry-list') await renderInquiryList(content);
     else if (page === 'customer-cs') await renderCustomerCSPage(content);
-    else if (page === 'barcode') renderBarcodePage(content);
-    else if (page === 'toss-export') renderTossExport(content);
+    else if (page === 'barcode') renderExportPage(content);
+    else if (page === 'toss-export') { navigate('barcode'); return; }
     else if (page === 'settings') await renderSettings(content);
     else if (page === 'email-settings') await renderEmailSettings(content);
     else if (page === 'persons-list') await renderPersonsList(content);
@@ -970,6 +967,49 @@
   /* ════════════════════════════════
      바코드 통합 페이지
   ════════════════════════════════ */
+  /* ── 탭 래퍼 ── */
+  function renderExportPage(container) {
+    var activeTab = window._exportActiveTab || 'barcode';
+    container.innerHTML =
+      '<div class="tab-bar" style="margin-bottom:20px;">' +
+      '<button class="tab-btn' + (activeTab === 'barcode' ? ' active' : '') + '" id="exp-tab-barcode" onclick="switchExportTab(\'barcode\')">🔍 바코드</button>' +
+      '<button class="tab-btn' + (activeTab === 'toss' ? ' active' : '') + '" id="exp-tab-toss" onclick="switchExportTab(\'toss\')">📤 토스플레이스 내보내기</button>' +
+      '</div>' +
+      '<div id="exp-pane-barcode"' + (activeTab === 'barcode' ? '' : ' style="display:none;"') + '></div>' +
+      '<div id="exp-pane-toss"' + (activeTab === 'toss' ? '' : ' style="display:none;"') + '></div>';
+    if (activeTab === 'barcode') {
+      renderBarcodePage(document.getElementById('exp-pane-barcode'));
+    } else {
+      renderTossExport(document.getElementById('exp-pane-toss'));
+    }
+  }
+
+  window.switchExportTab = function(tab) {
+    window._exportActiveTab = tab;
+    var barcodePane = document.getElementById('exp-pane-barcode');
+    var tossPane = document.getElementById('exp-pane-toss');
+    var barcodeBtn = document.getElementById('exp-tab-barcode');
+    var tossBtn = document.getElementById('exp-tab-toss');
+    if (!barcodePane || !tossPane) return;
+    if (tab === 'barcode') {
+      barcodePane.style.display = '';
+      tossPane.style.display = 'none';
+      if (barcodeBtn) { barcodeBtn.classList.add('active'); }
+      if (tossBtn) { tossBtn.classList.remove('active'); }
+      if (!barcodePane.hasChildNodes() || barcodePane.innerHTML.trim() === '') {
+        renderBarcodePage(barcodePane);
+      }
+    } else {
+      barcodePane.style.display = 'none';
+      tossPane.style.display = '';
+      if (barcodeBtn) { barcodeBtn.classList.remove('active'); }
+      if (tossBtn) { tossBtn.classList.add('active'); }
+      if (!tossPane.hasChildNodes() || tossPane.innerHTML.trim() === '') {
+        renderTossExport(tossPane);
+      }
+    }
+  };
+
   function renderBarcodePage(container) {
     window._bcSelected = {};
     window._bcBrandNameMap = null;
@@ -10941,16 +10981,48 @@
       var h3 = ['이 열은 절대 수정하지 마세요 (새로 등록하는 상품이라면 비워두세요)','255자 내로 입력해주세요.','영문, 숫자 최대 50자까지 입력 가능해요.','입력한 카테고리가 생성돼요. 20자 내로 입력해주세요.','입력 안하면 고정 가격으로 등록돼요.','1~9자리 숫자만 입력 가능해요.','입력 안하면 과세로 등록돼요.','이미 포스에 등록된 바코드와 동일한 바코드를 등록할 수 없어요.','20자 내로 입력해주세요.','1-6자리 숫자만 입력 가능해요. (최대 999999)','입력 안하면 미노출로 등록돼요.','','','','','','','',''];
       var rows = [h1, h2, h3];
 
-      /* 재고 집계 (inventory_transactions) */
-      var invMap = {};
+      /* 재고 집계:
+         - 수량관리 SKU: sku.initial_stock (등록 시 입력한 초기 재고) + inventory_transactions 합산 (불용처리는 음수)
+         - 개체관리 unit: unit_status === '판매중' 이면 1, 아니면 0
+      */
+      var lossMap = {}; /* sku_id → 불용처리 합산 (음수) */
       try {
         var invSnap = await getDocs(collection(db, 'inventory_transactions'));
         invSnap.docs.forEach(function(d) {
           var data = d.data();
-          var id = data.unit_id || data.sku_id;
-          if (id) invMap[id] = (invMap[id] || 0) + (typeof data.quantity === 'number' ? data.quantity : 0);
+          if (data.sku_id) lossMap[data.sku_id] = (lossMap[data.sku_id] || 0) + (typeof data.quantity === 'number' ? data.quantity : 0);
         });
       } catch(e2) { /* 재고 조회 실패 시 0 처리 */ }
+
+      /* 선택된 수량관리 SKU들의 initial_stock 로드 */
+      var skuStockMap = {}; /* skuId → initial_stock */
+      var skuFetchSet = new Set();
+      keys.forEach(function(key) {
+        var item = selected[key];
+        if (!item.isUnit && item.productId && item.skuId) skuFetchSet.add(item.productId + '|' + item.skuId);
+      });
+      try {
+        await Promise.all(Array.from(skuFetchSet).map(async function(pkey) {
+          var parts = pkey.split('|');
+          var skuSnap = await getDoc(doc(db, 'products', parts[0], 'skus', parts[1]));
+          if (skuSnap.exists()) skuStockMap[parts[1]] = skuSnap.data().initial_stock || 0;
+        }));
+      } catch(e3) { /* 조회 실패 시 0 */ }
+
+      /* 선택된 개체의 unit_status 로드 */
+      var unitStatusMap = {}; /* unitId → unit_status */
+      var unitFetchSet = new Set();
+      keys.forEach(function(key) {
+        var item = selected[key];
+        if (item.isUnit && item.productId && item.skuId && item.unitId) unitFetchSet.add(item.productId + '|' + item.skuId + '|' + item.unitId);
+      });
+      try {
+        await Promise.all(Array.from(unitFetchSet).map(async function(ukey) {
+          var parts = ukey.split('|');
+          var uSnap = await getDoc(doc(db, 'products', parts[0], 'skus', parts[1], 'units', parts[2]));
+          if (uSnap.exists()) unitStatusMap[parts[2]] = uSnap.data().unit_status || '';
+        }));
+      } catch(e4) { /* 조회 실패 시 0 */ }
 
       keys.forEach(function(key) {
         var item = selected[key];
@@ -10958,8 +11030,16 @@
         var productName = item.productName || '';
         var optLabel = item.optLabel || '';
         var itemName = '[' + brandName + '] ' + productName + (optLabel ? '-' + optLabel : '') + (item.isUnit ? ' #' + (item.unitNumber || '') : '');
-        var invKey = item.isUnit ? (item.unitId || '') : (item.skuId || '');
-        var inv = item.isUnit ? Math.max(1, invMap[invKey] || 1) : (invMap[invKey] || 0);
+        var inv;
+        if (item.isUnit) {
+          /* 개체관리: 판매중이면 1, 아니면 0 */
+          inv = unitStatusMap[item.unitId] === '판매중' ? 1 : 0;
+        } else {
+          /* 수량관리: 초기 재고 + 불용처리(음수) 합산 */
+          var initialStock = skuStockMap[item.skuId] || 0;
+          var lossQty = lossMap[item.skuId] || 0;
+          inv = Math.max(0, initialStock + lossQty);
+        }
         rows.push([
           '',           // 상품 ID (신규 등록이므로 공란)
           itemName,     // 상품이름
