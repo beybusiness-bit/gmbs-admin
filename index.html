@@ -5776,6 +5776,16 @@
         '<tbody>' + skuRows + '</tbody></table></div>' +
         '<input type="file" id="sku-img-input" accept="image/*" style="display:none;" />';
 
+      // 불용 처리 이력 섹션
+      body +=
+        '<div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--gray-100);">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
+        '<div style="font-size:13px;font-weight:700;color:var(--gray-800);">불용 처리 이력</div>' +
+        '<button class="btn btn-secondary" style="font-size:12px;padding:4px 12px;color:#b45309;border-color:#fcd34d;" onclick="openLossModal(\'' + productId + '\')">⚠️ 불용 처리</button>' +
+        '</div>' +
+        '<div id="loss-history-section"><div style="font-size:12px;color:var(--gray-400);">이력 불러오는 중...</div></div>' +
+        '</div>';
+
       body += '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--gray-100);display:flex;align-items:center;gap:16px;">' +
         renderDocId(productId, '상품') +
         '<span style="font-size:11px;color:var(--gray-300);">등록일 ' + esc(p.created_at || '-') + '</span>' +
@@ -5788,7 +5798,14 @@
         '<button class="btn btn-danger" onclick="toggleProductStatus(\'' + productId + '\',\'' + p.status + '\')">' +
         (p.status === '판매중' ? '판매중지' : '판매 재개') + '</button>';
 
+      // 불용 처리 모달에서 쓸 전역 상태 저장
+      window._lossProductId = productId;
+      window._lossSkus = skus;
+      window._lossTrackingType = p.tracking_type;
+      window._lossProductName = p.product_name;
+
       showModal('상품 상세 — ' + esc(p.product_name), body, footerHTML, 'lg');
+      loadLossHistory(productId);
 
       /* SKU 이미지 업로드 핸들러 */
       window.uploadSkuImage = function(pid, sid) {
@@ -5817,6 +5834,238 @@
     } catch(e) {
       document.querySelector('#modal-container .modal-body').innerHTML =
         '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
+    }
+  };
+
+  /* ════════════════════════════════
+     불용 처리 (inventory_transactions)
+  ════════════════════════════════ */
+  const LOSS_REASONS = [
+    { value: '손상', label: '손상 (파손·오염 등)' },
+    { value: '도난', label: '도난 / 분실' },
+    { value: '판매중지-브랜드요청', label: '판매 중지 — 브랜드 요청' },
+    { value: '판매중지-가게요청', label: '판매 중지 — 가게 요청' },
+    { value: '기타', label: '기타 (메모 필수)' },
+  ];
+
+  // 사유 → 개체 상태 매핑
+  function lossReasonToUnitStatus(reason) {
+    return reason === '도난' ? '분실' : '폐기';
+  }
+
+  // 이력 로드 (상품 상세 내 섹션)
+  window.loadLossHistory = async function(productId) {
+    const sec = document.getElementById('loss-history-section');
+    if (!sec) return;
+    try {
+      const snap = await getDocs(
+        query(collection(db, 'inventory_transactions'),
+          where('product_id', '==', productId),
+          where('transaction_type', '==', '불용처리'))
+      );
+      if (snap.empty) {
+        sec.innerHTML = '<div style="font-size:12px;color:var(--gray-400);padding:8px 0;">처리 이력 없음</div>';
+        return;
+      }
+      const allDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+        .slice(0, 30);
+      const rows = allDocs.map(t => {
+        const qty = Math.abs(t.quantity || 0);
+        const unitsLabel = t.unit_numbers && t.unit_numbers.length
+          ? t.unit_numbers.map(n => '#' + n).join(', ')
+          : qty + '개';
+        const reasonLabel = (LOSS_REASONS.find(r => r.value === t.reason) || {}).label || t.reason || '-';
+        const date = (t.created_at || '').slice(0, 10);
+        return '<div style="display:grid;grid-template-columns:90px 1fr 1fr 1fr;gap:4px 12px;font-size:12px;padding:7px 0;border-bottom:1px solid var(--gray-100);align-items:center;">' +
+          '<span style="color:var(--gray-400);">' + esc(date) + '</span>' +
+          '<span style="font-family:monospace;color:var(--blue);font-size:11px;">' + esc(t.sku_id || '') + '</span>' +
+          '<span><span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-size:11px;">' + esc(reasonLabel) + '</span>' +
+          ' <span style="color:var(--gray-600);">' + esc(unitsLabel) + '</span>' +
+          (t.memo ? ' <span style="color:var(--gray-400);">— ' + esc(t.memo) + '</span>' : '') +
+          '</span>' +
+          '<span style="color:var(--gray-400);font-size:11px;">' + esc(t.processed_by || '') + '</span>' +
+          '</div>';
+      }).join('');
+      sec.innerHTML = '<div style="display:grid;grid-template-columns:90px 1fr 1fr 1fr;gap:0 12px;font-size:11px;color:var(--gray-400);padding-bottom:4px;border-bottom:1px solid var(--gray-200);margin-bottom:2px;">' +
+        '<span>날짜</span><span>SKU</span><span>사유 / 수량</span><span>처리자</span></div>' + rows;
+    } catch(e) {
+      if (sec) sec.innerHTML = '<div style="font-size:12px;color:var(--gray-400);">이력 로드 실패: ' + esc(e.message) + '</div>';
+    }
+  };
+
+  // 불용 처리 모달 열기
+  window.openLossModal = async function(productId) {
+    const skus = window._lossSkus || [];
+    const trackingType = window._lossTrackingType || 'quantity';
+    const isIndividual = (trackingType === 'individual' || trackingType === '개체관리');
+    const productName = window._lossProductName || productId;
+
+    const skuOptions = skus.map(s => {
+      const optLabel = s.option_number === '00' ? '옵션없음'
+        : [1,2,3].map(i => s['option_' + i + '_name'] ? s['option_' + i + '_value'] : '').filter(Boolean).join('/');
+      return '<option value="' + esc(s.id) + '">' + esc(s.id) + (optLabel !== '옵션없음' ? ' — ' + esc(optLabel) : '') + '</option>';
+    }).join('');
+
+    const reasonOptions = LOSS_REASONS.map(r =>
+      '<option value="' + esc(r.value) + '">' + esc(r.label) + '</option>'
+    ).join('');
+
+    const body =
+      '<div style="font-size:13px;color:var(--gray-500);margin-bottom:16px;">상품: <strong>' + esc(productName) + '</strong> · ' + (isIndividual ? '개체 관리' : '수량 관리') + '</div>' +
+      '<div class="form-group" style="margin-bottom:14px;">' +
+        '<label class="form-label">SKU (바코드) <span class="required">*</span></label>' +
+        '<select class="form-select" id="loss-sku-select" onchange="onLossSkuChange(\'' + productId + '\',this.value)">' +
+        '<option value="">— SKU 선택 —</option>' + skuOptions +
+        '</select>' +
+      '</div>' +
+      (isIndividual
+        ? '<div class="form-group" style="margin-bottom:14px;" id="loss-unit-area"><div style="font-size:12px;color:var(--gray-400);">SKU를 선택하면 판매중인 개체 목록이 표시됩니다.</div></div>'
+        : '<div class="form-group" style="margin-bottom:14px;"><label class="form-label">불용 수량 <span class="required">*</span></label>' +
+          '<input class="form-input" type="number" id="loss-qty" min="1" placeholder="처리할 수량 입력" /></div>') +
+      '<div class="form-group" style="margin-bottom:14px;">' +
+        '<label class="form-label">처리 사유 <span class="required">*</span></label>' +
+        '<select class="form-select" id="loss-reason" onchange="onLossReasonChange(this.value)">' +
+        '<option value="">— 선택 —</option>' + reasonOptions +
+        '</select>' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom:4px;">' +
+        '<label class="form-label" id="loss-memo-label">메모 <span style="color:var(--gray-400);font-weight:400;">(선택)</span></label>' +
+        '<textarea class="form-input" id="loss-memo" rows="2" placeholder="추가 설명 (선택)" style="resize:vertical;"></textarea>' +
+      '</div>';
+
+    const footer =
+      '<button class="btn btn-secondary" onclick="openProductDetail(\'' + productId + '\')">← 취소</button>' +
+      '<button class="btn btn-danger" onclick="saveLossRecord(\'' + productId + '\')">⚠️ 불용 처리 완료</button>';
+
+    showModal('불용 처리 — ' + esc(productName), body, footer, 'md');
+  };
+
+  // 사유 변경 시 메모 라벨 업데이트
+  window.onLossReasonChange = function(val) {
+    const label = document.getElementById('loss-memo-label');
+    if (!label) return;
+    if (val === '기타') {
+      label.innerHTML = '메모 <span style="color:var(--red);">*</span> <span style="color:var(--gray-400);font-weight:400;">(기타 선택 시 필수)</span>';
+    } else {
+      label.innerHTML = '메모 <span style="color:var(--gray-400);font-weight:400;">(선택)</span>';
+    }
+  };
+
+  // 개체관리: SKU 선택 시 판매중인 개체 체크박스 목록 로드
+  window.onLossSkuChange = async function(productId, skuId) {
+    const isIndividual = (window._lossTrackingType === 'individual' || window._lossTrackingType === '개체관리');
+    if (!isIndividual || !skuId) return;
+    const area = document.getElementById('loss-unit-area');
+    if (!area) return;
+    area.innerHTML = '<div style="font-size:12px;color:var(--gray-400);">개체 목록 불러오는 중...</div>';
+    try {
+      const snap = await getDocs(
+        query(collection(db, 'products', productId, 'skus', skuId, 'units'),
+          where('unit_status', '==', '판매중'))
+      );
+      const units = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.unit_number || '').localeCompare(b.unit_number || ''));
+      if (units.length === 0) {
+        area.innerHTML = '<div style="font-size:12px;color:var(--gray-400);padding:8px;">이 SKU에 판매중인 개체가 없습니다.</div>';
+        return;
+      }
+      const checkboxes = units.map(u =>
+        '<label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:13px;">' +
+        '<input type="checkbox" class="loss-unit-chk" value="' + esc(u.id) + '" data-unit-number="' + esc(u.unit_number) + '" style="accent-color:var(--red);" />' +
+        '<span style="font-family:monospace;font-size:12px;color:var(--blue);">' + esc(u.barcode_value) + '</span>' +
+        '<span style="color:var(--gray-500);">#' + esc(u.unit_number) + '</span>' +
+        '</label>'
+      ).join('');
+      area.innerHTML =
+        '<label class="form-label">처리할 개체 선택 <span class="required">*</span></label>' +
+        '<div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;padding:10px 14px;max-height:180px;overflow-y:auto;">' +
+        '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;color:var(--gray-500);cursor:pointer;border-bottom:1px solid var(--gray-100);margin-bottom:4px;">' +
+        '<input type="checkbox" id="loss-unit-select-all" onchange="toggleAllLossUnits(this.checked)" style="accent-color:var(--red);" /> 전체 선택' +
+        '</label>' +
+        checkboxes +
+        '</div>';
+    } catch(e) {
+      area.innerHTML = '<div style="font-size:12px;color:var(--red);">로드 실패: ' + esc(e.message) + '</div>';
+    }
+  };
+
+  window.toggleAllLossUnits = function(checked) {
+    document.querySelectorAll('.loss-unit-chk').forEach(chk => { chk.checked = checked; });
+  };
+
+  // 불용 처리 저장
+  window.saveLossRecord = async function(productId) {
+    const isIndividual = (window._lossTrackingType === 'individual' || window._lossTrackingType === '개체관리');
+    const skuId = (document.getElementById('loss-sku-select') || {}).value || '';
+    const reason = (document.getElementById('loss-reason') || {}).value || '';
+    const memo = (document.getElementById('loss-memo') || {}).value.trim();
+
+    if (!skuId) { showToast('SKU를 선택해주세요.', 'error'); return; }
+    if (!reason) { showToast('처리 사유를 선택해주세요.', 'error'); return; }
+    if (reason === '기타' && !memo) { showToast('기타 선택 시 메모를 입력해주세요.', 'error'); return; }
+
+    let quantity = 0;
+    let unitIds = [];
+    let unitNumbers = [];
+
+    if (isIndividual) {
+      const checked = document.querySelectorAll('.loss-unit-chk:checked');
+      if (checked.length === 0) { showToast('처리할 개체를 하나 이상 선택해주세요.', 'error'); return; }
+      checked.forEach(chk => {
+        unitIds.push(chk.value);
+        unitNumbers.push(chk.dataset.unitNumber || '');
+      });
+      quantity = -unitIds.length;
+    } else {
+      const qtyEl = document.getElementById('loss-qty');
+      const qtyVal = parseInt((qtyEl || {}).value || '0');
+      if (!qtyVal || qtyVal <= 0) { showToast('불용 수량을 입력해주세요.', 'error'); return; }
+      quantity = -qtyVal;
+    }
+
+    const confirmed = confirm(
+      '[불용 처리 확인]\n\n' +
+      'SKU: ' + skuId + '\n' +
+      '사유: ' + reason + '\n' +
+      (isIndividual ? '개체: ' + unitNumbers.map(n => '#' + n).join(', ') : '수량: ' + Math.abs(quantity) + '개') + '\n\n' +
+      '처리 후 재고에서 차감됩니다. 계속하시겠습니까?'
+    );
+    if (!confirmed) return;
+
+    try {
+      const now = new Date().toISOString();
+      const actorEmail = (window._currentUser && window._currentUser.email) || 'admin';
+
+      // inventory_transactions 기록
+      await addDoc(collection(db, 'inventory_transactions'), {
+        product_id: productId,
+        sku_id: skuId,
+        transaction_type: '불용처리',
+        quantity,
+        reason,
+        memo: memo || '',
+        unit_ids: isIndividual ? unitIds : null,
+        unit_numbers: isIndividual ? unitNumbers : null,
+        processed_by: actorEmail,
+        created_at: now,
+      });
+
+      // 개체관리: 선택된 개체들의 unit_status 변경
+      if (isIndividual && unitIds.length > 0) {
+        const newStatus = lossReasonToUnitStatus(reason);
+        await Promise.all(unitIds.map(uid =>
+          updateDoc(doc(db, 'products', productId, 'skus', skuId, 'units', uid), {
+            unit_status: newStatus,
+            updated_at: now,
+          })
+        ));
+      }
+
+      showToast('불용 처리가 완료됐습니다.', 'success');
+      await openProductDetail(productId);
+    } catch(e) {
+      showToast('처리 실패: ' + e.message, 'error');
     }
   };
 
