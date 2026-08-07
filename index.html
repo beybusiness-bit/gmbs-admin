@@ -6501,15 +6501,20 @@
           const baseSkuPrice = sku.price || 0;
           const extraPrice = u.unit_extra_price != null ? u.unit_extra_price : '';
           const finalPrice = extraPrice !== '' ? (baseSkuPrice + Number(extraPrice)) : baseSkuPrice;
+          const finalId = 'unit-final-' + u.id;
           return '<tr>' +
           '<td style="padding:6px 8px;">' + uThumb + '</td>' +
           '<td class="td-code" style="font-size:12px;">' + esc(u.barcode_value) + '</td>' +
           '<td style="font-size:13px;color:var(--gray-500);">' + esc(u.unit_number) + '</td>' +
-          '<td style="font-size:12px;white-space:nowrap;">' +
-          '<input type="number" value="' + (extraPrice !== '' ? extraPrice : '') + '" placeholder="0" ' +
-          'style="width:70px;border:1px solid var(--gray-200);border-radius:6px;padding:3px 6px;font-size:12px;" ' +
+          '<td style="font-size:12px;">' +
+          '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
+          '<span style="color:var(--gray-400);font-size:11px;white-space:nowrap;">' + baseSkuPrice.toLocaleString() + '원 +</span>' +
+          '<input type="number" value="' + (extraPrice !== '' ? extraPrice : '0') + '" placeholder="0" ' +
+          'style="width:80px;border:1px solid var(--gray-200);border-radius:6px;padding:3px 6px;font-size:12px;" ' +
+          'oninput="(function(el,fid,bp){var a=parseInt(el.value)||0;document.getElementById(fid).textContent=\'= \'+(bp+a).toLocaleString()+\'원\';})(this,\'' + finalId + '\',' + baseSkuPrice + ')" ' +
           'onchange="saveUnitExtraPrice(\'' + productId + '\',\'' + skuId + '\',\'' + u.id + '\',this.value)" />' +
-          '<span style="color:var(--gray-400);font-size:11px;margin-left:4px;">= ' + finalPrice.toLocaleString() + '원</span>' +
+          '<span id="' + finalId + '" style="color:var(--gray-600);font-size:12px;font-weight:600;white-space:nowrap;">= ' + finalPrice.toLocaleString() + '원</span>' +
+          '</div>' +
           '</td>' +
           '<td><span class="badge ' + (statusColors[u.unit_status] || 'badge-gray') + '">' + esc(u.unit_status) + '</span></td>' +
           '<td><select onchange="changeUnitStatus(\'' + productId + '\',\'' + skuId + '\',\'' + u.id + '\',this.value)" ' +
@@ -6529,7 +6534,7 @@
         '<button class="btn btn-primary" style="padding:6px 14px;font-size:13px;" onclick="addUnitsToSku(\'' + productId + '\',\'' + skuId + '\')">➕ 개체 추가</button>' +
         '</div></div>' +
         '<div class="table-wrap"><table>' +
-        '<thead><tr><th style="width:40px;"></th><th>개체 바코드</th><th>개체번호</th><th>추가 가격 (기본가+추가=최종)</th><th>상태</th><th>상태 변경</th></tr></thead>' +
+        '<thead><tr><th style="width:40px;"></th><th>개체 바코드</th><th>개체번호</th><th>개체 판매가 <span style="font-weight:400;font-size:11px;color:var(--gray-400);">(기본가 ' + (sku.price||0).toLocaleString() + '원 · 개체별 조정 가능)</span></th><th>상태</th><th>상태 변경</th></tr></thead>' +
         '<tbody>' + unitRows + '</tbody></table></div>' +
         '<input type="file" id="unit-img-input" accept="image/*" style="display:none;" />';
 
