@@ -5627,7 +5627,7 @@
         '<div class="card"><div class="table-wrap"><table id="pl-table">' +
         '<thead><tr>' +
         '<th style="width:36px;padding-left:16px;"><input type="checkbox" id="pl-chk-all" onchange="toggleAllProducts(this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></th>' +
-        '<th style="width:80px;"></th><th>상품 ID</th><th>브랜드</th><th>상품명</th><th>관리방식</th><th>판매가</th><th>승인상태</th><th>등록일</th>' +
+        '<th style="width:80px;"></th><th>상품 ID</th><th>브랜드</th><th>상품명</th><th>관리방식</th><th>재고</th><th>판매가</th><th>승인상태</th><th>등록일</th>' +
         '</tr></thead>' +
         '<tbody id="pl-tbody"></tbody></table></div></div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">' +
@@ -5721,13 +5721,18 @@
     if (!tbody) return;
 
     if (pageItems.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--gray-400);padding:32px;">검색 결과가 없습니다.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--gray-400);padding:32px;">검색 결과가 없습니다.</td></tr>';
     } else {
       tbody.innerHTML = pageItems.map(p => {
         const thumb = p.image_url
           ? '<img src="' + esc(p.image_url) + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);cursor:zoom-in;" onclick="openLightbox(\'' + esc(p.image_url) + '\',\'' + esc(p.product_name) + '\')" title="클릭해서 크게 보기" />'
           : '<div style="width:72px;height:72px;border-radius:8px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:22px;">📦</div>';
         const checked = (window._productSelected || new Set()).has(p.id) ? ' checked' : '';
+        const stockBtnStyle = 'display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border:1px solid var(--gray-200);border-radius:6px;background:#fff;font-size:11px;color:var(--gray-600);cursor:pointer;white-space:nowrap;';
+        const stockCell = '<td onclick="event.stopPropagation()">' +
+          '<div id="pl-stock-' + p.id + '" style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--gray-600);">' +
+          '<button style="' + stockBtnStyle + '" onclick="loadPlStock(\'' + p.id + '\')" title="클릭해서 재고 확인">📦 재고 확인</button>' +
+          '</div></td>';
         return '<tr style="cursor:pointer;" onclick="openProductDetail(\'' + p.id + '\')">' +
         '<td style="padding-left:16px;" onclick="event.stopPropagation()"><input type="checkbox" id="pl-chk-' + p.id + '"' + checked + ' onchange="toggleProductSelect(\'' + p.id + '\',this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></td>' +
         '<td style="padding:8px;">' + thumb + '</td>' +
@@ -5735,6 +5740,7 @@
         '<td>' + esc(p.brand_name || p.brand_code) + '</td>' +
         '<td style="font-weight:600;">' + esc(p.product_name) + '</td>' +
         '<td>' + (trackingLabel[p.tracking_type] || p.tracking_type) + '</td>' +
+        stockCell +
         '<td>' + (p.base_price || 0).toLocaleString() + '원</td>' +
         '<td>' + (approvalLabel[p.approval_status] || '<span class="badge badge-gray">미설정</span>') + '</td>' +
         '<td style="color:var(--gray-400);font-size:12px;">' + (p.created_at ? p.created_at.slice(0,10) : '-') + '</td>' +
@@ -5784,6 +5790,7 @@
       skus.sort((a, b) => (a.option_sort_order ?? 99) - (b.option_sort_order ?? 99));
       const pc = p.pending_changes || null;
 
+      const isIndividualProduct = p.tracking_type === 'individual' || p.tracking_type === '개체관리';
       const skuRows = skus.map(s => {
         const optLabel = s.option_number === '00' ? '옵션 없음'
           : [1,2,3].map(i => s['option_' + i + '_name'] ? s['option_' + i + '_name'] + ': ' + s['option_' + i + '_value'] : '').filter(Boolean).join(' / ');
@@ -5793,13 +5800,17 @@
             '<button onclick="uploadSkuImage(\'' + productId + '\',\'' + s.id + '\')" style="position:absolute;bottom:0;right:0;width:16px;height:16px;border:none;background:rgba(0,0,0,.55);color:#fff;border-radius:2px;cursor:pointer;font-size:9px;line-height:1;padding:0;" title="사진 변경">📷</button>' +
             '</div>'
           : '<button onclick="uploadSkuImage(\'' + productId + '\',\'' + s.id + '\')" style="width:44px;height:44px;border:1px dashed var(--gray-300);border-radius:4px;background:var(--gray-50);cursor:pointer;font-size:14px;" title="사진 추가">📷</button>';
+        const stockCell = isIndividualProduct
+          ? '<td><span id="detail-stock-' + s.id + '" style="font-size:12px;color:var(--gray-500);">로드 중...</span></td>'
+          : '<td><div style="display:flex;align-items:center;gap:6px;"><span id="detail-stock-' + s.id + '" style="font-size:13px;font-weight:600;color:var(--gray-700);">-</span><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;white-space:nowrap;" onclick="openStockAdjModal(\'' + productId + '\',\'' + s.id + '\',\'' + esc(optLabel) + '\')">재고 조정</button></div></td>';
         return '<tr>' +
           '<td style="padding:6px 8px;">' + skuThumb + '</td>' +
           '<td class="td-code" style="font-size:12px;">' + esc(s.barcode_value) + '</td>' +
           '<td style="font-size:13px;">' + esc(optLabel) + '</td>' +
           '<td>' + (s.price || p.base_price || 0).toLocaleString() + '원</td>' +
           '<td><span class="badge ' + (s.sku_status === '판매중' ? 'badge-green' : 'badge-gray') + '">' + esc(s.sku_status) + '</span></td>' +
-          ((p.tracking_type === 'individual' || p.tracking_type === '개체관리') ? '<td><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;" onclick="openUnitList(\'' + productId + '\',\'' + s.id + '\')">개체 보기</button></td>' : '') +
+          stockCell +
+          (isIndividualProduct ? '<td><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;" onclick="openUnitList(\'' + productId + '\',\'' + s.id + '\')">개체 보기</button></td>' : '') +
           '</tr>';
       }).join('');
 
@@ -5814,10 +5825,11 @@
         '판매중지': '<span class="badge badge-gray">판매중지</span>'
       }[s] || '<span class="badge badge-gray">미설정</span>');
 
+      const approvalBtnLabel = (p.approval_status && p.approval_status !== '승인대기') ? '상태 변경' : '심사';
       const approvalRow = p.approval_status
         ? row('승인 상태', approvalBadge(p.approval_status) +
             (p.rejection_reason ? ' <span style="font-size:12px;color:var(--gray-500);">— ' + esc(p.rejection_reason) + '</span>' : '') +
-            ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openApprovalModal(\'' + productId + '\',\'' + esc(p.approval_status) + '\')">심사</button>')
+            ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openApprovalModal(\'' + productId + '\',\'' + esc(p.approval_status) + '\')">' + approvalBtnLabel + '</button>')
         : row('승인 상태', '<span class="badge badge-gray">미설정</span>' +
             ' <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="openApprovalModal(\'' + productId + '\',\'\')">심사</button>');
 
@@ -5869,6 +5881,7 @@
         '</div>' +
         '<div class="table-wrap"><table>' +
         '<thead><tr><th style="width:40px;"></th><th>바코드</th><th>옵션</th><th>판매가</th><th>상태</th>' +
+        '<th>재고</th>' +
         ((p.tracking_type === 'individual' || p.tracking_type === '개체관리') ? '<th></th>' : '') + '</tr></thead>' +
         '<tbody>' + skuRows + '</tbody></table></div>' +
         '<input type="file" id="sku-img-input" accept="image/*" style="display:none;" />';
@@ -5903,6 +5916,7 @@
 
       showModal('상품 상세 — ' + esc(p.product_name), body, footerHTML, 'lg');
       loadLossHistory(productId);
+      loadDetailStock(productId, skus, p.tracking_type);
 
       /* SKU 이미지 업로드 핸들러 */
       window.uploadSkuImage = function(pid, sid) {
@@ -5931,6 +5945,193 @@
     } catch(e) {
       document.querySelector('#modal-container .modal-body').innerHTML =
         '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + e.message + '</div></div>';
+    }
+  };
+
+  /* ════════════════════════════════
+     재고 조회 / 조정 헬퍼
+  ════════════════════════════════ */
+
+  // 재고 계산 공통 함수: sku_id → 현재 재고 (initial_stock + 불용처리 합산)
+  async function calcSkuStock(skuId, productId) {
+    const skuSnap = await getDoc(doc(db, 'products', productId, 'skus', skuId));
+    const initialStock = skuSnap.exists() ? (skuSnap.data().initial_stock || 0) : 0;
+    const txSnap = await getDocs(query(
+      collection(db, 'inventory_transactions'),
+      where('sku_id', '==', skuId),
+      where('product_id', '==', productId)
+    ));
+    let txSum = 0;
+    txSnap.forEach(d => { txSum += (d.data().quantity || 0); });
+    return Math.max(0, initialStock + txSum);
+  }
+
+  // 상품 상세 모달 내 재고 칸 로드
+  async function loadDetailStock(productId, skus, trackingType) {
+    const isIndividual = trackingType === 'individual' || trackingType === '개체관리';
+    for (const s of skus) {
+      const el = document.getElementById('detail-stock-' + s.id);
+      if (!el) continue;
+      try {
+        if (isIndividual) {
+          // 개체관리: 판매중 개체 수
+          const unitsSnap = await getDocs(
+            query(collection(db, 'products', productId, 'skus', s.id, 'units'),
+              where('unit_status', '==', '판매중'))
+          );
+          el.textContent = unitsSnap.size + '개';
+        } else {
+          const stock = await calcSkuStock(s.id, productId);
+          el.textContent = stock + '개';
+        }
+      } catch(e) { el.textContent = '?'; }
+    }
+  }
+
+  // 상품 목록에서 재고 빠른 확인
+  window.loadPlStock = async function(productId) {
+    const container = document.getElementById('pl-stock-' + productId);
+    if (!container) return;
+    container.innerHTML = '<span style="font-size:11px;color:var(--gray-400);">로드 중...</span>';
+    try {
+      const pSnap = await getDoc(doc(db, 'products', productId));
+      if (!pSnap.exists()) { container.innerHTML = '-'; return; }
+      const p = pSnap.data();
+      const isIndividual = p.tracking_type === 'individual' || p.tracking_type === '개체관리';
+      const skusSnap = await getDocs(collection(db, 'products', productId, 'skus'));
+      const skus = skusSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (!skus.length) { container.innerHTML = '<span style="font-size:11px;color:var(--gray-400);">SKU 없음</span>'; return; }
+
+      let rows = '';
+      for (const s of skus) {
+        const optLabel = s.option_number === '00' ? '옵션없음'
+          : [1,2,3].map(i => s['option_' + i + '_name'] ? s['option_' + i + '_value'] : '').filter(Boolean).join('/');
+        let stock;
+        if (isIndividual) {
+          const uSnap = await getDocs(query(
+            collection(db, 'products', productId, 'skus', s.id, 'units'),
+            where('unit_status', '==', '판매중')
+          ));
+          stock = uSnap.size;
+        } else {
+          stock = await calcSkuStock(s.id, productId);
+        }
+        const adjBtn = isIndividual ? ''
+          : '<button style="margin-left:6px;padding:1px 7px;border:1px solid var(--gray-300);border-radius:5px;background:#fff;font-size:10px;cursor:pointer;color:var(--gray-600);" onclick="openStockAdjModal(\'' + productId + '\',\'' + s.id + '\',\'' + esc(optLabel) + '\')">조정</button>';
+        rows += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px;">' +
+          '<span style="color:var(--gray-400);min-width:60px;font-size:11px;">' + esc(s.id) + '</span>' +
+          '<span style="color:var(--gray-500);min-width:60px;">' + esc(optLabel) + '</span>' +
+          '<span style="font-weight:700;color:' + (stock === 0 ? 'var(--red)' : 'var(--gray-800)') + ';">' + stock + '개</span>' +
+          adjBtn +
+          '</div>';
+      }
+      container.innerHTML = '<div style="padding:4px 0;">' + rows + '</div>';
+    } catch(e) {
+      container.innerHTML = '<span style="font-size:11px;color:var(--red);">오류: ' + esc(e.message) + '</span>';
+    }
+  };
+
+  // 재고 조정 모달 열기
+  window.openStockAdjModal = function(productId, skuId, optLabel) {
+    const body =
+      '<div style="margin-bottom:14px;">' +
+      '<div style="font-size:12px;color:var(--gray-400);margin-bottom:4px;">SKU</div>' +
+      '<div style="font-size:13px;font-weight:600;">' + esc(skuId) + ' <span style="font-weight:400;color:var(--gray-500);">(' + esc(optLabel) + ')</span></div>' +
+      '</div>' +
+      '<div style="margin-bottom:14px;">' +
+      '<label style="font-size:12px;color:var(--gray-600);display:block;margin-bottom:6px;">조정 유형</label>' +
+      '<div style="display:flex;gap:8px;">' +
+      '<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="adj-type" value="입고" checked /> 📦 입고 (재고 증가)</label>' +
+      '<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="adj-type" value="출고" /> 📤 출고 (재고 감소)</label>' +
+      '<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="adj-type" value="조정" /> ✏️ 직접 조정</label>' +
+      '</div>' +
+      '</div>' +
+      '<div style="margin-bottom:14px;">' +
+      '<label style="font-size:12px;color:var(--gray-600);display:block;margin-bottom:6px;" id="adj-qty-label">수량</label>' +
+      '<input type="number" id="adj-qty" min="0" value="1" style="width:100px;padding:6px 10px;border:1px solid var(--gray-200);border-radius:6px;font-size:14px;" oninput="updateAdjLabel()" />' +
+      '<span style="font-size:12px;color:var(--gray-400);margin-left:8px;" id="adj-qty-hint"></span>' +
+      '</div>' +
+      '<div style="margin-bottom:4px;">' +
+      '<label style="font-size:12px;color:var(--gray-600);display:block;margin-bottom:6px;">메모 (선택)</label>' +
+      '<input type="text" id="adj-memo" placeholder="예: 매장 수령, 손상으로 인한 차감 등" style="width:100%;padding:6px 10px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;box-sizing:border-box;" />' +
+      '</div>';
+
+    const footer =
+      '<button class="btn btn-secondary" onclick="closeModal()">취소</button>' +
+      '<button class="btn btn-primary" onclick="saveStockAdjustment(\'' + productId + '\',\'' + skuId + '\',\'' + esc(optLabel) + '\')">저장</button>';
+
+    showModal('재고 조정', body, footer, 'sm');
+
+    // 라디오 변경 시 레이블 갱신
+    document.querySelectorAll('input[name="adj-type"]').forEach(r => {
+      r.addEventListener('change', function() { updateAdjLabel(); });
+    });
+    updateAdjLabel();
+  };
+
+  window.updateAdjLabel = function() {
+    const typeEl = document.querySelector('input[name="adj-type"]:checked');
+    const label = document.getElementById('adj-qty-label');
+    const hint = document.getElementById('adj-qty-hint');
+    if (!typeEl || !label) return;
+    const t = typeEl.value;
+    if (t === '입고') { label.textContent = '입고 수량'; if (hint) hint.textContent = '현재 재고에 더해집니다.'; }
+    else if (t === '출고') { label.textContent = '출고 수량'; if (hint) hint.textContent = '현재 재고에서 빠집니다.'; }
+    else { label.textContent = '목표 재고 수량'; if (hint) hint.textContent = '입력한 수치로 재고를 맞춥니다.'; }
+  };
+
+  // 재고 조정 저장
+  window.saveStockAdjustment = async function(productId, skuId, optLabel) {
+    const typeEl = document.querySelector('input[name="adj-type"]:checked');
+    const qtyEl = document.getElementById('adj-qty');
+    const memoEl = document.getElementById('adj-memo');
+    if (!typeEl || !qtyEl) return;
+    const adjType = typeEl.value;
+    const qtyInput = parseInt(qtyEl.value, 10);
+    const memo = memoEl ? memoEl.value.trim() : '';
+    if (isNaN(qtyInput) || qtyInput < 0) { showToast('수량을 올바르게 입력해주세요.', 'error'); return; }
+
+    try {
+      const now = new Date().toISOString();
+      let quantity; // inventory_transactions에 기록할 수량 (양수=입고, 음수=출고)
+
+      if (adjType === '입고') {
+        quantity = qtyInput;
+      } else if (adjType === '출고') {
+        quantity = -qtyInput;
+      } else {
+        // 직접 조정: 현재 재고와 목표 수량의 차이를 계산
+        const currentStock = await calcSkuStock(skuId, productId);
+        quantity = qtyInput - currentStock;
+      }
+
+      if (quantity === 0) { showToast('변경 사항이 없습니다.', 'info'); closeModal(); return; }
+
+      await addDoc(collection(db, 'inventory_transactions'), {
+        product_id: productId,
+        sku_id: skuId,
+        quantity: quantity,
+        transaction_type: adjType === '불용처리' ? '불용처리' : adjType,
+        memo: memo,
+        processed_by: (auth.currentUser && auth.currentUser.email) || '',
+        created_at: now
+      });
+
+      showToast('재고가 조정됐습니다.', 'success');
+      closeModal();
+
+      // 목록에서 열려 있는 재고 칸이 있으면 갱신
+      const plContainer = document.getElementById('pl-stock-' + productId);
+      if (plContainer) loadPlStock(productId);
+
+      // 상세 모달이 열려 있으면 해당 span 갱신
+      const detailEl = document.getElementById('detail-stock-' + skuId);
+      if (detailEl) {
+        const stock = await calcSkuStock(skuId, productId);
+        detailEl.textContent = stock + '개';
+      }
+    } catch(e) {
+      showToast('저장 실패: ' + e.message, 'error');
     }
   };
 
