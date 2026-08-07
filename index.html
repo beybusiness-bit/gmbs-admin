@@ -240,11 +240,11 @@
     @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
     /* ── 바코드 라벨 ── */
-    .barcode-label { background:#fff; border:1px solid #ddd; border-radius:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:6px 8px; gap:2px; box-sizing:border-box; }
-    .label-brand { font-size:9px; color:#666; font-weight:600; text-align:center; }
-    .label-product { font-size:10px; font-weight:700; text-align:center; line-height:1.2; }
-    .label-price { font-size:9px; color:#333; text-align:center; }
-    .label-code { font-size:8px; font-family:monospace; color:#555; text-align:center; margin-top:2px; }
+    .barcode-label { background:#fff; border:1px solid #ddd; border-radius:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:4px 6px; gap:1px; box-sizing:border-box; overflow:hidden; }
+    .label-brand { font-size:9px; color:#666; font-weight:600; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+    .label-product { font-size:10px; font-weight:700; text-align:center; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+    .label-price { font-size:9px; color:#333; text-align:center; white-space:nowrap; }
+    .label-code { font-size:8px; font-family:monospace; color:#555; text-align:center; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
     .label-svg { max-width:100%; }
     .bc-action-bar { position:sticky; bottom:16px; background:#fff; border:1px solid var(--gray-200); border-radius:12px; padding:12px 20px; box-shadow:0 4px 20px rgba(0,0,0,0.12); display:flex; align-items:center; gap:10px; margin-top:20px; }
     .label-preview-grid { display:flex; flex-wrap:wrap; gap:12px; padding:8px; }
@@ -1418,16 +1418,16 @@
       if (vis.length === 1) {
         html += labelItemHTML(item, vis[0], idPrefix, i, 'center');
       } else if (vis.length === 2) {
-        html += '<div style="display:flex;width:100%;align-items:baseline;">' +
-          '<div style="flex:1;">' + labelItemHTML(item, vis[0], idPrefix, i, 'left') + '</div>' +
-          '<div style="flex:1;">' + labelItemHTML(item, vis[1], idPrefix, i, 'right') + '</div>' +
+        html += '<div style="display:flex;width:100%;align-items:baseline;gap:2px;overflow:hidden;">' +
+          '<div style="flex:1;min-width:0;overflow:hidden;">' + labelItemHTML(item, vis[0], idPrefix, i, 'left') + '</div>' +
+          '<div style="flex:1;min-width:0;overflow:hidden;">' + labelItemHTML(item, vis[1], idPrefix, i, 'right') + '</div>' +
           '</div>';
       } else {
         /* 3개: 좌/중/우 */
-        html += '<div style="display:flex;width:100%;align-items:baseline;">' +
-          '<div style="flex:1;">' + labelItemHTML(item, vis[0], idPrefix, i, 'left') + '</div>' +
-          '<div style="flex:1;">' + labelItemHTML(item, vis[1], idPrefix, i, 'center') + '</div>' +
-          '<div style="flex:1;">' + labelItemHTML(item, vis[2], idPrefix, i, 'right') + '</div>' +
+        html += '<div style="display:flex;width:100%;align-items:baseline;gap:2px;overflow:hidden;">' +
+          '<div style="flex:1;min-width:0;overflow:hidden;">' + labelItemHTML(item, vis[0], idPrefix, i, 'left') + '</div>' +
+          '<div style="flex:1;min-width:0;overflow:hidden;">' + labelItemHTML(item, vis[1], idPrefix, i, 'center') + '</div>' +
+          '<div style="flex:1;min-width:0;overflow:hidden;">' + labelItemHTML(item, vis[2], idPrefix, i, 'right') + '</div>' +
           '</div>';
       }
     });
@@ -1653,6 +1653,7 @@
     const lh = document.getElementById('lbl-h');
     if (lw) lw.value = preset.size.w;
     if (lh) lh.value = preset.size.h;
+    setLabelCols(preset.cols || 1);
     renderLayoutEditor();
     rerenderLabels();
     showToast('프리셋 "' + preset.name + '" 불러오기 완료', 'success');
@@ -1665,7 +1666,7 @@
     const lw = parseInt((document.getElementById('lbl-w')||{}).value || window._labelSize.w, 10);
     const lh = parseInt((document.getElementById('lbl-h')||{}).value || window._labelSize.h, 10);
     const presets = getLabelPresets().filter(function(p) { return p.name !== n; });
-    presets.push({ name: n, layout: JSON.parse(JSON.stringify(window._labelLines)), size: { w:lw, h:lh } });
+    presets.push({ name: n, layout: JSON.parse(JSON.stringify(window._labelLines)), size: { w:lw, h:lh }, cols: window._labelCols || 1 });
     saveLabelPresetsStore(presets);
     /* 셀렉터 새로고침 */
     const sel = document.getElementById('lbl-preset-sel');
