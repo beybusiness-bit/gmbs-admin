@@ -7064,9 +7064,11 @@
       '</div>',
       '</div>',
       '<div id="stock-toggle-wrap" style="">',
-      '<div class="form-group" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;">',
-      '<div style="font-weight:600;font-size:13px;color:#15803d;margin-bottom:4px;">📦 초기 재고</div>',
-      '<div style="font-size:11px;color:var(--gray-500);">아래 옵션 조합 확인 단계에서 SKU별 초기 재고 수량을 입력할 수 있습니다.</div>',
+      '<div class="form-group">',
+      '<label class="form-label">📦 초기 재고 <span id="stock-input-hint" style="font-size:11px;font-weight:400;color:var(--gray-400);">옵션이 있으면 아래 조합 테이블에서 입력</span></label>',
+      '<div id="stock-no-option-wrap">',
+      '<input type="number" id="p-initial-stock" min="0" value="0" placeholder="0" style="width:120px;padding:8px 12px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;" /> <span style="font-size:13px;color:var(--gray-500);">개</span>',
+      '</div>',
       '</div>',
       '</div>',
       '<div class="form-group">',
@@ -7260,17 +7262,25 @@
     });
 
     /* 옵션 모드 라디오 */
+    function syncStockInputVisibility(isNone) {
+      var wrap = document.getElementById('stock-no-option-wrap');
+      var hint = document.getElementById('stock-input-hint');
+      if (wrap) wrap.style.display = isNone ? '' : 'none';
+      if (hint) hint.style.display = isNone ? 'none' : '';
+    }
     document.getElementById('p-opt-none').addEventListener('change', () => {
       document.getElementById('opt-builder').style.display = 'none';
       document.getElementById('combo-section').style.display = 'none';
       document.getElementById('lbl-no-opt').style.borderColor = 'var(--blue)';
       document.getElementById('lbl-has-opt').style.borderColor = 'var(--gray-300)';
+      syncStockInputVisibility(true);
     });
     document.getElementById('p-opt-has').addEventListener('change', () => {
       document.getElementById('opt-builder').style.display = '';
       document.getElementById('lbl-no-opt').style.borderColor = 'var(--gray-300)';
       document.getElementById('lbl-has-opt').style.borderColor = 'var(--blue)';
       rebuildCombos();
+      syncStockInputVisibility(false);
     });
 
   }
@@ -7459,7 +7469,8 @@
 
     let skus = [];
     if (optionMode === 'none') {
-      skus = [{ option_number: '00', label: '옵션 없음', price: basePrice, axisNames: [], values: [] }];
+      const noOptStock = parseInt((document.getElementById('p-initial-stock') || {}).value || '0') || 0;
+      skus = [{ option_number: '00', label: '옵션 없음', price: basePrice, axisNames: [], values: [], initialStock: noOptStock }];
     } else {
       if (!window._combos || window._combos.length === 0) { showToast('옵션값을 입력하고 엔터를 눌러 조합을 만들어주세요.', 'error'); return; }
       skus = window._combos.map(c => ({
@@ -7467,7 +7478,8 @@
         label: c.axisNames.map((n, j) => n + ': ' + c.values[j]).join(' / '),
         price: parseInt(c.price) || basePrice,
         axisNames: c.axisNames || [],
-        values: c.values || []
+        values: c.values || [],
+        initialStock: c.initialStock || 0
       }));
     }
 
