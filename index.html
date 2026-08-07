@@ -241,10 +241,10 @@
 
     /* ── 바코드 라벨 ── */
     .barcode-label { background:#fff; border:1px solid #ddd; border-radius:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2px 3px; gap:0; box-sizing:border-box; overflow:hidden; }
-    .label-brand { font-size:9px; color:#444; font-weight:600; text-align:center; white-space:nowrap; max-width:100%; line-height:1.2; }
-    .label-product { font-size:10px; font-weight:700; text-align:center; line-height:1.2; white-space:nowrap; max-width:100%; }
-    .label-price { font-size:9px; color:#333; text-align:center; white-space:nowrap; line-height:1.2; }
-    .label-code { font-size:8px; font-family:monospace; color:#555; text-align:center; white-space:nowrap; max-width:100%; line-height:1.2; }
+    .label-brand { font-size:9px; color:#000; font-weight:600; text-align:center; white-space:nowrap; max-width:100%; line-height:1.2; }
+    .label-product { font-size:10px; font-weight:700; color:#000; text-align:center; line-height:1.2; white-space:nowrap; max-width:100%; }
+    .label-price { font-size:9px; color:#000; text-align:center; white-space:nowrap; line-height:1.2; }
+    .label-code { font-size:8px; font-family:monospace; color:#000; text-align:center; white-space:nowrap; max-width:100%; line-height:1.2; }
     .label-svg { max-width:100%; }
     .bc-action-bar { position:sticky; bottom:16px; background:#fff; border:1px solid var(--gray-200); border-radius:12px; padding:12px 20px; box-shadow:0 4px 20px rgba(0,0,0,0.12); display:flex; align-items:center; gap:10px; margin-top:20px; }
     .label-preview-grid { display:flex; flex-wrap:wrap; gap:12px; padding:8px; }
@@ -1447,11 +1447,11 @@
     ctx.textAlign = align === 'right' ? 'right' : align === 'left' ? 'left' : 'center';
 
     if ((cell.id === 'brandcode') && item.brandCode) {
-      ctx.font = '600 9px sans-serif'; ctx.fillStyle = '#444';
+      ctx.font = '600 9px sans-serif'; ctx.fillStyle = '#000';
       ctx.fillText(String(item.brandCode), cx, y + 9); return 12;
     }
     if (cell.id === 'brand' && item.brandName) {
-      ctx.font = '600 9px sans-serif'; ctx.fillStyle = '#444';
+      ctx.font = '600 9px sans-serif'; ctx.fillStyle = '#000';
       ctx.fillText(String(item.brandName), cx, y + 9); return 12;
     }
     if (cell.id === 'product' && item.productName) {
@@ -1459,11 +1459,11 @@
       ctx.fillText(String(item.productName), cx, y + 11); return 14;
     }
     if (cell.id === 'option' && item.optLabel && item.optLabel !== '옵션 없음' && !item.optLabel.startsWith('옵션 없음')) {
-      ctx.font = '9px sans-serif'; ctx.fillStyle = '#444';
+      ctx.font = '9px sans-serif'; ctx.fillStyle = '#000';
       ctx.fillText(String(item.optLabel), cx, y + 9); return 12;
     }
     if (cell.id === 'price' && item.price) {
-      ctx.font = '9px sans-serif'; ctx.fillStyle = '#222';
+      ctx.font = '9px sans-serif'; ctx.fillStyle = '#000';
       ctx.fillText(item.price.toLocaleString() + '원', cx, y + 9); return 12;
     }
     if (cell.id === 'barcode') {
@@ -1482,7 +1482,7 @@
       } catch(e) { return 0; }
     }
     if (cell.id === 'code') {
-      ctx.font = '8px monospace'; ctx.fillStyle = '#444';
+      ctx.font = '8px monospace'; ctx.fillStyle = '#000';
       ctx.fillText(String(item.barcodeValue), cx, y + 8); return 11;
     }
     if (cell.id === 'image' && item.imageUrl) {
