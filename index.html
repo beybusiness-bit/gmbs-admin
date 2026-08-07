@@ -241,7 +241,7 @@
 
     /* ── 바코드 라벨 ── */
     .barcode-label { background:#fff; border:1px solid #ddd; border-radius:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2px 3px; gap:0; box-sizing:border-box; overflow:hidden; }
-    .label-brand { font-size:9px; color:#666; font-weight:600; text-align:center; white-space:nowrap; max-width:100%; line-height:1.2; }
+    .label-brand { font-size:9px; color:#444; font-weight:600; text-align:center; white-space:nowrap; max-width:100%; line-height:1.2; }
     .label-product { font-size:10px; font-weight:700; text-align:center; line-height:1.2; white-space:nowrap; max-width:100%; }
     .label-price { font-size:9px; color:#333; text-align:center; white-space:nowrap; line-height:1.2; }
     .label-code { font-size:8px; font-family:monospace; color:#555; text-align:center; white-space:nowrap; max-width:100%; line-height:1.2; }
@@ -1435,73 +1435,116 @@
     return html;
   }
 
-  /* ── canvas 렌더링 (다운로드용) ── */
-  function drawCellToCanvas(ctx, item, cell, w, y, align) {
+  /* ── canvas 렌더링 (다운로드용) — 미리보기와 동일한 스타일 ── */
+
+  /* 셀 하나를 캔버스에 그리고 차지한 높이(px) 반환 */
+  function drawCellToCanvas(ctx, item, cell, x, y, cellW, align) {
     if (!cell.visible) return 0;
-    var cx = align === 'left' ? 6 : (align === 'right' ? w - 6 : w / 2);
-    ctx.textAlign = align === 'right' ? 'right' : (align === 'left' ? 'left' : 'center');
-    if (cell.id === 'brandcode' && item.brandCode) {
-      ctx.font = '9px sans-serif'; ctx.fillStyle = '#888';
-      ctx.fillText(String(item.brandCode).slice(0,30), cx, y + 9); return 14;
+    var PAD = 3; /* 셀 좌우 패딩 */
+    var cx = align === 'left'   ? x + PAD :
+             align === 'right'  ? x + cellW - PAD :
+                                  x + cellW / 2;
+    ctx.textAlign = align === 'right' ? 'right' : align === 'left' ? 'left' : 'center';
+
+    if ((cell.id === 'brandcode') && item.brandCode) {
+      ctx.font = '600 9px sans-serif'; ctx.fillStyle = '#444';
+      ctx.fillText(String(item.brandCode), cx, y + 9); return 12;
     }
     if (cell.id === 'brand' && item.brandName) {
-      ctx.font = '9px sans-serif'; ctx.fillStyle = '#888';
-      ctx.fillText(String(item.brandName).slice(0,30), cx, y + 9); return 14;
+      ctx.font = '600 9px sans-serif'; ctx.fillStyle = '#444';
+      ctx.fillText(String(item.brandName), cx, y + 9); return 12;
     }
     if (cell.id === 'product' && item.productName) {
-      ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#000';
-      ctx.fillText(String(item.productName).slice(0,30), cx, y + 12); return 17;
+      ctx.font = 'bold 11px sans-serif'; ctx.fillStyle = '#000';
+      ctx.fillText(String(item.productName), cx, y + 11); return 14;
     }
     if (cell.id === 'option' && item.optLabel && item.optLabel !== '옵션 없음' && !item.optLabel.startsWith('옵션 없음')) {
-      ctx.font = '9px sans-serif'; ctx.fillStyle = '#555';
-      ctx.fillText(String(item.optLabel).slice(0,30), cx, y + 9); return 13;
+      ctx.font = '9px sans-serif'; ctx.fillStyle = '#444';
+      ctx.fillText(String(item.optLabel), cx, y + 9); return 12;
     }
     if (cell.id === 'price' && item.price) {
-      ctx.font = '10px sans-serif'; ctx.fillStyle = '#000';
-      ctx.fillText(item.price.toLocaleString() + '원', cx, y + 10); return 15;
+      ctx.font = '9px sans-serif'; ctx.fillStyle = '#222';
+      ctx.fillText(item.price.toLocaleString() + '원', cx, y + 9); return 12;
     }
     if (cell.id === 'barcode') {
       try {
         var bcCanvas = document.createElement('canvas');
-        JsBarcode(bcCanvas, item.barcodeValue, { format:'CODE128', width:1.5, height:40, displayValue:false, margin:2 });
-        var bw = Math.min(bcCanvas.width / 2, w - 8);
-        ctx.drawImage(bcCanvas, (w - bw) / 2, y, bw, 42); return 46;
+        /* 바코드 높이를 라벨 높이 대비 비율로 맞춤 (미리보기와 동일: max(30, h*0.32)) */
+        var bcH = Math.max(30, Math.floor(ctx.canvas.height / ctx._scale / 0.032) * 0.032);
+        bcH = Math.max(30, Math.floor(ctx.canvas.height / ctx._scale * 0.32));
+        JsBarcode(bcCanvas, item.barcodeValue, { format:'CODE128', width:1.5, height:bcH, displayValue:false, margin:4, background:'#ffffff', lineColor:'#000000' });
+        /* 너비를 cellW 기준으로 맞춤 */
+        var bw = Math.min(cellW - PAD * 2, bcCanvas.width);
+        var bh = bw / bcCanvas.width * bcCanvas.height;
+        var bx = x + (cellW - bw) / 2;
+        ctx.drawImage(bcCanvas, bx, y + 2, bw, bh);
+        return bh + 4;
       } catch(e) { return 0; }
     }
     if (cell.id === 'code') {
-      ctx.font = '8px monospace'; ctx.fillStyle = '#555';
-      ctx.fillText(String(item.barcodeValue), cx, y + 8); return 13;
+      ctx.font = '8px monospace'; ctx.fillStyle = '#444';
+      ctx.fillText(String(item.barcodeValue), cx, y + 8); return 11;
+    }
+    if (cell.id === 'image' && item.imageUrl) {
+      /* 이미지는 비동기라 캔버스에서는 생략 (다운로드 품질 이슈) */
+      return 0;
     }
     return 0;
   }
 
   function drawLabelToCanvas(item, lines, w, h) {
-    var scale = 2;
+    var scale = 3; /* 해상도 3배 — 인쇄 품질 */
     var canvas = document.createElement('canvas');
     canvas.width = w * scale; canvas.height = h * scale;
     var ctx = canvas.getContext('2d');
+    ctx._scale = scale; /* drawCellToCanvas에서 참조 */
     ctx.scale(scale, scale);
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
 
-    var y = 8;
+    /* 배경 + 테두리 */
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
+
+    /* 모든 줄의 콘텐츠 높이를 먼저 계산해서 세로 중앙 정렬 */
+    var VPAD = 2; /* 상하 패딩 */
+    var GAP = 0;  /* 줄 간격 (미리보기 gap:0 과 동일) */
+
+    /* 각 줄의 높이 사전 계산 */
+    var rowHeights = [];
+    var tempCanvas = document.createElement('canvas');
+    tempCanvas.width = w * scale; tempCanvas.height = h * scale;
+    var tmpCtx = tempCanvas.getContext('2d');
+    tmpCtx._scale = scale;
+    tmpCtx.scale(scale, scale);
+
     lines.forEach(function(line) {
       var vis = line.filter(function(c){ return c.visible; });
-      if (vis.length === 0) return;
-      var dy = 0;
-      if (vis.length === 1) {
-        dy = drawCellToCanvas(ctx, item, vis[0], w, y, 'center');
-      } else if (vis.length === 2) {
-        var dy0 = drawCellToCanvas(ctx, item, vis[0], w, y, 'left');
-        var dy1 = drawCellToCanvas(ctx, item, vis[1], w, y, 'right');
-        dy = Math.max(dy0, dy1);
-      } else {
-        var dy0 = drawCellToCanvas(ctx, item, vis[0], w, y, 'left');
-        var dy1 = drawCellToCanvas(ctx, item, vis[1], w, y, 'center');
-        var dy2 = drawCellToCanvas(ctx, item, vis[2], w, y, 'right');
-        dy = Math.max(dy0, dy1, dy2);
-      }
-      y += dy;
+      if (vis.length === 0) { rowHeights.push(0); return; }
+      var colW = w / vis.length;
+      var rowH = 0;
+      vis.forEach(function(cell, ci) {
+        var dh = drawCellToCanvas(tmpCtx, item, cell, ci * colW, 0, colW,
+          vis.length === 1 ? 'center' : ci === 0 ? 'left' : ci === vis.length - 1 ? 'right' : 'center');
+        rowH = Math.max(rowH, dh);
+      });
+      rowHeights.push(rowH);
     });
+
+    var totalH = rowHeights.reduce(function(a, b){ return a + b; }, 0) + GAP * (rowHeights.filter(function(v){ return v > 0; }).length - 1);
+    var y = Math.max(VPAD, (h - totalH) / 2);
+
+    /* 실제 그리기 */
+    lines.forEach(function(line, li) {
+      var vis = line.filter(function(c){ return c.visible; });
+      if (vis.length === 0 || rowHeights[li] === 0) return;
+      var colW = w / vis.length;
+      vis.forEach(function(cell, ci) {
+        var align = vis.length === 1 ? 'center' : ci === 0 ? 'left' : ci === vis.length - 1 ? 'right' : 'center';
+        drawCellToCanvas(ctx, item, cell, ci * colW, y, colW, align);
+      });
+      y += rowHeights[li] + GAP;
+    });
+
     return canvas;
   }
 
