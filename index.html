@@ -355,6 +355,9 @@
       <div class="nav-item" data-page="barcode" onclick="navigate('barcode')">
         <span class="icon">🔍</span><span class="nav-label"> 바코드</span>
       </div>
+      <div class="nav-item" data-page="toss-export" onclick="navigate('toss-export')">
+        <span class="icon">📤</span><span class="nav-label"> 토스플레이스 내보내기</span>
+      </div>
 
       <div class="nav-section-label">고객 지원</div>
       <div class="nav-item" data-page="customer-cs" onclick="navigate('customer-cs')">
@@ -834,6 +837,7 @@
     else if (page === 'inquiry-list') await renderInquiryList(content);
     else if (page === 'customer-cs') await renderCustomerCSPage(content);
     else if (page === 'barcode') renderBarcodePage(content);
+    else if (page === 'toss-export') renderTossExport(content);
     else if (page === 'settings') await renderSettings(content);
     else if (page === 'email-settings') await renderEmailSettings(content);
     else if (page === 'persons-list') await renderPersonsList(content);
@@ -10649,6 +10653,335 @@
       XLSX.utils.book_append_sheet(wb, ws, '상품목록(토스포스)');
       XLSX.writeFile(wb, 'GMBS_토스포스_상품등록.xlsx');
       showToast(allProducts.length + '개 상품을 토스포스 양식으로 내보냈습니다.', 'success');
+    } catch(e) { showToast('내보내기 실패: ' + e.message, 'error'); }
+  };
+
+  /* ════════════════════════════════
+     토스플레이스 대량등록 내보내기
+  ════════════════════════════════ */
+  function renderTossExport(container) {
+    window._tpSelected = {};
+    window._tpAllItems = {};
+    window._tpProductSkus = {};
+    window._tpBrandNameMap = null;
+    container.innerHTML =
+      '<div style="background:var(--blue-light);border:1px solid #c4b5fd;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:#5b21b6;">' +
+      '📤 <strong>토스플레이스 대량등록 양식</strong> — 선택한 상품/SKU/개체를 토스플레이스 대량등록 엑셀 파일로 내보냅니다. 개체관리 상품은 "개체 펼치기"를 클릭해 개체별로 선택하세요.' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">' +
+      '<input class="form-input" id="tp-search-input" placeholder="상품명, 상품ID, 브랜드명 검색..." style="flex:1;min-width:200px;" onkeydown="if(event.key===\'Enter\')runTpSearch()" />' +
+      '<button class="btn btn-primary" onclick="runTpSearch()">검색</button>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">' +
+      '<input type="checkbox" id="tp-chk-all" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue);" onchange="toggleTpAll(this.checked)" />' +
+      '<label for="tp-chk-all" style="font-size:13px;color:var(--gray-600);cursor:pointer;user-select:none;">현재 목록 전체 선택</label>' +
+      '<span id="tp-count" style="font-size:13px;color:var(--gray-500);margin-left:6px;"></span>' +
+      '</div>' +
+      '<div id="tp-results"></div>' +
+      '<div id="tp-action-bar" style="display:none;position:sticky;bottom:0;background:#fff;border-top:2px solid var(--blue-light);padding:12px 16px;margin-top:8px;border-radius:0 0 8px 8px;box-shadow:0 -2px 12px rgba(0,0,0,0.06);align-items:center;gap:10px;">' +
+      '<div id="tp-action-count" style="flex:1;font-size:13px;font-weight:600;color:var(--gray-700);"></div>' +
+      '<button class="btn btn-primary" onclick="exportTossPlaces()">📤 토스플레이스 엑셀 다운로드</button>' +
+      '</div>';
+    runTpSearch(true);
+  }
+
+  window.runTpSearch = async function(all) {
+    var term = all ? '' : ((document.getElementById('tp-search-input')||{}).value||'').trim().toLowerCase();
+    var resultsEl = document.getElementById('tp-results');
+    if (!resultsEl) return;
+    resultsEl.innerHTML = '<div class="spinner" style="margin:40px auto;"></div>';
+    try {
+      var snap = await getDocs(collection(db, 'products'));
+      var products = snap.docs.map(function(d) { return {id:d.id,...d.data()}; });
+      if (term) products = products.filter(function(p) {
+        return p.id.toLowerCase().includes(term) ||
+          (p.product_name||'').toLowerCase().includes(term) ||
+          (p.brand_code||'').toLowerCase().includes(term) ||
+          (p.brand_name||'').toLowerCase().includes(term);
+      });
+      products.sort(function(a, b) { return (b.created_at||'').localeCompare(a.created_at||''); });
+
+      if (!window._tpBrandNameMap) {
+        var bSnap = await getDocs(collection(db, 'brands'));
+        window._tpBrandNameMap = {};
+        bSnap.docs.forEach(function(d) { window._tpBrandNameMap[d.data().brand_code||''] = d.data().brand_name||''; });
+      }
+
+      var countEl = document.getElementById('tp-count');
+      if (countEl) countEl.textContent = '총 ' + products.length + '개 상품';
+
+      if (products.length === 0) {
+        resultsEl.innerHTML = '<div class="empty-state"><div class="empty-state-text">검색 결과가 없습니다.</div></div>';
+        return;
+      }
+
+      var productBlocks = await Promise.all(products.map(async function(p) {
+        var skusSnap = await getDocs(collection(db, 'products', p.id, 'skus'));
+        var skus = skusSnap.docs.map(function(d) { return {id:d.id,...d.data()}; });
+        skus.sort(function(a, b) { return (a.option_sort_order!=null?a.option_sort_order:99) - (b.option_sort_order!=null?b.option_sort_order:99); });
+        var brandName = window._tpBrandNameMap[p.brand_code||''] || p.brand_name || p.brand_code || '';
+        return { p: {...p, brand_name: brandName}, skus: skus };
+      }));
+
+      window._tpAllItems = {};
+      window._tpProductSkus = {};
+
+      resultsEl.innerHTML = productBlocks.map(function(block) {
+        var p = block.p, skus = block.skus;
+        var isIndividual = p.tracking_type === 'individual' || p.tracking_type === '개체관리';
+        var brandName = p.brand_name || '';
+        window._tpProductSkus[p.id] = skus.map(function(s) { return s.id; });
+
+        var skuRows = skus.map(function(sku) {
+          var optVals = [1,2,3].map(function(i) { return sku['option_'+i+'_value']||''; }).filter(Boolean).join('/');
+          var optLabel = sku.option_number === '00' ? '' : optVals;
+          var itemKey = p.id + '__' + sku.id;
+          window._tpAllItems[itemKey] = {
+            productId: p.id, skuId: sku.id, isIndividual: isIndividual, isUnit: false,
+            productName: p.product_name, brandName: brandName,
+            optLabel: optLabel, price: sku.price || p.base_price || 0,
+            barcodeValue: sku.barcode_value || ''
+          };
+
+          if (isIndividual) {
+            var dispOpt = optLabel || '옵션 없음';
+            return '<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--gray-100);">' +
+              '<input type="checkbox" id="tp-chk-' + itemKey + '" onchange="toggleTpParentSku(\'' + p.id + '\',\'' + sku.id + '\',\'' + itemKey + '\',this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue);" />' +
+              '<div style="flex:1;">' +
+              '<div style="font-size:13px;font-weight:500;">' + esc(dispOpt) + ' <span style="font-size:11px;color:var(--gray-400);">(개체 선택)</span></div>' +
+              '<code style="font-size:11px;color:var(--gray-400);">' + esc(sku.barcode_value||'') + '…</code>' +
+              '</div>' +
+              '<button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;white-space:nowrap;" onclick="expandTpUnits(\'' + p.id + '\',\'' + sku.id + '\',\'' + itemKey + '\')">개체 펼치기</button>' +
+              '</div>' +
+              '<div id="tp-units-' + sku.id + '" style="display:none;background:var(--gray-50);border-left:3px solid var(--blue);padding:8px 16px 8px 32px;"></div>';
+          } else {
+            var dispOptLabel = sku.option_number === '00' ? '옵션 없음' : (optLabel || '');
+            return '<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--gray-100);">' +
+              '<input type="checkbox" id="tp-chk-' + itemKey + '" onchange="toggleTpItem(\'' + itemKey + '\');syncTpProductChk(\'' + p.id + '\')" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue);" />' +
+              '<div style="flex:1;">' +
+              '<div style="font-size:13px;font-weight:500;">' + esc(dispOptLabel) + '</div>' +
+              '<code style="font-size:11px;color:var(--gray-400);">' + esc(sku.barcode_value||'') + '</code>' +
+              '</div>' +
+              '<div style="font-size:12px;color:var(--gray-500);white-space:nowrap;">' + (sku.price||p.base_price||0).toLocaleString() + '원</div>' +
+              '</div>';
+          }
+        }).join('');
+
+        var productThumb = p.image_url
+          ? '<img src="' + esc(p.image_url) + '" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);flex-shrink:0;" />'
+          : '';
+        return '<div style="margin-bottom:20px;">' +
+          '<div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:8px;display:flex;align-items:center;gap:10px;">' +
+          '<input type="checkbox" id="tp-chk-product-' + p.id + '" style="width:15px;height:15px;cursor:pointer;accent-color:var(--blue);flex-shrink:0;" onchange="toggleTpProduct(\'' + p.id + '\',this.checked)" />' +
+          productThumb +
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+          '<span style="font-size:11px;color:var(--gray-500);">' + esc(brandName) + '</span>' +
+          '<code style="font-size:11px;background:var(--blue-light);color:var(--blue);padding:2px 6px;border-radius:4px;">' + esc(p.id) + '</code>' +
+          esc(p.product_name) +
+          '<span class="badge ' + (isIndividual?'badge-yellow':'badge-blue') + '">' + (isIndividual?'개체':'수량') + '</span>' +
+          '</div></div>' +
+          '<div class="card"><div style="padding:0;">' + skuRows + '</div></div></div>';
+      }).join('');
+
+    } catch(e) {
+      if (resultsEl) resultsEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">' + esc(e.message) + '</div></div>';
+    }
+  };
+
+  window.toggleTpItem = function(key) {
+    var chk = document.getElementById('tp-chk-' + key);
+    var item = window._tpAllItems[key];
+    if (!chk || !item) return;
+    if (chk.checked) { window._tpSelected[key] = item; }
+    else { delete window._tpSelected[key]; }
+    updateTpActionBar();
+  };
+
+  window.toggleTpProduct = async function(productId, checked) {
+    var skuIds = (window._tpProductSkus || {})[productId] || [];
+    for (var i = 0; i < skuIds.length; i++) {
+      var skuId = skuIds[i];
+      var itemKey = productId + '__' + skuId;
+      var item = window._tpAllItems[itemKey];
+      if (!item) continue;
+      var chk = document.getElementById('tp-chk-' + itemKey);
+      if (item.isIndividual) {
+        await toggleTpParentSku(productId, skuId, itemKey, checked);
+        if (chk) chk.checked = checked;
+      } else {
+        if (chk) chk.checked = checked;
+        if (checked) window._tpSelected[itemKey] = item;
+        else delete window._tpSelected[itemKey];
+      }
+    }
+    updateTpActionBar();
+  };
+
+  window.syncTpProductChk = function(productId) {
+    var skuIds = (window._tpProductSkus || {})[productId] || [];
+    var chk = document.getElementById('tp-chk-product-' + productId);
+    if (!chk) return;
+    var checked = 0, total = 0;
+    skuIds.forEach(function(skuId) {
+      var itemKey = productId + '__' + skuId;
+      var item = window._tpAllItems[itemKey];
+      if (!item) return;
+      if (item.isIndividual) {
+        var wrap = document.getElementById('tp-units-' + skuId);
+        if (wrap && wrap.dataset.loaded === '1') {
+          var units = wrap.querySelectorAll('input[type="checkbox"]');
+          units.forEach(function(c) { total++; if (c.checked) checked++; });
+        }
+      } else {
+        total++;
+        if (window._tpSelected[itemKey]) checked++;
+      }
+    });
+    chk.checked = total > 0 && checked === total;
+    chk.indeterminate = checked > 0 && checked < total;
+  };
+
+  window.expandTpUnits = async function(productId, skuId, skuItemKey, autoCheck) {
+    var wrap = document.getElementById('tp-units-' + skuId);
+    if (!wrap) return;
+    if (!autoCheck && wrap.style.display !== 'none') { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+    if (wrap.dataset.loaded === '1') {
+      if (autoCheck) {
+        wrap.querySelectorAll('input[type="checkbox"]').forEach(function(c) {
+          if (!c.checked) { c.checked = true; toggleTpItem(c.id.replace('tp-chk-','')); }
+        });
+      }
+      return;
+    }
+    wrap.innerHTML = '<div class="spinner spinner-sm" style="margin:8px 0;"></div>';
+    var snap = await getDocs(collection(db, 'products', productId, 'skus', skuId, 'units'));
+    var units = snap.docs.map(function(d) { return {id:d.id,...d.data()}; });
+    units.sort(function(a, b) { return (a.unit_number||'').localeCompare(b.unit_number||''); });
+    if (units.length === 0) { wrap.innerHTML = '<div style="font-size:12px;color:var(--gray-400);padding:8px 0;">등록된 개체가 없습니다.</div>'; wrap.dataset.loaded='1'; return; }
+    var skuItem = window._tpAllItems[skuItemKey] || {};
+    wrap.dataset.loaded = '1';
+    wrap.innerHTML = units.map(function(u) {
+      var key = productId + '__' + skuId + '__' + u.id;
+      var finalPrice = (skuItem.price || 0) + (u.unit_extra_price || 0);
+      window._tpAllItems[key] = {
+        productId: productId, skuId: skuId, unitId: u.id, isIndividual: true, isUnit: true,
+        productName: skuItem.productName || '', brandName: skuItem.brandName || '',
+        optLabel: skuItem.optLabel || '', unitNumber: u.unit_number || '',
+        price: finalPrice, barcodeValue: u.barcode_value || ''
+      };
+      return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;">' +
+        '<input type="checkbox" id="tp-chk-' + key + '" onchange="toggleTpItem(\'' + key + '\');syncTpProductChk(\'' + productId + '\')" style="width:14px;height:14px;cursor:pointer;accent-color:var(--blue);" />' +
+        '<code style="font-size:11px;color:var(--blue);">' + esc(u.barcode_value||'') + '</code>' +
+        '<span style="font-size:11px;color:var(--gray-500);">#' + esc(u.unit_number||'') + '</span>' +
+        '<span class="badge ' + (u.unit_status==='판매중'?'badge-green':'badge-gray') + '" style="font-size:10px;">' + esc(u.unit_status||'') + '</span>' +
+        '<span style="font-size:11px;color:var(--gray-500);margin-left:auto;">' + finalPrice.toLocaleString() + '원</span>' +
+        '</div>';
+    }).join('');
+    if (autoCheck) {
+      wrap.querySelectorAll('input[type="checkbox"]').forEach(function(c) {
+        c.checked = true; toggleTpItem(c.id.replace('tp-chk-',''));
+      });
+    }
+  };
+
+  window.toggleTpParentSku = async function(productId, skuId, skuItemKey, checked) {
+    if (checked) {
+      await expandTpUnits(productId, skuId, skuItemKey, true);
+    } else {
+      var wrap = document.getElementById('tp-units-' + skuId);
+      if (wrap) wrap.querySelectorAll('input[type="checkbox"]').forEach(function(c) {
+        if (c.checked) { c.checked = false; toggleTpItem(c.id.replace('tp-chk-','')); }
+      });
+    }
+    syncTpProductChk(productId);
+    updateTpActionBar();
+  };
+
+  window.toggleTpAll = async function(checked) {
+    var allKeys = Object.keys(window._tpAllItems);
+    for (var i = 0; i < allKeys.length; i++) {
+      var key = allKeys[i];
+      var item = window._tpAllItems[key];
+      var chk = document.getElementById('tp-chk-' + key);
+      if (!item || !chk) continue;
+      if (item.isUnit) continue; // handled by parent
+      if (item.isIndividual) {
+        await toggleTpParentSku(item.productId, item.skuId, key, checked);
+        if (chk) chk.checked = checked;
+      } else {
+        chk.checked = checked;
+        if (checked) window._tpSelected[key] = item;
+        else delete window._tpSelected[key];
+      }
+    }
+    updateTpActionBar();
+  };
+
+  function updateTpActionBar() {
+    var bar = document.getElementById('tp-action-bar');
+    var count = Object.keys(window._tpSelected || {}).length;
+    if (!bar) return;
+    if (count === 0) { bar.style.display = 'none'; return; }
+    bar.style.display = 'flex';
+    var countEl = document.getElementById('tp-action-count');
+    if (countEl) countEl.textContent = count + '개 항목 선택됨';
+  }
+
+  window.exportTossPlaces = async function() {
+    if (!window.XLSX) { showToast('엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 시도하세요.', 'error'); return; }
+    var selected = window._tpSelected || {};
+    var keys = Object.keys(selected);
+    if (keys.length === 0) { showToast('내보낼 항목을 먼저 선택해주세요.', 'error'); return; }
+    showToast('엑셀 생성 중...', 'info');
+    try {
+      /* 토스플레이스 양식 헤더 3행 */
+      var h1 = ['상품 ID','상품이름','상품코드','카테고리','가격타입\n(고정 가격 or 시가)','기본가격 (원)','세금','바코드','제조사','재고','키오스크 노출','키오스크 상품이름','키오스크 상품설명','키오스크 상품이름 🇺🇸','키오스크 상품설명 🇺🇸','키오스크 상품이름 🇨🇳','키오스크 상품설명 🇨🇳','키오스크 상품이름 🇯🇵','키오스크 상품설명 🇯🇵'];
+      var h2 = ['','*필수','선택','*필수','선택','*필수','선택','선택','선택','선택','선택','선택','선택','선택','선택','선택','선택','선택','선택'];
+      var h3 = ['이 열은 절대 수정하지 마세요 (새로 등록하는 상품이라면 비워두세요)','255자 내로 입력해주세요.','영문, 숫자 최대 50자까지 입력 가능해요.','입력한 카테고리가 생성돼요. 20자 내로 입력해주세요.','입력 안하면 고정 가격으로 등록돼요.','1~9자리 숫자만 입력 가능해요.','입력 안하면 과세로 등록돼요.','이미 포스에 등록된 바코드와 동일한 바코드를 등록할 수 없어요.','20자 내로 입력해주세요.','1-6자리 숫자만 입력 가능해요. (최대 999999)','입력 안하면 미노출로 등록돼요.','','','','','','','',''];
+      var rows = [h1, h2, h3];
+
+      /* 재고 집계 (inventory_transactions) */
+      var invMap = {};
+      try {
+        var invSnap = await getDocs(collection(db, 'inventory_transactions'));
+        invSnap.docs.forEach(function(d) {
+          var data = d.data();
+          var id = data.unit_id || data.sku_id;
+          if (id) invMap[id] = (invMap[id] || 0) + (typeof data.quantity === 'number' ? data.quantity : 0);
+        });
+      } catch(e2) { /* 재고 조회 실패 시 0 처리 */ }
+
+      keys.forEach(function(key) {
+        var item = selected[key];
+        var brandName = item.brandName || '';
+        var productName = item.productName || '';
+        var optLabel = item.optLabel || '';
+        var itemName = '[' + brandName + '] ' + productName + (optLabel ? '-' + optLabel : '') + (item.isUnit ? ' #' + (item.unitNumber || '') : '');
+        var invKey = item.isUnit ? (item.unitId || '') : (item.skuId || '');
+        var inv = item.isUnit ? Math.max(1, invMap[invKey] || 1) : (invMap[invKey] || 0);
+        rows.push([
+          '',           // 상품 ID (신규 등록이므로 공란)
+          itemName,     // 상품이름
+          '',           // 상품코드
+          '게을러서못열뻔한상점', // 카테고리
+          '고정 가격',  // 가격타입
+          item.price || 0, // 기본가격
+          '과세',       // 세금
+          item.barcodeValue || '', // 바코드
+          brandName,    // 제조사
+          inv,          // 재고
+          '미노출',     // 키오스크 노출
+          '','','','','','','','' // 다국어 항목 공란
+        ]);
+      });
+
+      var ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = [10,40,12,22,14,12,8,24,16,8,12,12,12,12,12,12,12,12,12].map(function(w) { return {wch:w}; });
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '시트1');
+      XLSX.writeFile(wb, 'GMBS_토스플레이스_대량등록.xlsx');
+      showToast(keys.length + '개 항목을 토스플레이스 양식으로 내보냈습니다.', 'success');
     } catch(e) { showToast('내보내기 실패: ' + e.message, 'error'); }
   };
 
