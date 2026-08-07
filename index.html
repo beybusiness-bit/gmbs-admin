@@ -240,11 +240,11 @@
     @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
     /* ── 바코드 라벨 ── */
-    .barcode-label { background:#fff; border:1px solid #ddd; border-radius:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:4px 6px; gap:1px; box-sizing:border-box; overflow:hidden; }
-    .label-brand { font-size:9px; color:#666; font-weight:600; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
-    .label-product { font-size:10px; font-weight:700; text-align:center; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
-    .label-price { font-size:9px; color:#333; text-align:center; white-space:nowrap; }
-    .label-code { font-size:8px; font-family:monospace; color:#555; text-align:center; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+    .barcode-label { background:#fff; border:1px solid #ddd; border-radius:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2px 3px; gap:0; box-sizing:border-box; overflow:hidden; }
+    .label-brand { font-size:9px; color:#666; font-weight:600; text-align:center; white-space:nowrap; max-width:100%; line-height:1.2; }
+    .label-product { font-size:10px; font-weight:700; text-align:center; line-height:1.2; white-space:nowrap; max-width:100%; }
+    .label-price { font-size:9px; color:#333; text-align:center; white-space:nowrap; line-height:1.2; }
+    .label-code { font-size:8px; font-family:monospace; color:#555; text-align:center; white-space:nowrap; max-width:100%; line-height:1.2; }
     .label-svg { max-width:100%; }
     .bc-action-bar { position:sticky; bottom:16px; background:#fff; border:1px solid var(--gray-200); border-radius:12px; padding:12px 20px; box-shadow:0 4px 20px rgba(0,0,0,0.12); display:flex; align-items:center; gap:10px; margin-top:20px; }
     .label-preview-grid { display:flex; flex-wrap:wrap; gap:12px; padding:8px; }
@@ -1418,13 +1418,13 @@
       if (vis.length === 1) {
         html += labelItemHTML(item, vis[0], idPrefix, i, 'center');
       } else if (vis.length === 2) {
-        html += '<div style="display:flex;width:100%;align-items:baseline;gap:2px;overflow:hidden;">' +
+        html += '<div style="display:flex;width:100%;align-items:baseline;gap:0;overflow:hidden;">' +
           '<div style="flex:1;min-width:0;overflow:hidden;">' + labelItemHTML(item, vis[0], idPrefix, i, 'left') + '</div>' +
           '<div style="flex:1;min-width:0;overflow:hidden;">' + labelItemHTML(item, vis[1], idPrefix, i, 'right') + '</div>' +
           '</div>';
       } else {
         /* 3개: 좌/중/우 */
-        html += '<div style="display:flex;width:100%;align-items:baseline;gap:2px;overflow:hidden;">' +
+        html += '<div style="display:flex;width:100%;align-items:baseline;gap:0;overflow:hidden;">' +
           '<div style="flex:1;min-width:0;overflow:hidden;">' + labelItemHTML(item, vis[0], idPrefix, i, 'left') + '</div>' +
           '<div style="flex:1;min-width:0;overflow:hidden;">' + labelItemHTML(item, vis[1], idPrefix, i, 'center') + '</div>' +
           '<div style="flex:1;min-width:0;overflow:hidden;">' + labelItemHTML(item, vis[2], idPrefix, i, 'right') + '</div>' +
@@ -1642,6 +1642,19 @@
     rerenderLabels();
   };
 
+  window._loadedPresetName = null; /* 현재 불러온 프리셋 이름 추적 */
+
+  /* cols 버튼 UI만 업데이트 — _labelLines는 건드리지 않음 */
+  function applyColsUI(n) {
+    window._labelCols = n;
+    [1,2,3].forEach(function(i) {
+      var btn = document.getElementById('lbl-cols-' + i);
+      if (!btn) return;
+      if (i === n) { btn.style.background = 'var(--blue)'; btn.style.color = '#fff'; }
+      else { btn.style.background = '#fff'; btn.style.color = 'var(--gray-700)'; }
+    });
+  }
+
   window.loadLabelPreset = function() {
     const sel = document.getElementById('lbl-preset-sel');
     if (!sel || !sel.value) { showToast('불러올 프리셋을 선택하세요.', 'error'); return; }
@@ -1653,21 +1666,29 @@
     const lh = document.getElementById('lbl-h');
     if (lw) lw.value = preset.size.w;
     if (lh) lh.value = preset.size.h;
-    setLabelCols(preset.cols || 1);
+    /* 저장된 cols가 없으면 레이아웃에서 자동 감지 */
+    const cols = preset.cols || Math.max(1, Math.max.apply(null, preset.layout.map(function(l){ return l.length; })));
+    applyColsUI(cols);
+    window._loadedPresetName = preset.name; /* 현재 불러온 프리셋 기억 */
     renderLayoutEditor();
     rerenderLabels();
     showToast('프리셋 "' + preset.name + '" 불러오기 완료', 'success');
   };
 
   window.saveLabelPreset = function() {
-    const name = prompt('저장할 프리셋 이름을 입력하세요:');
-    if (!name || !name.trim()) return;
-    const n = name.trim();
     const lw = parseInt((document.getElementById('lbl-w')||{}).value || window._labelSize.w, 10);
     const lh = parseInt((document.getElementById('lbl-h')||{}).value || window._labelSize.h, 10);
+    /* 불러온 프리셋이 있으면 바로 덮어쓰기, 없으면 새 이름 입력 */
+    var n = window._loadedPresetName;
+    if (!n) {
+      const input = prompt('저장할 프리셋 이름을 입력하세요:');
+      if (!input || !input.trim()) return;
+      n = input.trim();
+    }
     const presets = getLabelPresets().filter(function(p) { return p.name !== n; });
     presets.push({ name: n, layout: JSON.parse(JSON.stringify(window._labelLines)), size: { w:lw, h:lh }, cols: window._labelCols || 1 });
     saveLabelPresetsStore(presets);
+    window._loadedPresetName = n; /* 저장 후에도 현재 프리셋 유지 */
     /* 셀렉터 새로고침 */
     const sel = document.getElementById('lbl-preset-sel');
     if (sel) {
@@ -1691,7 +1712,6 @@
   };
 
   window.setLabelCols = function(n) {
-    window._labelCols = n;
     // 1열로 전환 시 합쳐진 줄을 모두 분리
     if (n === 1) {
       var newLines = [];
@@ -1700,12 +1720,7 @@
       });
       window._labelLines = newLines;
     }
-    [1,2,3].forEach(function(i) {
-      var btn = document.getElementById('lbl-cols-' + i);
-      if (!btn) return;
-      if (i === n) { btn.style.background = 'var(--blue)'; btn.style.color = '#fff'; }
-      else { btn.style.background = '#fff'; btn.style.color = 'var(--gray-700)'; }
-    });
+    applyColsUI(n);
     renderLayoutEditor();
     rerenderLabels();
   };
