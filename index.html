@@ -5551,7 +5551,7 @@
 
       _plContent.innerHTML =
         '<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">' +
-        '<input class="form-input" id="pl-search" placeholder="상품명, 상품ID, 브랜드코드 검색..." style="flex:1;min-width:160px;max-width:280px;" oninput="window._productPage=1;filterProductList()" />' +
+        '<input class="form-input" id="pl-search" placeholder="상품명, 브랜드명, 상품ID, 브랜드코드 검색..." style="flex:1;min-width:160px;max-width:320px;" oninput="window._productPage=1;filterProductList()" />' +
         '<select id="pl-approval-filter" onchange="window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="">전체 상태</option><option value="승인대기">승인대기</option><option value="승인">승인</option><option value="거절">거절</option><option value="판매중지">판매중지</option>' +
         '</select>' +
@@ -5632,7 +5632,8 @@
       const matchTerm = !term ||
         (p.product_name || '').toLowerCase().includes(term) ||
         (p.id || '').toLowerCase().includes(term) ||
-        (p.brand_code || '').toLowerCase().includes(term);
+        (p.brand_code || '').toLowerCase().includes(term) ||
+        (p.brand_name || '').toLowerCase().includes(term);
       const matchApproval = !approvalFilter || p.approval_status === approvalFilter;
       const matchTT = !ttFilter || p.transaction_type === ttFilter;
       return matchTerm && matchApproval && matchTT;
