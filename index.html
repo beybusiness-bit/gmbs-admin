@@ -5760,6 +5760,7 @@
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
         '</select>' +
         '<div id="pl-bulk-actions" style="display:flex;gap:8px;margin-left:auto;align-items:center;"></div>' +
+        '<button class="btn btn-secondary" id="btn-pos-sync" onclick="syncPosWithToss()" style="white-space:nowrap;" title="토스플레이스 POS에 등록된 상품을 바코드로 매칭하여 POS 상태를 자동 업데이트합니다">🔄 POS 동기화</button>' +
         '<div data-register-wrap="1" style="position:relative;display:inline-block;">' +
         '<button class="btn btn-primary" onclick="toggleRegisterMenu(\'new-product-menu\',this)">➕ 새 상품 등록 ▾</button>' +
         '<div id="new-product-menu" class="register-dropdown" style="display:none;">' +
@@ -7840,6 +7841,7 @@
         last_option_number: d.optionMode === 'none' ? '00' : String(d.skus.length).padStart(2, '0'),
         pos_status: '미등록',
         pos_synced_at: null,
+        approval_status: '승인',
         created_at: now,
         updated_at: now
       };
@@ -9471,6 +9473,31 @@
         '<div id="ucansign-key-status" style="font-size:12px;margin-top:8px;color:var(--gray-400);">로딩 중...</div>' +
         '</div>' +
 
+        '<div class="card" style="padding:24px;margin-bottom:20px;">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">토스플레이스 POS Open API</div>' +
+        '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">상품 목록에서 "POS 동기화" 버튼으로 POS에 등록된 상품을 바코드 기준으로 자동 매칭합니다.</div>' +
+        '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">토스플레이스 사장님 포털 → 설정 → Open API 에서 Client Key / Secret Key를 발급받으세요.</div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px;">' +
+          '<div style="display:flex;gap:8px;align-items:center;">' +
+            '<label style="width:90px;font-size:13px;flex-shrink:0;color:var(--gray-600);">Store ID</label>' +
+            '<input class="form-input" id="toss-pos-store-id" type="text" placeholder="토스플레이스 매장 ID" style="flex:1;font-size:13px;" />' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;align-items:center;">' +
+            '<label style="width:90px;font-size:13px;flex-shrink:0;color:var(--gray-600);">Client Key</label>' +
+            '<input class="form-input" id="toss-pos-client-key" type="password" placeholder="Client Key" style="flex:1;font-family:monospace;font-size:13px;" />' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;align-items:center;">' +
+            '<label style="width:90px;font-size:13px;flex-shrink:0;color:var(--gray-600);">Secret Key</label>' +
+            '<input class="form-input" id="toss-pos-secret-key" type="password" placeholder="Secret Key" style="flex:1;font-family:monospace;font-size:13px;" />' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;margin-top:4px;">' +
+            '<button class="btn btn-primary" style="white-space:nowrap;" onclick="saveTossPosKeys()">저장</button>' +
+            '<button class="btn btn-secondary" style="white-space:nowrap;" onclick="testTossPosConnection()">연결 테스트</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="toss-pos-key-status" style="font-size:12px;margin-top:10px;color:var(--gray-400);">로딩 중...</div>' +
+        '</div>' +
+
         '<div class="card" style="padding:24px;">' +
         '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">EmailJS 연동</div>' +
         '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">이메일 알림 발송에 사용됩니다. 트리거별 템플릿 설정은 <a href="#email-settings" onclick="navigate(\'email-settings\')" style="color:var(--blue);">이메일 알림</a> 페이지에서 합니다.</div>' +
@@ -9497,6 +9524,7 @@
       loadUcansignApiKeyStatus();
       loadNtsApiKeyStatus();
       loadEmailJsApiStatus();
+      loadTossPosKeyStatus();
     }
   };
 
@@ -10459,6 +10487,204 @@
       showToast('국세청 API 키가 저장되었습니다.', 'success');
     } catch(e) {
       showToast('저장 오류: ' + e.message, 'error');
+    }
+  };
+
+  /* ── 토스플레이스 POS API 키 로드·저장·테스트·동기화 ── */
+  async function loadTossPosKeyStatus() {
+    const statusEl = document.getElementById('toss-pos-key-status');
+    if (!statusEl) return;
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'config'));
+      const d = snap.data() || {};
+      const hasKeys = !!(d.toss_pos_client_key && d.toss_pos_secret_key);
+      const storeId = d.toss_pos_store_id || '';
+      const storeIdEl = document.getElementById('toss-pos-store-id');
+      if (storeIdEl && storeId) storeIdEl.value = storeId;
+      if (hasKeys) {
+        const clientEl = document.getElementById('toss-pos-client-key');
+        const secretEl = document.getElementById('toss-pos-secret-key');
+        if (clientEl) clientEl.placeholder = '••••••••••• (저장됨)';
+        if (secretEl) secretEl.placeholder = '••••••••••• (저장됨)';
+        statusEl.innerHTML = '<span style="color:var(--green);">✅ Client Key / Secret Key가 저장되어 있습니다.</span>' + (storeId ? ' · Store ID: <code>' + esc(storeId) + '</code>' : ' · ⚠️ Store ID가 없습니다.');
+      } else {
+        statusEl.textContent = '아직 API 키가 없습니다. 토스플레이스 사장님 포털 → 설정 → Open API에서 발급받으세요.';
+      }
+    } catch(e) {
+      statusEl.textContent = '로드 오류: ' + e.message;
+    }
+  }
+
+  window.saveTossPosKeys = async function() {
+    const storeIdEl = document.getElementById('toss-pos-store-id');
+    const clientEl  = document.getElementById('toss-pos-client-key');
+    const secretEl  = document.getElementById('toss-pos-secret-key');
+    const statusEl  = document.getElementById('toss-pos-key-status');
+    const storeId   = (storeIdEl?.value || '').trim();
+    const clientKey = (clientEl?.value || '').trim();
+    const secretKey = (secretEl?.value || '').trim();
+    if (!storeId) { showToast('Store ID를 입력해주세요.', 'error'); return; }
+    if (!clientKey && !secretKey) { showToast('Client Key 또는 Secret Key를 입력해주세요.', 'error'); return; }
+    try {
+      const updates = { toss_pos_store_id: storeId };
+      if (clientKey) updates.toss_pos_client_key = clientKey;
+      if (secretKey) updates.toss_pos_secret_key = secretKey;
+      await setDoc(doc(db, 'settings', 'config'), updates, { merge: true });
+      if (clientEl && clientKey) { clientEl.value = ''; clientEl.placeholder = '••••••••••• (저장됨)'; }
+      if (secretEl && secretKey) { secretEl.value = ''; secretEl.placeholder = '••••••••••• (저장됨)'; }
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--green);">✅ 저장 완료.</span>';
+      showToast('토스 POS API 설정이 저장되었습니다.', 'success');
+    } catch(e) {
+      showToast('저장 오류: ' + e.message, 'error');
+    }
+  };
+
+  /* 토스플레이스 카탈로그 전체 조회 (페이지네이션 자동 처리) */
+  async function fetchTossCatalogBarcodes(storeId, clientKey, secretKey) {
+    const BASE = 'https://openapi.tossplace.com';
+    const allBarcodes = new Set();
+    let page = 0;
+    const pageSize = 100;
+
+    while (true) {
+      const url = BASE + '/v1/catalog/items?storeId=' + encodeURIComponent(storeId) +
+                  '&page=' + page + '&pageSize=' + pageSize;
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'X-Client-Key': clientKey,
+          'X-Secret-Key': secretKey,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => res.status);
+        throw new Error('API 오류 ' + res.status + ': ' + errText);
+      }
+      const json = await res.json();
+
+      /* 응답 구조: { items: [ { prices: [ { barcode: '...' } ] } ] } */
+      const items = json.items || json.data || json.content || [];
+      items.forEach(function(item) {
+        const prices = item.prices || item.catalogItemPrices || [];
+        prices.forEach(function(p) {
+          if (p.barcode) allBarcodes.add(p.barcode.trim());
+        });
+        /* 상품 자체에 barcode 있는 경우도 수집 */
+        if (item.barcode) allBarcodes.add(item.barcode.trim());
+      });
+
+      const isLast = json.last === true || json.isLast === true || items.length < pageSize ||
+                     (json.totalPages !== undefined && page + 1 >= json.totalPages);
+      if (isLast) break;
+      page++;
+      if (page > 50) break; /* 안전 상한 (5,000개) */
+    }
+    return allBarcodes;
+  }
+
+  window.testTossPosConnection = async function() {
+    const btn = document.querySelector('[onclick="testTossPosConnection()"]');
+    if (btn) { btn.disabled = true; btn.textContent = '테스트 중...'; }
+    const statusEl = document.getElementById('toss-pos-key-status');
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'config'));
+      const d = snap.data() || {};
+      if (!d.toss_pos_client_key || !d.toss_pos_secret_key || !d.toss_pos_store_id) {
+        showToast('먼저 Store ID, Client Key, Secret Key를 저장해주세요.', 'error');
+        return;
+      }
+      const barcodes = await fetchTossCatalogBarcodes(d.toss_pos_store_id, d.toss_pos_client_key, d.toss_pos_secret_key);
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--green);">✅ 연결 성공. POS에 바코드 ' + barcodes.size + '개가 등록되어 있습니다.</span>';
+      showToast('POS 연결 성공: 바코드 ' + barcodes.size + '개 확인', 'success');
+    } catch(e) {
+      const isCors = e instanceof TypeError || e.message.includes('Failed to fetch') || e.message.includes('NetworkError');
+      const msg = isCors
+        ? 'CORS 오류: 토스플레이스 API가 브라우저 직접 호출을 허용하지 않습니다. 나중에 gmbs-functions 서버에서 처리해야 합니다.'
+        : '연결 실패: ' + e.message;
+      showToast(msg, 'error');
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--red);">❌ ' + esc(msg) + '</span>';
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '연결 테스트'; }
+    }
+  };
+
+  /* POS 동기화: 토스 POS 바코드 목록과 어드민 SKU를 매칭해 pos_status 업데이트 */
+  window.syncPosWithToss = async function() {
+    const btn = document.getElementById('btn-pos-sync');
+    if (btn) { btn.disabled = true; btn.textContent = '동기화 중...'; }
+    try {
+      /* 1. API 키 로드 */
+      const cfgSnap = await getDoc(doc(db, 'settings', 'config'));
+      const cfg = cfgSnap.data() || {};
+      if (!cfg.toss_pos_client_key || !cfg.toss_pos_secret_key || !cfg.toss_pos_store_id) {
+        showToast('설정 → API 및 웹훅에서 토스 POS Store ID / Client Key / Secret Key를 먼저 저장해주세요.', 'error');
+        return;
+      }
+
+      /* 2. 토스 POS 카탈로그 바코드 전체 수집 */
+      if (btn) btn.textContent = 'POS 조회 중...';
+      const tossBarcodes = await fetchTossCatalogBarcodes(cfg.toss_pos_store_id, cfg.toss_pos_client_key, cfg.toss_pos_secret_key);
+      if (btn) btn.textContent = '매칭 중...';
+
+      /* 3. 어드민 SKU 전체 로드 (collectionGroup) */
+      const skuSnap = await getDocs(collectionGroup(db, 'skus'));
+      /* productId → Set<barcode_value> 맵 구성 */
+      const productBarcodes = {};
+      skuSnap.docs.forEach(function(d) {
+        const bv = d.data().barcode_value;
+        if (!bv) return;
+        /* skus 상위 컬렉션 경로: products/{productId}/skus/{skuId} */
+        const pathParts = d.ref.path.split('/');
+        const productId = pathParts[1]; /* products/[productId]/skus/... */
+        if (!productBarcodes[productId]) productBarcodes[productId] = new Set();
+        productBarcodes[productId].add(bv);
+      });
+
+      /* 4. 각 상품별 pos_status 결정 → Firestore 배치 업데이트 */
+      const now = new Date().toISOString();
+      const batch = writeBatch(db);
+      let updatedCount = 0;
+
+      const allProductIds = Object.keys(productBarcodes);
+      /* _allProducts 캐시에 있는 상품도 포함 (SKU가 아직 안 생성된 경우 미등록으로) */
+      const cachedProducts = window._allProducts || [];
+      const cachedIds = cachedProducts.map(function(p) { return p.id; });
+      const allIds = Array.from(new Set([...allProductIds, ...cachedIds]));
+
+      allIds.forEach(function(productId) {
+        const barcodeSet = productBarcodes[productId] || new Set();
+        let anyMatch = false;
+        barcodeSet.forEach(function(bv) {
+          if (tossBarcodes.has(bv)) anyMatch = true;
+        });
+        const newStatus = anyMatch ? '등록완료' : '미등록';
+        const cached = cachedProducts.find(function(p) { return p.id === productId; });
+        const currentStatus = cached ? (cached.pos_status || '미등록') : null;
+        /* 상태가 바뀔 때만 업데이트 */
+        if (currentStatus !== newStatus) {
+          const updates = { pos_status: newStatus, updated_at: now };
+          if (newStatus === '등록완료') updates.pos_synced_at = now;
+          batch.update(doc(db, 'products', productId), updates);
+          if (cached) { cached.pos_status = newStatus; if (newStatus === '등록완료') cached.pos_synced_at = now; }
+          updatedCount++;
+        }
+      });
+
+      await batch.commit();
+
+      /* 5. UI 갱신 */
+      filterProductList();
+      showToast('POS 동기화 완료: POS 바코드 ' + tossBarcodes.size + '개 · ' + updatedCount + '개 상품 상태 업데이트', 'success');
+    } catch(e) {
+      const isCors = e instanceof TypeError || e.message.includes('Failed to fetch') || e.message.includes('NetworkError');
+      if (isCors) {
+        showToast('CORS 오류: 토스플레이스 API는 브라우저에서 직접 호출이 안 됩니다. 나중에 gmbs-functions에서 서버 측으로 처리해야 합니다.', 'error');
+      } else {
+        showToast('동기화 실패: ' + e.message, 'error');
+      }
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '🔄 POS 동기화'; }
     }
   };
 
