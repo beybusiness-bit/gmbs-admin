@@ -5753,6 +5753,9 @@
         '<select id="pl-approval-filter" onchange="window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="">전체 상태</option><option value="승인대기">승인대기</option><option value="승인">승인</option><option value="거절">거절</option><option value="판매중지">판매중지</option>' +
         '</select>' +
+        '<select id="pl-pos-filter" onchange="window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
+        '<option value="">POS 전체</option><option value="미등록">미등록</option><option value="등록완료">등록완료</option><option value="수정필요">수정필요</option>' +
+        '</select>' +
         '<select id="pl-page-size" onchange="window._productPageSize=parseInt(this.value);window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
         '</select>' +
@@ -5771,7 +5774,7 @@
         '<div class="card"><div class="table-wrap"><table id="pl-table">' +
         '<thead><tr>' +
         '<th style="width:36px;padding-left:16px;"><input type="checkbox" id="pl-chk-all" onchange="toggleAllProducts(this.checked)" style="cursor:pointer;accent-color:var(--blue);" /></th>' +
-        '<th style="width:80px;"></th><th>상품 ID</th><th>브랜드</th><th>상품명</th><th>관리방식</th><th>재고</th><th>판매가</th><th>승인상태</th><th>등록일</th>' +
+        '<th style="width:80px;"></th><th>상품 ID</th><th>브랜드</th><th>상품명</th><th>관리방식</th><th>재고</th><th>판매가</th><th>승인상태</th><th>POS</th><th>등록일</th>' +
         '</tr></thead>' +
         '<tbody id="pl-tbody"></tbody></table></div></div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">' +
@@ -5821,10 +5824,62 @@
     const cnt = (window._productSelected || new Set()).size;
     if (cnt === 0) { area.innerHTML = ''; return; }
     area.innerHTML =
+      '<button class="btn btn-secondary" onclick="bulkSetPosStatus(\'등록완료\')" style="white-space:nowrap;">🏪 POS 등록완료 (' + cnt + '개)</button>' +
       '<button class="btn btn-secondary" onclick="bulkChangeProductStatus()" style="white-space:nowrap;">🔄 일괄 변경 (' + cnt + '개)</button>' +
       '<button class="btn btn-secondary" onclick="exportSelectedProducts()" style="white-space:nowrap;">📥 내보내기 (' + cnt + '개)</button>' +
       '<button class="btn btn-secondary" onclick="bulkDeleteProducts()" style="white-space:nowrap;color:var(--red);border-color:var(--red);">🗑 선택 삭제 (' + cnt + '개)</button>';
   }
+
+  /* POS 상태 뱃지 + 버튼 렌더링 */
+  function renderPosStatusCell(p) {
+    const s = p.pos_status || '미등록';
+    const badgeClass = s === '등록완료' ? 'badge-green' : s === '수정필요' ? 'badge-orange' : 'badge-gray';
+    const syncDate = p.pos_synced_at ? ('<div style="font-size:10px;color:var(--gray-400);margin-top:2px;">' + (p.pos_synced_at.slice ? p.pos_synced_at.slice(0,10) : '') + '</div>') : '';
+    const nextStatus = s === '등록완료' ? null : '등록완료';
+    const btnLabel = s === '미등록' ? '등록 완료 표시' : s === '수정필요' ? '업데이트 완료 표시' : '등록 취소';
+    const btnNext = s === '등록완료' ? '미등록' : '등록완료';
+    return '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;">' +
+      '<span class="badge ' + badgeClass + '" style="white-space:nowrap;">' + s + '</span>' +
+      syncDate +
+      '<button onclick="setPosStatus(\'' + p.id + '\',\'' + btnNext + '\')" style="margin-top:3px;padding:2px 7px;font-size:10px;border:1px solid var(--gray-300);border-radius:5px;background:#fff;cursor:pointer;color:var(--gray-600);white-space:nowrap;">' + btnLabel + '</button>' +
+      '</div>';
+  }
+
+  /* POS 상태 단건 변경 */
+  window.setPosStatus = async function(productId, newStatus) {
+    try {
+      const now = new Date().toISOString();
+      const updates = { pos_status: newStatus, updated_at: now };
+      if (newStatus === '등록완료') updates.pos_synced_at = now;
+      await updateDoc(doc(db, 'products', productId), updates);
+      /* 로컬 캐시 즉시 반영 */
+      const cached = (window._allProducts || []).find(p => p.id === productId);
+      if (cached) { cached.pos_status = newStatus; if (newStatus === '등록완료') cached.pos_synced_at = now; }
+      filterProductList();
+      showToast('POS 상태가 [' + newStatus + ']으로 변경됐습니다.', 'success');
+    } catch(e) { showToast('변경 실패: ' + e.message, 'error'); }
+  };
+
+  /* POS 상태 일괄 변경 */
+  window.bulkSetPosStatus = async function(newStatus) {
+    const ids = Array.from(window._productSelected || []);
+    if (ids.length === 0) { showToast('선택된 상품이 없습니다.', 'error'); return; }
+    if (!confirm(ids.length + '개 상품을 POS [' + newStatus + '] 처리하시겠습니까?')) return;
+    try {
+      const now = new Date().toISOString();
+      await Promise.all(ids.map(id => {
+        const updates = { pos_status: newStatus, updated_at: now };
+        if (newStatus === '등록완료') updates.pos_synced_at = now;
+        return updateDoc(doc(db, 'products', id), updates);
+      }));
+      (window._allProducts || []).forEach(p => {
+        if (ids.includes(p.id)) { p.pos_status = newStatus; if (newStatus === '등록완료') p.pos_synced_at = now; }
+      });
+      window._productSelected.clear();
+      filterProductList();
+      showToast(ids.length + '개 상품 POS [' + newStatus + '] 처리 완료', 'success');
+    } catch(e) { showToast('일괄 변경 실패: ' + e.message, 'error'); }
+  };
 
   window.filterProductList = function() {
     const term = ((document.getElementById('pl-search') || {}).value || '').trim().toLowerCase();
@@ -5838,7 +5893,9 @@
         (p.brand_name || '').toLowerCase().includes(term);
       const matchApproval = !approvalFilter || p.approval_status === approvalFilter;
       const matchTT = !ttFilter || p.transaction_type === ttFilter;
-      return matchTerm && matchApproval && matchTT;
+      const posFilter = ((document.getElementById('pl-pos-filter') || {}).value || '');
+      const matchPos = !posFilter || (p.pos_status || '미등록') === posFilter;
+      return matchTerm && matchApproval && matchTT && matchPos;
     });
     window._productFiltered = filtered;
 
@@ -5885,6 +5942,7 @@
         stockCell +
         '<td>' + (p.base_price || 0).toLocaleString() + '원</td>' +
         '<td>' + (approvalLabel[p.approval_status] || '<span class="badge badge-gray">미설정</span>') + '</td>' +
+        '<td onclick="event.stopPropagation()">' + renderPosStatusCell(p) + '</td>' +
         '<td style="color:var(--gray-400);font-size:12px;">' + (p.created_at ? p.created_at.slice(0,10) : '-') + '</td>' +
         '</tr>';
       }).join('');
@@ -6885,6 +6943,13 @@
       if (supplyPrice !== undefined || commissionRate !== undefined) {
         updates._last_changed_by = (auth.currentUser || {}).uid || '';
       }
+      /* POS 등록 후 상품명·가격 변경 시 자동으로 "수정필요" 표시 */
+      const prevData = window._editProductData || {};
+      if ((prevData.pos_status || '미등록') === '등록완료') {
+        if (prevData.product_name !== name || prevData.base_price !== basePrice) {
+          updates.pos_status = '수정필요';
+        }
+      }
 
       /* 상품 대표 사진 업로드 */
       const imgFile = document.getElementById('input-edit-product-img') && document.getElementById('input-edit-product-img').files[0];
@@ -7773,6 +7838,8 @@
         image_url: d.mainImageUrl || '',
         transaction_type: d.transactionType || '',
         last_option_number: d.optionMode === 'none' ? '00' : String(d.skus.length).padStart(2, '0'),
+        pos_status: '미등록',
+        pos_synced_at: null,
         created_at: now,
         updated_at: now
       };
