@@ -1144,11 +1144,13 @@
         window._bcAllProducts = snap.docs.map(d=>({id:d.id,...d.data()}));
       }
       let products = window._bcAllProducts.slice();
-      if (term) products = products.filter(p =>
-        p.id.toLowerCase().includes(term) ||
-        (p.product_name||'').toLowerCase().includes(term) ||
-        (p.brand_code||'').toLowerCase().includes(term)
-      );
+      if (term) products = products.filter(p => {
+        const bName = (window._bcBrandNameMap && window._bcBrandNameMap[p.brand_code||'']) || (p.brand_name||'');
+        return p.id.toLowerCase().includes(term) ||
+          (p.product_name||'').toLowerCase().includes(term) ||
+          (p.brand_code||'').toLowerCase().includes(term) ||
+          bName.toLowerCase().includes(term);
+      });
       const sortKey = (document.getElementById('bc-sort-sel')||{}).value || window._bcSortKey || 'created_desc';
       products.sort(function(a, b) {
         if (sortKey === 'created_asc') return (a.created_at||'').localeCompare(b.created_at||'');
@@ -5730,8 +5732,18 @@
       '<div id="product-list-content"><div class="spinner" style="margin:60px auto;"></div></div>';
 
     try {
-      const snap = await getDocs(collection(db, 'products'));
-      window._allProducts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const [snap, brandSnap] = await Promise.all([
+        getDocs(collection(db, 'products')),
+        getDocs(collection(db, 'brands'))
+      ]);
+      /* brand_code → brand_name 맵 (일반 등록 상품에 brand_name이 없는 경우 보완) */
+      const _plBrandMap = {};
+      brandSnap.docs.forEach(d => { _plBrandMap[d.data().brand_code || ''] = d.data().brand_name || ''; });
+      window._allProducts = snap.docs.map(d => {
+        const p = { id: d.id, ...d.data() };
+        if (!p.brand_name && p.brand_code) p.brand_name = _plBrandMap[p.brand_code] || '';
+        return p;
+      });
       window._allProducts.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
       const _plContent = document.getElementById('product-list-content');
 
@@ -7750,6 +7762,7 @@
       const productDoc = {
         brand_id: d.brandId,
         brand_code: brandCode,
+        brand_name: brandData.brand_name || '',
         product_number: productNum,
         product_name: d.productName,
         base_price: d.basePrice,
