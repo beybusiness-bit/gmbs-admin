@@ -9443,7 +9443,7 @@
 
         '<div class="card" style="padding:24px;">' +
         '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:6px;">입점 상태 일괄 점검</div>' +
-        '<div style="font-size:13px;color:var(--gray-500);margin-bottom:14px;">계약이 완료되어 <code>brand_types</code>가 있음에도 <code>onboarding_status</code>가 <code>심사중</code>으로 남아있는 브랜드를 찾아 <code>승인</code>으로 수정합니다.</div>' +
+        '<div style="font-size:13px;color:var(--gray-500);margin-bottom:14px;">심사중으로 남아있지만 ① 완료된 계약이 있거나 ② 과거에 승인 처리된 이력(<code>approved_at</code>)이 있는 브랜드를 찾아 <code>입점중</code>으로 수정합니다.</div>' +
         '<button class="btn btn-secondary" onclick="fixApprovedOnboardingStatus()">입점 상태 불일치 브랜드 수정</button>' +
         '<div id="fix-onboarding-result" style="margin-top:10px;font-size:13px;"></div>' +
         '</div>' +
@@ -11228,7 +11228,9 @@
           hasTypes = completedContractTypes.length > 0;
         }
 
-        if (hasTypes) {
+        // 완료 계약도 없지만 과거 승인 이력(approved_at)이 있는 경우도 잡음
+        const wasApproved = !!d.approved_at;
+        if (hasTypes || wasApproved) {
           const updatePayload = {
             onboarding_status: '입점중',
             onboarding_status_changed_at: today(),
