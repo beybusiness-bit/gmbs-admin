@@ -3753,8 +3753,8 @@
       if (currentTypes.includes(contractType)) return; // already present
       const newTypes = [...currentTypes, contractType];
       const updatePayload = { brand_types: newTypes, updated_at: today() };
-      // 처음 계약이 완료되면 onboarding_status → 입점중
-      if (brand.onboarding_status === '승인') {
+      // 처음 계약이 완료되면 onboarding_status → 입점중 (심사중 또는 승인 상태 모두 처리)
+      if (brand.onboarding_status === '심사중' || brand.onboarding_status === '승인') {
         updatePayload.onboarding_status = '입점중';
         updatePayload.onboarding_status_changed_at = today();
       }
@@ -4683,6 +4683,8 @@
         updated_at: today(),
       };
       await addDoc(collection(db, 'brands', brandId, 'contracts'), contractDoc);
+      // 계약완료 상태로 저장할 때 브랜드 유형 및 입점 상태 자동 반영
+      if (contractType) await addContractTypeToBrand(brandId, contractType);
       showToast('계약이 추가되었습니다.', 'success');
       document.getElementById('add-contract-modal').remove();
       loadBrandContracts(brandId);
@@ -11211,14 +11213,34 @@
       const fixedNames = [];
       for (const bDoc of brandsSnap.docs) {
         const d = bDoc.data();
-        // brand_types 배열이 있거나(계약 완료), onboarding_status가 심사중인데 실제로 승인됐어야 할 경우
-        const hasTypes = Array.isArray(d.brand_types) && d.brand_types.length > 0;
-        if (d.onboarding_status === '심사중' && hasTypes) {
-          await updateDoc(doc(db, 'brands', bDoc.id), {
-            onboarding_status: '승인',
+        if (d.onboarding_status !== '심사중') { skipped++; continue; }
+
+        // brand_types 배열이 있거나, 실제 계약 문서 중 완료된 계약이 있으면 입점중으로 변경
+        let hasTypes = Array.isArray(d.brand_types) && d.brand_types.length > 0;
+        let completedContractTypes = [];
+        if (!hasTypes) {
+          // brand_types가 비어있어도 실제 계약 문서를 확인
+          const contractsSnap = await getDocs(collection(db, 'brands', bDoc.id, 'contracts'));
+          completedContractTypes = contractsSnap.docs
+            .map(c => c.data())
+            .filter(c => c.contract_status === '계약완료' && c.contract_type)
+            .map(c => c.contract_type);
+          hasTypes = completedContractTypes.length > 0;
+        }
+
+        if (hasTypes) {
+          const updatePayload = {
+            onboarding_status: '입점중',
             onboarding_status_changed_at: today(),
             updated_at: today()
-          });
+          };
+          // brand_types도 없었다면 계약에서 수집한 유형으로 채워줌
+          if (completedContractTypes.length > 0) {
+            const existingTypes = Array.isArray(d.brand_types) ? d.brand_types : [];
+            const mergedTypes = [...new Set([...existingTypes, ...completedContractTypes])];
+            updatePayload.brand_types = mergedTypes;
+          }
+          await updateDoc(doc(db, 'brands', bDoc.id), updatePayload);
           fixedNames.push((d.brand_name || bDoc.id) + ' (' + bDoc.id + ')');
           fixed++;
         } else {
