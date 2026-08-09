@@ -9448,6 +9448,29 @@
         '<div id="fix-onboarding-result" style="margin-top:10px;font-size:13px;"></div>' +
         '</div>' +
 
+        '<div class="card" style="padding:24px;">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:6px;">특정 브랜드 강제 상태 수정</div>' +
+        '<div style="font-size:13px;color:var(--gray-500);margin-bottom:14px;">브랜드 ID를 직접 입력해 입점 상태를 강제로 변경합니다. 일괄 점검으로 잡히지 않는 경우에 사용하세요.</div>' +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
+          '<input class="form-input" id="force-brand-id" placeholder="브랜드 ID (예: 8ho7u5DhVTVgki152zMf)" style="flex:1;min-width:200px;font-family:monospace;font-size:12px;" />' +
+          '<select class="form-input" id="force-brand-status" style="width:130px;">' +
+            '<option value="입점중">입점중</option>' +
+            '<option value="승인">승인</option>' +
+            '<option value="심사중">심사중</option>' +
+            '<option value="입점종료">입점종료</option>' +
+          '</select>' +
+          '<button class="btn btn-primary" style="white-space:nowrap;" onclick="forceBrandStatus()">강제 수정</button>' +
+        '</div>' +
+        '<div id="force-brand-result" style="margin-top:10px;font-size:13px;"></div>' +
+        '</div>' +
+
+        '<div class="card" style="padding:24px;">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:6px;">상품 승인 상태 일괄 점검</div>' +
+        '<div style="font-size:13px;color:var(--gray-500);margin-bottom:14px;"><code>approval_status</code>가 미설정(null)인 상품을 찾아 자동으로 <code>승인</code>으로 변경합니다. 일반 등록 기능 개선 전에 등록된 상품에 사용하세요.</div>' +
+        '<button class="btn btn-secondary" onclick="fixNullApprovalStatus()">미설정 상품 승인 처리</button>' +
+        '<div id="fix-approval-result" style="margin-top:10px;font-size:13px;"></div>' +
+        '</div>' +
+
       '</div>' +
 
       /* ── 탭: API 및 웹훅 ── */
@@ -11253,6 +11276,59 @@
         if (resultEl) resultEl.innerHTML = '<span style="color:var(--gray-500);">불일치 브랜드 없음 (' + skipped + '개 정상)</span>';
       } else {
         if (resultEl) resultEl.innerHTML = '<span style="color:var(--green);">✅ ' + fixed + '개 수정 완료:<br>' + fixedNames.map(n => '• ' + esc(n)).join('<br>') + '</span>';
+      }
+    } catch(e) {
+      if (resultEl) resultEl.innerHTML = '<span style="color:var(--red);">오류: ' + esc(e.message) + '</span>';
+    }
+  };
+
+  /* 특정 브랜드 강제 상태 수정 */
+  window.forceBrandStatus = async function() {
+    const brandId = ((document.getElementById('force-brand-id') || {}).value || '').trim();
+    const status = ((document.getElementById('force-brand-status') || {}).value || '').trim();
+    const resultEl = document.getElementById('force-brand-result');
+    if (!brandId) { if (resultEl) resultEl.innerHTML = '<span style="color:var(--orange);">브랜드 ID를 입력하세요.</span>'; return; }
+    if (resultEl) resultEl.textContent = '처리 중...';
+    try {
+      const bSnap = await getDoc(doc(db, 'brands', brandId));
+      if (!bSnap.exists()) { resultEl.innerHTML = '<span style="color:var(--red);">❌ 브랜드를 찾을 수 없습니다: ' + esc(brandId) + '</span>'; return; }
+      const brandName = bSnap.data().brand_name || brandId;
+      await updateDoc(doc(db, 'brands', brandId), {
+        onboarding_status: status,
+        onboarding_status_changed_at: today(),
+        updated_at: today()
+      });
+      if (resultEl) resultEl.innerHTML = '<span style="color:var(--green);">✅ ' + esc(brandName) + ' → ' + esc(status) + ' 수정 완료</span>';
+    } catch(e) {
+      if (resultEl) resultEl.innerHTML = '<span style="color:var(--red);">오류: ' + esc(e.message) + '</span>';
+    }
+  };
+
+  /* 상품 approval_status 미설정 일괄 수정 */
+  window.fixNullApprovalStatus = async function() {
+    const resultEl = document.getElementById('fix-approval-result');
+    if (resultEl) resultEl.textContent = '처리 중...';
+    try {
+      const snap = await getDocs(collection(db, 'products'));
+      const batch = writeBatch(db);
+      let count = 0;
+      const fixedIds = [];
+      for (const pDoc of snap.docs) {
+        const d = pDoc.data();
+        if (!d.approval_status) {
+          batch.update(doc(db, 'products', pDoc.id), { approval_status: '승인', updated_at: today() });
+          fixedIds.push((d.product_name || pDoc.id));
+          count++;
+          if (count % 490 === 0) { await batch.commit(); } // 500 limit 안전 처리
+        }
+      }
+      if (count > 0) await batch.commit();
+      if (count === 0) {
+        if (resultEl) resultEl.innerHTML = '<span style="color:var(--gray-500);">미설정 상품 없음 — 모든 상품이 이미 승인 상태 설정됨</span>';
+      } else {
+        if (resultEl) resultEl.innerHTML = '<span style="color:var(--green);">✅ ' + count + '개 상품을 승인으로 변경:<br>' + fixedIds.slice(0, 20).map(n => '• ' + esc(n)).join('<br>') + (fixedIds.length > 20 ? '<br>외 ' + (fixedIds.length - 20) + '개...' : '') + '</span>';
+        window._allProducts = null; // 캐시 무효화
+        filterProductList();
       }
     } catch(e) {
       if (resultEl) resultEl.innerHTML = '<span style="color:var(--red);">오류: ' + esc(e.message) + '</span>';
