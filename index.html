@@ -9434,42 +9434,6 @@
         '<div id="firebase-status-area"><div class="spinner" style="width:20px;height:20px;"></div></div>' +
         '</div>' +
 
-        '<div class="card" style="padding:24px;">' +
-        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:6px;">벤더 포털 연동 초기화</div>' +
-        '<div style="font-size:13px;color:var(--gray-500);margin-bottom:14px;">어드민에서 직접 등록한 브랜드에 <code>brand_public_meta</code> 문서가 없으면 벤더 포털에서 합류 신청 시 주관리자 여부를 잘못 판단합니다. 아래 버튼으로 누락된 문서를 일괄 생성합니다.</div>' +
-        '<button class="btn btn-secondary" onclick="initBrandPublicMeta()">누락된 brand_public_meta 일괄 생성</button>' +
-        '<div id="brand-meta-init-result" style="margin-top:10px;font-size:13px;"></div>' +
-        '</div>' +
-
-        '<div class="card" style="padding:24px;">' +
-        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:6px;">입점 상태 일괄 점검</div>' +
-        '<div style="font-size:13px;color:var(--gray-500);margin-bottom:14px;">심사중으로 남아있지만 ① 완료된 계약이 있거나 ② 과거에 승인 처리된 이력(<code>approved_at</code>)이 있는 브랜드를 찾아 <code>입점중</code>으로 수정합니다.</div>' +
-        '<button class="btn btn-secondary" onclick="fixApprovedOnboardingStatus()">입점 상태 불일치 브랜드 수정</button>' +
-        '<div id="fix-onboarding-result" style="margin-top:10px;font-size:13px;"></div>' +
-        '</div>' +
-
-        '<div class="card" style="padding:24px;">' +
-        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:6px;">특정 브랜드 강제 상태 수정</div>' +
-        '<div style="font-size:13px;color:var(--gray-500);margin-bottom:14px;">브랜드 ID를 직접 입력해 입점 상태를 강제로 변경합니다. 일괄 점검으로 잡히지 않는 경우에 사용하세요.</div>' +
-        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
-          '<input class="form-input" id="force-brand-id" placeholder="브랜드 ID (예: 8ho7u5DhVTVgki152zMf)" style="flex:1;min-width:200px;font-family:monospace;font-size:12px;" />' +
-          '<select class="form-input" id="force-brand-status" style="width:130px;">' +
-            '<option value="입점중">입점중</option>' +
-            '<option value="승인">승인</option>' +
-            '<option value="심사중">심사중</option>' +
-            '<option value="입점종료">입점종료</option>' +
-          '</select>' +
-          '<button class="btn btn-primary" style="white-space:nowrap;" onclick="forceBrandStatus()">강제 수정</button>' +
-        '</div>' +
-        '<div id="force-brand-result" style="margin-top:10px;font-size:13px;"></div>' +
-        '</div>' +
-
-        '<div class="card" style="padding:24px;">' +
-        '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:6px;">상품 승인 상태 일괄 점검</div>' +
-        '<div style="font-size:13px;color:var(--gray-500);margin-bottom:14px;"><code>approval_status</code>가 미설정(null)인 상품을 찾아 자동으로 <code>승인</code>으로 변경합니다. 일반 등록 기능 개선 전에 등록된 상품에 사용하세요.</div>' +
-        '<button class="btn btn-secondary" onclick="fixNullApprovalStatus()">미설정 상품 승인 처리</button>' +
-        '<div id="fix-approval-result" style="margin-top:10px;font-size:13px;"></div>' +
-        '</div>' +
 
       '</div>' +
 
