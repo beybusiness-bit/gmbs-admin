@@ -259,11 +259,24 @@
 
     /* ── 반응형 ── */
     @media (max-width: 768px) {
-      #sidebar { transform: translateX(-100%); transition: transform 0.25s ease; }
+      /* 모바일: 아이콘만 보이는 collapsed 중간 상태 없음 — 완전히 숨김/완전히 펼침만 */
+      #sidebar { transform: translateX(-100%); transition: transform 0.25s ease; width: var(--sidebar-w) !important; }
       #sidebar.open { transform: translateX(0); }
+      /* collapsed 클래스가 붙어도 모바일에서는 아이콘 전용 스타일 전부 무효화 */
+      #sidebar.collapsed { width: var(--sidebar-w) !important; }
+      #sidebar.collapsed .sidebar-brand-wrap { display: flex !important; }
+      #sidebar.collapsed .nav-section-label { opacity: 1 !important; height: auto !important; padding: revert !important; overflow: visible !important; }
+      #sidebar.collapsed .nav-item .nav-label { opacity: 1 !important; width: auto !important; overflow: visible !important; }
+      #sidebar.collapsed .nav-item { justify-content: flex-start !important; padding: revert !important; }
+      #sidebar.collapsed .nav-badge { top: revert !important; right: revert !important; min-width: revert !important; height: revert !important; font-size: revert !important; }
+      #sidebar.collapsed .user-info { justify-content: flex-start !important; }
+      #sidebar.collapsed .user-text { display: block !important; }
+      #sidebar.collapsed .sidebar-footer-actions { flex-direction: row !important; }
+      #sidebar.collapsed .btn-logout { font-size: revert !important; padding: revert !important; }
+      #sidebar.collapsed .btn-logout::before { content: none !important; }
       #sidebar-backdrop.open { display: block; }
       #sidebar-toggle { display: flex; }
-      #main { margin-left: 0; }
+      #main { margin-left: 0 !important; }
       .page-header { padding: 0 16px 0 60px; }
       .page-content { padding: 16px; }
       .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
@@ -14020,6 +14033,8 @@
 </script>
 
 <script>
+  function isMobile() { return window.innerWidth <= 768; }
+
   function toggleSidebar() {
     document.getElementById('sidebar').classList.toggle('open');
     document.getElementById('sidebar-backdrop').classList.toggle('open');
@@ -14029,22 +14044,35 @@
     document.getElementById('sidebar-backdrop').classList.remove('open');
   }
   function toggleSidebarCollapse() {
+    if (isMobile()) {
+      /* 모바일: collapsed 중간 상태 없이 오버레이 토글만 */
+      toggleSidebar();
+      return;
+    }
     const sidebar = document.getElementById('sidebar');
     const main = document.getElementById('main');
     const collapsed = sidebar.classList.toggle('collapsed');
     main.classList.toggle('sidebar-collapsed', collapsed);
-    // 햄버거 아이콘은 접힘 여부와 무관하게 동일
     try { localStorage.setItem('sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {}
   }
-  // 저장된 상태 복원
+
+  /* 모바일에서 메뉴 항목 클릭 시 사이드바 자동 닫힘 */
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.nav-item').forEach(function(el) {
+      el.addEventListener('click', function() {
+        if (isMobile()) closeSidebar();
+      });
+    });
+  });
+
+  // 저장된 상태 복원 (데스크톱 전용)
   (function() {
     try {
-      if (localStorage.getItem('sidebar_collapsed') === '1') {
+      if (!isMobile() && localStorage.getItem('sidebar_collapsed') === '1') {
         const sidebar = document.getElementById('sidebar');
         const main = document.getElementById('main');
         if (sidebar) { sidebar.classList.add('collapsed'); }
         if (main) { main.classList.add('sidebar-collapsed'); }
-        // 햄버거 아이콘 유지
       }
     } catch(e) {}
   })();
