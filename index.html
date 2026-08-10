@@ -10,6 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="GMBS" />
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js"></script>
@@ -1021,6 +1022,7 @@
       [{ id:'option',    label:'옵션',         visible:true  }],
       [{ id:'price',     label:'가격',         visible:true  }],
       [{ id:'barcode',   label:'바코드 이미지',visible:true  }],
+      [{ id:'qr',        label:'QR코드 이미지',visible:false }],
       [{ id:'code',      label:'바코드 문자',  visible:true  }],
     ];
     if (!window._labelSize) window._labelSize = { w:200, h:120 };
@@ -1472,6 +1474,8 @@
       return '<div class="label-price" style="' + st + '">' + Number(item.price).toLocaleString() + '원</div>';
     if (cell.id === 'barcode')
       return '<svg id="' + idPrefix + 'svg-' + idx + '" class="label-svg"></svg>';
+    if (cell.id === 'qr')
+      return '<div style="text-align:center;margin:2px 0;"><canvas id="' + idPrefix + 'qr-' + idx + '" style="display:block;margin:0 auto;"></canvas></div>';
     if (cell.id === 'code')
       return '<div class="label-code" style="' + st + '">' + esc(item.barcodeValue) + '</div>';
     return '';
@@ -1549,6 +1553,22 @@
         return bh + 4;
       } catch(e) { return 0; }
     }
+    if (cell.id === 'qr') {
+      try {
+        var qrOffCanvas = document.createElement('canvas');
+        var qrSz = Math.min(cellW - PAD * 2, 80);
+        /* QRCode.toCanvas는 비동기지만 여기서는 동기 대안인 toDataURL 사용 불가.
+           대신 미리 생성된 qrCanvas 엘리먼트를 DOM에서 찾아 복사 */
+        var qrId = 'lbl-qr-' + (ctx._labelIdx || 0);
+        var existingQr = document.getElementById(qrId) || document.getElementById('plbl-qr-' + (ctx._labelIdx || 0));
+        if (existingQr && existingQr.width > 0) {
+          var qx = x + (cellW - qrSz) / 2;
+          ctx.drawImage(existingQr, qx, y + 2, qrSz, qrSz);
+          return qrSz + 4;
+        }
+      } catch(e) {}
+      return 0;
+    }
     if (cell.id === 'code') {
       ctx.font = '8px monospace'; ctx.fillStyle = '#000';
       ctx.fillText(String(item.barcodeValue), cx, y + 8); return 11;
@@ -1572,7 +1592,8 @@
     var canvas = document.createElement('canvas');
     canvas.width = w * scale; canvas.height = h * scale;
     var ctx = canvas.getContext('2d');
-    ctx._scale = scale; /* drawCellToCanvas에서 참조 */
+    ctx._scale = scale;     /* drawCellToCanvas에서 참조 */
+    ctx._labelIdx = item._labelIdx !== undefined ? item._labelIdx : 0; /* QR canvas 참조용 */
     ctx.scale(scale, scale);
 
     /* 배경 + 테두리 */
@@ -1868,6 +1889,11 @@
           displayValue: false, margin: 4, background: '#ffffff', lineColor: '#000000'
         });
       } catch(e) { console.warn('바코드 생성 실패:', e); }
+      var qrCanvas = document.getElementById('lbl-qr-' + i);
+      if (qrCanvas && typeof QRCode !== 'undefined') {
+        var qrSize = Math.min(w - 8, h - 8, 80);
+        QRCode.toCanvas(qrCanvas, item.barcodeValue, { width: qrSize, margin: 1, color: { dark:'#000000', light:'#ffffff' } }, function(){});
+      }
     });
   };
 
@@ -1893,6 +1919,11 @@
 
     allLabels.forEach(function(item, i) {
       try { JsBarcode('#plbl-svg-' + i, item.barcodeValue, { format:'CODE128', width:1, height:Math.max(40,Math.floor(h*0.55)), displayValue:false, margin:4 }); } catch(e) {}
+      var pqrCanvas = document.getElementById('plbl-qr-' + i);
+      if (pqrCanvas && typeof QRCode !== 'undefined') {
+        var qrSize = Math.min(w - 8, h - 8, 80);
+        QRCode.toCanvas(pqrCanvas, item.barcodeValue, { width: qrSize, margin: 1, color: { dark:'#000000', light:'#ffffff' } }, function(){});
+      }
     });
 
     setTimeout(async function() {
@@ -1925,6 +1956,9 @@
     }, []);
 
     showToast('이미지 생성 중...', 'info');
+
+    /* QR canvas 참조용 인덱스 세팅 */
+    allLabels.forEach(function(item, i) { item._labelIdx = i; });
 
     /* 단일 라벨 → PNG 직접 다운로드 */
     if (allLabels.length === 1) {
