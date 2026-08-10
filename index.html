@@ -6313,7 +6313,12 @@
 
       if (quantity === 0) { showToast('변경 사항이 없습니다.', 'info'); closeModal(); return; }
 
+      // brand_id 조회 (vendor 측 쿼리 brand_id == brandId 필터링 대응)
+      const adjProductSnap = await getDoc(doc(db, 'products', productId));
+      const adjBrandId = adjProductSnap.exists() ? (adjProductSnap.data().brand_id || '') : '';
+
       await addDoc(collection(db, 'inventory_transactions'), {
+        brand_id: adjBrandId,
         product_id: productId,
         sku_id: skuId,
         quantity: quantity,
