@@ -10642,75 +10642,24 @@
     const btn = document.getElementById('btn-pos-sync');
     if (btn) { btn.disabled = true; btn.textContent = '동기화 중...'; }
     try {
-      /* 1. API 키 로드 */
-      const cfgSnap = await getDoc(doc(db, 'settings', 'config'));
-      const cfg = cfgSnap.data() || {};
-      if (!cfg.toss_pos_client_key || !cfg.toss_pos_secret_key || !cfg.toss_pos_store_id) {
-        showToast('설정 → API 및 웹훅에서 토스 POS Store ID / Client Key / Secret Key를 먼저 저장해주세요.', 'error');
-        return;
-      }
+      const fn = httpsCallable(fns, 'syncPosStatus');
+      const result = await fn();
+      const d = result.data || {};
 
-      /* 2. 토스 POS 카탈로그 바코드 전체 수집 */
-      if (btn) btn.textContent = 'POS 조회 중...';
-      const tossBarcodes = await fetchTossCatalogBarcodes(cfg.toss_pos_store_id, cfg.toss_pos_client_key, cfg.toss_pos_secret_key);
-      if (btn) btn.textContent = '매칭 중...';
-
-      /* 3. 어드민 SKU 전체 로드 (collectionGroup) */
-      const skuSnap = await getDocs(collectionGroup(db, 'skus'));
-      /* productId → Set<barcode_value> 맵 구성 */
-      const productBarcodes = {};
-      skuSnap.docs.forEach(function(d) {
-        const bv = d.data().barcode_value;
-        if (!bv) return;
-        /* skus 상위 컬렉션 경로: products/{productId}/skus/{skuId} */
-        const pathParts = d.ref.path.split('/');
-        const productId = pathParts[1]; /* products/[productId]/skus/... */
-        if (!productBarcodes[productId]) productBarcodes[productId] = new Set();
-        productBarcodes[productId].add(bv);
-      });
-
-      /* 4. 각 상품별 pos_status 결정 → Firestore 배치 업데이트 */
-      const now = new Date().toISOString();
-      const batch = writeBatch(db);
-      let updatedCount = 0;
-
-      const allProductIds = Object.keys(productBarcodes);
-      /* _allProducts 캐시에 있는 상품도 포함 (SKU가 아직 안 생성된 경우 미등록으로) */
-      const cachedProducts = window._allProducts || [];
-      const cachedIds = cachedProducts.map(function(p) { return p.id; });
-      const allIds = Array.from(new Set([...allProductIds, ...cachedIds]));
-
-      allIds.forEach(function(productId) {
-        const barcodeSet = productBarcodes[productId] || new Set();
-        let anyMatch = false;
-        barcodeSet.forEach(function(bv) {
-          if (tossBarcodes.has(bv)) anyMatch = true;
-        });
-        const newStatus = anyMatch ? '등록완료' : '미등록';
-        const cached = cachedProducts.find(function(p) { return p.id === productId; });
-        const currentStatus = cached ? (cached.pos_status || '미등록') : null;
-        /* 상태가 바뀔 때만 업데이트 */
-        if (currentStatus !== newStatus) {
-          const updates = { pos_status: newStatus, updated_at: now };
-          if (newStatus === '등록완료') updates.pos_synced_at = now;
-          batch.update(doc(db, 'products', productId), updates);
-          if (cached) { cached.pos_status = newStatus; if (newStatus === '등록완료') cached.pos_synced_at = now; }
-          updatedCount++;
-        }
-      });
-
-      await batch.commit();
-
-      /* 5. UI 갱신 */
+      /* 캐시 무효화 후 목록 갱신 */
+      window._allProducts = null;
       filterProductList();
-      showToast('POS 동기화 완료: POS 바코드 ' + tossBarcodes.size + '개 · ' + updatedCount + '개 상품 상태 업데이트', 'success');
-    } catch(e) {
-      const isCors = e instanceof TypeError || e.message.includes('Failed to fetch') || e.message.includes('NetworkError');
-      if (isCors) {
-        showToast('CORS 오류: 토스플레이스 API는 브라우저에서 직접 호출이 안 됩니다. 나중에 gmbs-functions에서 서버 측으로 처리해야 합니다.', 'error');
+
+      if (d.success) {
+        showToast(
+          'POS 동기화 완료 — POS 바코드 ' + (d.totalTosBarcodes || 0) + '개 · 등록완료 ' + (d.matchedCount || 0) + '개 · 미등록 ' + (d.unmatchedCount || 0) + '개',
+          'success'
+        );
       } else {
-        showToast('동기화 실패: ' + e.message, 'error');
+        showToast('동기화 실패: ' + (d.message || '알 수 없는 오류'), 'error');
       }
+    } catch(e) {
+      showToast('동기화 실패: ' + e.message, 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = '🔄 POS 동기화'; }
     }
