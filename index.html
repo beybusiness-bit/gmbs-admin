@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="GMBS" />
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js"></script>
@@ -1902,11 +1902,17 @@
       } catch(e) { console.warn('바코드 생성 실패:', e); }
       (function(bv, idx, lw, lh) {
         var qrImg = document.getElementById('lbl-qr-' + idx);
-        if (qrImg && typeof QRCode !== 'undefined') {
-          var qrSize = Math.min(lw - 8, lh - 8, 80);
-          QRCode.toDataURL(bv, { width: qrSize, margin: 1, color: { dark:'#000000', light:'#ffffff' } })
-            .then(function(url) { qrImg.src = url; qrImg.style.width = qrSize + 'px'; qrImg.style.height = qrSize + 'px'; })
-            .catch(function(e) { console.warn('QR 생성 실패:', e); });
+        if (qrImg && typeof qrcode === 'function') {
+          try {
+            var qrSize = Math.min(lw - 8, lh - 8, 80);
+            var cellSize = Math.max(2, Math.floor(qrSize / 25));
+            var qr = qrcode(0, 'M');
+            qr.addData(bv);
+            qr.make();
+            qrImg.src = qr.createDataURL(cellSize, 0);
+            qrImg.style.width = qrSize + 'px';
+            qrImg.style.height = qrSize + 'px';
+          } catch(e) { console.warn('QR 생성 실패:', e); }
         }
       })(item.barcodeValue, i, w, h);
     });
@@ -1936,11 +1942,17 @@
       try { JsBarcode('#plbl-svg-' + i, item.barcodeValue, { format:'CODE128', width:1, height:Math.max(40,Math.floor(h*0.55)), displayValue:false, margin:4 }); } catch(e) {}
       (function(bv, idx, lw, lh) {
         var pqrImg = document.getElementById('plbl-qr-' + idx);
-        if (pqrImg && typeof QRCode !== 'undefined') {
-          var qrSize = Math.min(lw - 8, lh - 8, 80);
-          QRCode.toDataURL(bv, { width: qrSize, margin: 1, color: { dark:'#000000', light:'#ffffff' } })
-            .then(function(url) { pqrImg.src = url; pqrImg.style.width = qrSize + 'px'; pqrImg.style.height = qrSize + 'px'; })
-            .catch(function(e) { console.warn('QR 생성 실패(인쇄):', e); });
+        if (pqrImg && typeof qrcode === 'function') {
+          try {
+            var qrSize = Math.min(lw - 8, lh - 8, 80);
+            var cellSize = Math.max(2, Math.floor(qrSize / 25));
+            var qr = qrcode(0, 'M');
+            qr.addData(bv);
+            qr.make();
+            pqrImg.src = qr.createDataURL(cellSize, 0);
+            pqrImg.style.width = qrSize + 'px';
+            pqrImg.style.height = qrSize + 'px';
+          } catch(e) { console.warn('QR 생성 실패(인쇄):', e); }
         }
       })(item.barcodeValue, i, w, h);
     });
