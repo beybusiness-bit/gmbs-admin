@@ -1489,7 +1489,7 @@
     if (cell.id === 'barcode')
       return '<svg id="' + idPrefix + 'svg-' + idx + '" class="label-svg"></svg>';
     if (cell.id === 'qr')
-      return '<div style="text-align:center;margin:2px 0;"><canvas id="' + idPrefix + 'qr-' + idx + '" style="display:block;margin:0 auto;"></canvas></div>';
+      return '<div style="text-align:center;margin:2px 0;"><img id="' + idPrefix + 'qr-' + idx + '" style="display:block;margin:0 auto;" /></div>';
     if (cell.id === 'code')
       return '<div class="label-code" style="' + st + '">' + esc(item.barcodeValue) + '</div>';
     return '';
@@ -1569,13 +1569,10 @@
     }
     if (cell.id === 'qr') {
       try {
-        var qrOffCanvas = document.createElement('canvas');
         var qrSz = Math.min(cellW - PAD * 2, 80);
-        /* QRCode.toCanvas는 비동기지만 여기서는 동기 대안인 toDataURL 사용 불가.
-           대신 미리 생성된 qrCanvas 엘리먼트를 DOM에서 찾아 복사 */
         var qrId = 'lbl-qr-' + (ctx._labelIdx || 0);
         var existingQr = document.getElementById(qrId) || document.getElementById('plbl-qr-' + (ctx._labelIdx || 0));
-        if (existingQr && existingQr.width > 0) {
+        if (existingQr && existingQr.naturalWidth > 0) {
           var qx = x + (cellW - qrSz) / 2;
           ctx.drawImage(existingQr, qx, y + 2, qrSz, qrSz);
           return qrSz + 4;
@@ -1903,11 +1900,15 @@
           displayValue: false, margin: 4, background: '#ffffff', lineColor: '#000000'
         });
       } catch(e) { console.warn('바코드 생성 실패:', e); }
-      var qrCanvas = document.getElementById('lbl-qr-' + i);
-      if (qrCanvas && typeof QRCode !== 'undefined') {
-        var qrSize = Math.min(w - 8, h - 8, 80);
-        QRCode.toCanvas(qrCanvas, item.barcodeValue, { width: qrSize, margin: 1, color: { dark:'#000000', light:'#ffffff' } }, function(){});
-      }
+      (function(bv, idx, lw, lh) {
+        var qrImg = document.getElementById('lbl-qr-' + idx);
+        if (qrImg && typeof QRCode !== 'undefined') {
+          var qrSize = Math.min(lw - 8, lh - 8, 80);
+          QRCode.toDataURL(bv, { width: qrSize, margin: 1, color: { dark:'#000000', light:'#ffffff' } })
+            .then(function(url) { qrImg.src = url; qrImg.style.width = qrSize + 'px'; qrImg.style.height = qrSize + 'px'; })
+            .catch(function(e) { console.warn('QR 생성 실패:', e); });
+        }
+      })(item.barcodeValue, i, w, h);
     });
   };
 
@@ -1933,11 +1934,15 @@
 
     allLabels.forEach(function(item, i) {
       try { JsBarcode('#plbl-svg-' + i, item.barcodeValue, { format:'CODE128', width:1, height:Math.max(40,Math.floor(h*0.55)), displayValue:false, margin:4 }); } catch(e) {}
-      var pqrCanvas = document.getElementById('plbl-qr-' + i);
-      if (pqrCanvas && typeof QRCode !== 'undefined') {
-        var qrSize = Math.min(w - 8, h - 8, 80);
-        QRCode.toCanvas(pqrCanvas, item.barcodeValue, { width: qrSize, margin: 1, color: { dark:'#000000', light:'#ffffff' } }, function(){});
-      }
+      (function(bv, idx, lw, lh) {
+        var pqrImg = document.getElementById('plbl-qr-' + idx);
+        if (pqrImg && typeof QRCode !== 'undefined') {
+          var qrSize = Math.min(lw - 8, lh - 8, 80);
+          QRCode.toDataURL(bv, { width: qrSize, margin: 1, color: { dark:'#000000', light:'#ffffff' } })
+            .then(function(url) { pqrImg.src = url; pqrImg.style.width = qrSize + 'px'; pqrImg.style.height = qrSize + 'px'; })
+            .catch(function(e) { console.warn('QR 생성 실패(인쇄):', e); });
+        }
+      })(item.barcodeValue, i, w, h);
     });
 
     setTimeout(async function() {
