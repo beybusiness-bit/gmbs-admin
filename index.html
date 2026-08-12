@@ -5810,7 +5810,7 @@
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
         '</select>' +
         '<div id="pl-bulk-actions" style="display:flex;gap:8px;margin-left:auto;align-items:center;"></div>' +
-        '<button class="btn btn-secondary" id="btn-pos-sync" onclick="syncPosWithToss()" style="white-space:nowrap;" title="토스플레이스 POS에 등록된 상품을 바코드로 매칭하여 POS 상태를 자동 업데이트합니다">🔄 POS 동기화</button>' +
+        '<button class="btn btn-secondary" id="btn-pos-sync" onclick="syncPosWithToss()" style="white-space:nowrap;" title="토스플레이스 POS에 등록된 바코드를 조회하여 어드민 상품의 POS 등록 여부를 업데이트합니다 (상품을 POS에 자동 등록하지는 않습니다)">🔍 POS 등록 확인</button>' +
         '<div data-register-wrap="1" style="position:relative;display:inline-block;">' +
         '<button class="btn btn-primary" onclick="toggleRegisterMenu(\'new-product-menu\',this)">➕ 새 상품 등록 ▾</button>' +
         '<div id="new-product-menu" class="register-dropdown" style="display:none;">' +
@@ -9517,7 +9517,7 @@
 
         '<div class="card" style="padding:24px;margin-bottom:20px;">' +
         '<div style="font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;">토스플레이스 POS Open API</div>' +
-        '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">상품 목록에서 "POS 동기화" 버튼으로 POS에 등록된 상품을 바코드 기준으로 자동 매칭합니다.</div>' +
+        '<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">상품 목록에서 "POS 등록 확인" 버튼으로 POS에 등록된 바코드를 조회하여 어드민 상품의 POS 등록 여부를 업데이트합니다. 상품을 POS에 자동 등록하지는 않습니다.</div>' +
         '<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">토스플레이스 사장님 포털 → 설정 → Open API 에서 Client Key / Secret Key를 발급받으세요.</div>' +
         '<div style="display:flex;flex-direction:column;gap:8px;">' +
           '<div style="display:flex;gap:8px;align-items:center;">' +
@@ -10675,7 +10675,7 @@
     } catch(e) {
       showToast('동기화 실패: ' + e.message, 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = '🔄 POS 동기화'; }
+      if (btn) { btn.disabled = false; btn.textContent = '🔍 POS 등록 확인'; }
     }
   };
 
