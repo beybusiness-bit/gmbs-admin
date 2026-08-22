@@ -6071,8 +6071,12 @@
       }).join('');
 
       const mainImgHTML = p.image_url
-        ? '<img src="' + esc(p.image_url) + '" style="width:144px;height:144px;object-fit:cover;border-radius:10px;border:1px solid var(--gray-200);margin-right:16px;flex-shrink:0;cursor:zoom-in;" onclick="openLightbox(\'' + esc(p.image_url) + '\',\'' + esc(p.product_name) + '\')" title="클릭해서 크게 보기" />'
-        : '';
+        ? '<div style="position:relative;display:inline-block;margin-right:16px;flex-shrink:0;">' +
+          '<img src="' + esc(p.image_url) + '" style="width:144px;height:144px;object-fit:cover;border-radius:10px;border:1px solid var(--gray-200);cursor:zoom-in;display:block;" onclick="openLightbox(\'' + esc(p.image_url) + '\',\'' + esc(p.product_name) + '\')" title="클릭해서 크게 보기" />' +
+          '<button onclick="uploadProductMainImage(\'' + productId + '\')" style="position:absolute;bottom:4px;right:4px;width:24px;height:24px;border:none;background:rgba(0,0,0,.6);color:#fff;border-radius:4px;cursor:pointer;font-size:12px;line-height:1;padding:0;" title="대표 사진 변경">📷</button>' +
+          '</div>'
+        : '<button onclick="uploadProductMainImage(\'' + productId + '\')" style="width:144px;height:144px;border:2px dashed var(--gray-300);border-radius:10px;background:var(--gray-50);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;margin-right:16px;flex-shrink:0;color:var(--gray-400);font-size:12px;" title="대표 사진 등록">' +
+          '<span style="font-size:28px;">📷</span><span>사진 등록</span></button>';
 
       const approvalBadge = s => ({
         '승인대기': '<span class="badge badge-yellow">승인대기</span>',
@@ -6192,6 +6196,30 @@
               await updateDoc(doc(db, 'products', pid), { image_url: url, updated_at: now });
             }
             showToast('사진이 저장됐습니다.' + (skus.length === 1 ? ' (상품 대표 사진도 함께 갱신)' : ''), 'success');
+            await openProductDetail(pid);
+          } catch(e) { showToast('사진 업로드 실패: ' + e.message, 'error'); }
+        };
+        input.value = '';
+        input.click();
+      };
+
+      window.uploadProductMainImage = function(pid) {
+        const input = document.getElementById('sku-img-input');
+        if (!input) return;
+        input.onchange = async function() {
+          const file = this.files[0];
+          if (!file) return;
+          try {
+            const path = 'products/' + pid + '/main_img_' + Date.now();
+            const snap = await uploadBytes(ref(storage, path), file);
+            const url = await getDownloadURL(snap.ref);
+            const now = new Date().toISOString();
+            await updateDoc(doc(db, 'products', pid), { image_url: url, updated_at: now });
+            /* SKU가 1개(옵션 없음)이면 SKU 사진도 동일하게 갱신 */
+            if (skus.length === 1) {
+              await updateDoc(doc(db, 'products', pid, 'skus', skus[0].id), { image_url: url, updated_at: now });
+            }
+            showToast('대표 사진이 저장됐습니다.', 'success');
             await openProductDetail(pid);
           } catch(e) { showToast('사진 업로드 실패: ' + e.message, 'error'); }
         };
