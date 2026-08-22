@@ -2066,6 +2066,7 @@
         '<select id="bl-page-size" onchange="window._brandPageSize=parseInt(this.value);window._brandPage=1;filterBrandList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
         '</select>' +
+        '<button class="btn btn-secondary" onclick="exportFilteredBrands()" style="white-space:nowrap;">📥 목록 내보내기</button>' +
         '<div id="bl-bulk-actions" style="display:flex;gap:8px;margin-left:auto;align-items:center;"></div>' +
         '<div data-register-wrap="1" style="position:relative;display:inline-block;">' +
         '<button class="btn btn-primary" onclick="toggleRegisterMenu(\'new-brand-menu\',this)">➕ 새 브랜드 등록 ▾</button>' +
@@ -2886,6 +2887,7 @@
         '<select id="pers-page-size" onchange="window._personPageSize=parseInt(this.value);window._personPage=1;filterPersonsList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option>' +
         '</select>' +
+        '<button class="btn btn-secondary" onclick="exportFilteredPersons()" style="white-space:nowrap;">📥 목록 내보내기</button>' +
         '<div id="pers-bulk-actions" style="display:flex;gap:8px;margin-left:auto;align-items:center;"></div>' +
         '<button class="btn btn-primary" onclick="openPersonModal(null,null)">➕ 새 담당자 등록</button>' +
         '</div>' +
@@ -5826,6 +5828,7 @@
         '<select id="pl-page-size" onchange="window._productPageSize=parseInt(this.value);window._productPage=1;filterProductList()" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;">' +
         '<option value="20">20개씩</option><option value="50">50개씩</option><option value="100">100개씩</option><option value="200">200개씩</option>' +
         '</select>' +
+        '<button class="btn btn-secondary" onclick="exportFilteredProducts()" style="white-space:nowrap;">📥 목록 내보내기</button>' +
         '<div id="pl-bulk-actions" style="display:flex;gap:8px;margin-left:auto;align-items:center;"></div>' +
         '<button class="btn btn-secondary" id="btn-pos-sync" onclick="syncPosWithToss()" style="white-space:nowrap;" title="토스플레이스 POS에 등록된 바코드를 조회하여 어드민 상품의 POS 등록 여부를 업데이트합니다 (상품을 POS에 자동 등록하지는 않습니다)">🔍 POS 등록 확인</button>' +
         '<div data-register-wrap="1" style="position:relative;display:inline-block;">' +
@@ -6086,8 +6089,12 @@
       }).join('');
 
       const mainImgHTML = p.image_url
-        ? '<img src="' + esc(p.image_url) + '" style="width:144px;height:144px;object-fit:cover;border-radius:10px;border:1px solid var(--gray-200);margin-right:16px;flex-shrink:0;cursor:zoom-in;" onclick="openLightbox(\'' + esc(p.image_url) + '\',\'' + esc(p.product_name) + '\')" title="클릭해서 크게 보기" />'
-        : '';
+        ? '<div style="position:relative;display:inline-block;margin-right:16px;flex-shrink:0;">' +
+          '<img src="' + esc(p.image_url) + '" style="width:144px;height:144px;object-fit:cover;border-radius:10px;border:1px solid var(--gray-200);cursor:zoom-in;display:block;" onclick="openLightbox(\'' + esc(p.image_url) + '\',\'' + esc(p.product_name) + '\')" title="클릭해서 크게 보기" />' +
+          '<button onclick="uploadProductMainImage(\'' + productId + '\')" style="position:absolute;bottom:4px;right:4px;width:24px;height:24px;border:none;background:rgba(0,0,0,.6);color:#fff;border-radius:4px;cursor:pointer;font-size:12px;line-height:1;padding:0;" title="대표 사진 변경">📷</button>' +
+          '</div>'
+        : '<button onclick="uploadProductMainImage(\'' + productId + '\')" style="width:144px;height:144px;border:2px dashed var(--gray-300);border-radius:10px;background:var(--gray-50);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;margin-right:16px;flex-shrink:0;color:var(--gray-400);font-size:12px;" title="대표 사진 등록">' +
+          '<span style="font-size:28px;">📷</span><span>사진 등록</span></button>';
 
       const approvalBadge = s => ({
         '승인대기': '<span class="badge badge-yellow">승인대기</span>',
@@ -6207,6 +6214,30 @@
               await updateDoc(doc(db, 'products', pid), { image_url: url, updated_at: now });
             }
             showToast('사진이 저장됐습니다.' + (skus.length === 1 ? ' (상품 대표 사진도 함께 갱신)' : ''), 'success');
+            await openProductDetail(pid);
+          } catch(e) { showToast('사진 업로드 실패: ' + e.message, 'error'); }
+        };
+        input.value = '';
+        input.click();
+      };
+
+      window.uploadProductMainImage = function(pid) {
+        const input = document.getElementById('sku-img-input');
+        if (!input) return;
+        input.onchange = async function() {
+          const file = this.files[0];
+          if (!file) return;
+          try {
+            const path = 'products/' + pid + '/main_img_' + Date.now();
+            const snap = await uploadBytes(ref(storage, path), file);
+            const url = await getDownloadURL(snap.ref);
+            const now = new Date().toISOString();
+            await updateDoc(doc(db, 'products', pid), { image_url: url, updated_at: now });
+            /* SKU가 1개(옵션 없음)이면 SKU 사진도 동일하게 갱신 */
+            if (skus.length === 1) {
+              await updateDoc(doc(db, 'products', pid, 'skus', skus[0].id), { image_url: url, updated_at: now });
+            }
+            showToast('대표 사진이 저장됐습니다.', 'success');
             await openProductDetail(pid);
           } catch(e) { showToast('사진 업로드 실패: ' + e.message, 'error'); }
         };
@@ -11361,6 +11392,32 @@
     return d.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
 
+  /* ── 브랜드 내보내기 (현재 필터된 목록 전체) ── */
+  window.exportFilteredBrands = function() {
+    if (!window.XLSX) { showToast('엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 시도하세요.', 'error'); return; }
+    const brands = window._brandFiltered || window._allBrands || [];
+    if (brands.length === 0) { showToast('내보낼 브랜드가 없습니다.', 'error'); return; }
+    try {
+      const rows = [['브랜드명','브랜드코드','거래유형','입점상태','활성여부','마지막 상품번호','등록일']];
+      brands.forEach(function(b) {
+        rows.push([
+          b.brand_name || '',
+          b.brand_code || '',
+          (b.brand_types && b.brand_types.length ? b.brand_types.join('/') : b.brand_type || ''),
+          b.onboarding_status || '심사중',
+          b.active === false ? '비활성' : '활성',
+          b.last_product_number || '000',
+          fmtDate(b.created_at)
+        ]);
+      });
+      var ws = XLSX.utils.aoa_to_sheet(rows);
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '브랜드목록');
+      XLSX.writeFile(wb, 'GMBS_브랜드목록.xlsx');
+      showToast(brands.length + '개 브랜드를 내보냈습니다.', 'success');
+    } catch(e) { showToast('내보내기 실패: ' + e.message, 'error'); }
+  };
+
   /* ── 브랜드 내보내기 (선택한 항목만 GMBS 내부 양식) ── */
   window.exportSelectedBrands = async function() {
     if (!window.XLSX) { showToast('엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 시도하세요.', 'error'); return; }
@@ -11378,6 +11435,63 @@
       XLSX.utils.book_append_sheet(wb, ws, '브랜드목록');
       XLSX.writeFile(wb, 'GMBS_브랜드목록.xlsx');
       showToast(brands.length + '개 브랜드를 내보냈습니다.', 'success');
+    } catch(e) { showToast('내보내기 실패: ' + e.message, 'error'); }
+  };
+
+  /* ── 상품 내보내기 (현재 필터된 목록 전체) ── */
+  window.exportFilteredProducts = function() {
+    if (!window.XLSX) { showToast('엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 시도하세요.', 'error'); return; }
+    const products = window._productFiltered || window._allProducts || [];
+    if (products.length === 0) { showToast('내보낼 상품이 없습니다.', 'error'); return; }
+    try {
+      var rows = [['상품ID','브랜드코드','브랜드명','상품명','거래유형','관리방식','승인상태','상태','기본판매가','등록일']];
+      products.forEach(function(p) {
+        rows.push([
+          p.id || '',
+          p.brand_code || '',
+          p.brand_name || '',
+          p.product_name || '',
+          p.transaction_type || '',
+          p.tracking_type === 'individual' ? '개체관리' : '수량관리',
+          p.approval_status || '',
+          p.status || '',
+          p.base_price || '',
+          fmtDate(p.created_at)
+        ]);
+      });
+      var ws = XLSX.utils.aoa_to_sheet(rows);
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '상품목록');
+      XLSX.writeFile(wb, 'GMBS_상품목록.xlsx');
+      showToast(products.length + '개 상품을 내보냈습니다.', 'success');
+    } catch(e) { showToast('내보내기 실패: ' + e.message, 'error'); }
+  };
+
+  /* ── 담당자 내보내기 (현재 필터된 목록 전체) ── */
+  window.exportFilteredPersons = function() {
+    if (!window.XLSX) { showToast('엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 시도하세요.', 'error'); return; }
+    const persons = window._personFiltered || window._allPersonsData || [];
+    if (persons.length === 0) { showToast('내보낼 담당자가 없습니다.', 'error'); return; }
+    const brandMap = window._allPersonsBrandMap || {};
+    try {
+      var rows = [['이름','이메일','역할','전화번호','소속 브랜드','활성여부','등록일']];
+      persons.forEach(function(p) {
+        var brandNames = (p.brand_ids || []).map(function(id) { return brandMap[id] || id; }).join(', ');
+        rows.push([
+          p.name || '',
+          p.id || p.email || '',
+          p.role || '',
+          p.phone || '',
+          brandNames,
+          p.active === false ? '비활성' : '활성',
+          fmtDate(p.created_at)
+        ]);
+      });
+      var ws = XLSX.utils.aoa_to_sheet(rows);
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '담당자목록');
+      XLSX.writeFile(wb, 'GMBS_담당자목록.xlsx');
+      showToast(persons.length + '개 담당자를 내보냈습니다.', 'success');
     } catch(e) { showToast('내보내기 실패: ' + e.message, 'error'); }
   };
 
